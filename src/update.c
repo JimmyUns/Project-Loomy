@@ -15,6 +15,7 @@
 
 #define GH_API_HOST L"api.github.com"
 #define GH_API_PATH L"/repos/" GH_USER L"/" GH_REPO L"/releases/latest"
+#define GH_LIST_PATH L"/repos/" GH_USER L"/" GH_REPO L"/releases?per_page=30"
 #define GH_DL_HOST  L"github.com"
 #define GH_DL_PATH  L"/" GH_USER L"/" GH_REPO L"/releases/latest/download/loomy.exe"
 
@@ -109,6 +110,175 @@ static int ver_gt(const wchar_t *a, const wchar_t *b) {
 
 static char g_json[64 * 1024];
 
+// ---------------------------------------------------------------- local update log
+// A tiny text file in %APPDATA%\Loomy: one line per version we installed, "2.6|2026-10-21 14:03".
+// Lets "version history" show when YOU updated locally (going forward only).
+static void log_path(wchar_t *out) {
+    s_cpy(out, cfg_dir(), MAX_PATH);
+    s_cat(out, L"\\updates.log", MAX_PATH);
+}
+
+static void update_log_write(const wchar_t *ver) {
+    wchar_t path[MAX_PATH]; log_path(path);
+    SYSTEMTIME t; GetLocalTime(&t);
+    char line[128];
+    int n = wsprintfA(line, "%S|%04d-%02d-%02d %02d:%02d\r\n",
+                      ver, t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute);
+    HANDLE f = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, 0, OPEN_ALWAYS, 0, 0);
+    if (f == INVALID_HANDLE_VALUE) return;
+    SetFilePointer(f, 0, 0, FILE_END);
+    DWORD w; WriteFile(f, line, n, &w, 0);
+    CloseHandle(f);
+}
+
+// find "ver" in the log, copy its local datetime into out. 1 if found.
+static int update_log_find(const wchar_t *ver, wchar_t *out, int cap) {
+    wchar_t path[MAX_PATH]; log_path(path);
+    HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
+    if (f == INVALID_HANDLE_VALUE) return 0;
+    static char buf[8192];
+    DWORD got = 0; ReadFile(f, buf, sizeof(buf) - 1, &got, 0); CloseHandle(f);
+    buf[got] = 0;
+    // scan lines for "ver|datetime"
+    char target[32]; WideCharToMultiByte(CP_ACP, 0, ver, -1, target, 32, 0, 0);
+    char *p = buf;
+    int found = 0;
+    while (*p) {
+        char *eol = p; while (*eol && *eol != '\n') eol++;
+        char *bar = p; while (bar < eol && *bar != '|') bar++;
+        if (*bar == '|') {
+            int len = (int)(bar - p);
+            // strip trailing \r and compare
+            char name[32]; int k = 0;
+            for (int i = 0; i < len && k < 31; i++) if (p[i] != '\r') name[k++] = p[i];
+            name[k] = 0;
+            if (lstrcmpA(name, target) == 0) {
+                char *d = bar + 1; int dl = (int)(eol - d);
+                while (dl > 0 && (d[dl-1] == '\r')) dl--;
+                int wl = MultiByteToWideChar(CP_ACP, 0, d, dl, out, cap - 1);
+                out[wl] = 0; found = 1;   // keep scanning; last (newest) wins
+            }
+        }
+        p = *eol ? eol + 1 : eol;
+    }
+    return found;
+}
+
+// ---------------------------------------------------------------- /version
+void cmd_version(wchar_t *args) {
+    outf(OUT_TEXT, L"You're running Loomy v%s.", LOOMY_VERSION);
+    out(OUT_DIM, L"Checking GitHub...");
+    ui_redraw();
+
+    DWORD got = 0;
+    if (!https_get(GH_API_HOST, GH_API_PATH, L"application/vnd.github+json", g_json, sizeof(g_json), &got, 0) || got == 0) {
+        out(OUT_ERR, L"Couldn't reach GitHub to check for the latest.");
+        return;
+    }
+    wchar_t latest[32];
+    if (!parse_tag(g_json, latest, 32)) { out(OUT_DIM, L"No releases published yet."); return; }
+
+    if (ver_gt(latest, LOOMY_VERSION))
+        outf(OUT_ACCENT, L"A newer version is out: v%s. Type /update to get it.", latest);
+    else
+        out(OUT_OK, L"You're up to date.");
+}
+
+// ---------------------------------------------------------------- /versionhistory
+// does the string at a start with the n-char literal b? 1 = yes
+static int starts_n(const char *a, const char *b, int n) {
+    for (int i = 0; i < n; i++) { if (a[i] != b[i]) return 0; if (!a[i]) return 0; }
+    return 1;
+}
+
+// pull the next "tag_name":"vX" and "published_at":"ISO" pair starting at *pp.
+// advances *pp. returns 0 when no more.
+static int next_release(const char **pp, wchar_t *ver, int vcap, wchar_t *date, int dcap) {
+    const char *p = *pp;
+    const char *tag = 0;
+    // find next tag_name
+    while (*p) {
+        if (p[0]=='"' && starts_n(p, "\"tag_name\"", 10)) { tag = p; break; }
+        p++;
+    }
+    if (!tag) return 0;
+    const char *q = tag + 10;
+    while (*q && *q != ':') q++;
+    if (*q) q++;
+    while (*q==' '||*q=='"') q++;
+    if (*q=='v'||*q=='V') q++;
+    int n=0; while (*q && *q!='"' && n<vcap-1) ver[n++]=(wchar_t)*q++;
+    ver[n]=0;
+
+    // find published_at after this tag
+    const char *d = q;
+    date[0]=0;
+    while (*d) {
+        if (d[0]=='"' && starts_n(d, "\"published_at\"", 14)) {
+            const char *e = d + 14;
+            while (*e && *e != ':') e++;
+            if (*e) e++;
+            while (*e==' '||*e=='"') e++;
+            int m=0;
+            // ISO "2026-10-21T14:03:55Z" -> "2026-10-21 14:03"
+            while (*e && *e!='"' && m<dcap-1) {
+                char c = *e++;
+                if (c=='T') c=' ';
+                if (c=='Z') break;
+                date[m++]=(wchar_t)c;
+            }
+            date[m]=0;
+            // trim seconds: keep "YYYY-MM-DD HH:MM"
+            if (m > 16) date[16]=0;
+            break;
+        }
+        // stop if we hit the next tag_name (no published_at = draft)
+        if (d[0]=='"' && starts_n(d, "\"tag_name\"", 10)) break;
+        d++;
+    }
+    *pp = d;
+    return 1;
+}
+
+void cmd_versionhistory(wchar_t *args) {
+    out(OUT_DIM, L"Fetching version history from GitHub...");
+    ui_redraw();
+
+    DWORD got = 0;
+    if (!https_get(GH_API_HOST, GH_LIST_PATH, L"application/vnd.github+json", g_json, sizeof(g_json), &got, 0) || got == 0) {
+        out(OUT_ERR, L"Couldn't reach GitHub.");
+        return;
+    }
+
+    wchar_t head[96] = L"Version";
+    int hn = s_len(head); while (hn < 12) head[hn++]=L' '; head[hn]=0;
+    s_cat(head, L"Released (GitHub)", 96);
+    hn = s_len(head); while (hn < 34) head[hn++]=L' '; head[hn]=0;
+    s_cat(head, L"You updated", 96);
+    out(OUT_ACCENT, head);
+
+    const char *p = g_json;
+    wchar_t ver[32], date[40];
+    int count = 0;
+    while (next_release(&p, ver, 32, date, 40)) {
+        wchar_t row[128];
+        wchar_t vlabel[36] = L"v"; s_cat(vlabel, ver, 36);
+        s_cpy(row, vlabel, 128);
+        int rn = s_len(row); while (rn < 12 && rn < 127) row[rn++]=L' '; row[rn]=0;
+        s_cat(row, date[0] ? date : L"(draft)", 128);
+        rn = s_len(row); while (rn < 34 && rn < 127) row[rn++]=L' '; row[rn]=0;
+
+        wchar_t local[40];
+        if (update_log_find(ver, local, 40)) s_cat(row, local, 128);
+        else if (s_ieq(ver, LOOMY_VERSION)) s_cat(row, L"(current)", 128);
+        else s_cat(row, L"\x2014", 128);
+
+        out(OUT_TEXT, row);
+        if (++count >= 30) break;
+    }
+    if (!count) out(OUT_DIM, L"No releases found.");
+}
+
 void cmd_update(wchar_t *args) {
     if (s_ieq(GH_USER, L"YOUR_USERNAME")) {
         out(OUT_ERR, L"Update isn't wired up yet.");
@@ -201,6 +371,8 @@ void cmd_update(wchar_t *args) {
     }
     DWORD w; WriteFile(bf, script, n, &w, 0);
     CloseHandle(bf);
+
+    update_log_write(latest);   // remember we updated to this version, and when
 
     outf(OUT_OK, L"Updating to v%s. Loomy will blink and come back.", latest);
     ui_redraw();

@@ -12,9 +12,16 @@ typedef struct {
     const wchar_t *name;    // shown in help
     const wchar_t *about;   // shown in help
     const wchar_t *type;    // the bare word (sys commands are typed with a / in front)
+    const wchar_t *alias;   // optional shorter bare word, 0 if none
     int            sys;     // 1 = acts on Loomy itself, needs the / prefix
     CmdFn fn;
 } Command;
+
+// does this command answer to the given bare word (its type or alias)?
+static int cmd_matches(const Command *c, const wchar_t *word) {
+    if (s_ieq(c->type, word)) return 1;
+    return c->alias && s_ieq(c->alias, word);
+}
 
 #define SYS_PREFIX L'/'
 
@@ -49,6 +56,9 @@ static void c_help(wchar_t *args);
 static void c_config(wchar_t *args) { settings_open(); }
 static void c_net(wchar_t *args)    { net_open(); }
 static void c_update(wchar_t *args)  { cmd_update(args); }
+static void c_version(wchar_t *args) { cmd_version(args); }
+static void c_vhist(wchar_t *args)   { cmd_versionhistory(args); }
+static void c_verc(wchar_t *args)    { changelog_open(args); }
 
 static void c_lp(wchar_t *args) {
     if (!*args) { browser_open(folders_dir()); return; }   // no name: show the folder list
@@ -92,17 +102,20 @@ static void c_shutdown(wchar_t *args) { ui_quit(); }
 // sys = 1 means it acts on Loomy itself, so you type it with a / (e.g. /config).
 // sys = 0 means it does a task for you or just prints, so it's plain (e.g. net, help).
 static const Command COMMANDS[] = {
-    { L"Help",         L"show this list",                     L"help",     0, c_help },
-    { L"Loomy's Path", L"browse your folders",                L"lp",       0, c_lp },
-    { L"Network",      L"see what's using the internet",      L"net",      0, c_net },
-    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0, c_rb },
-    { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0, c_exe },
-    { L"Config",       L"open settings",                      L"config",   1, c_config },
-    { L"Clear",        L"clear the screen",                   L"clear",    1, c_clear },
-    { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     1, c_hide },
-    { L"Reload",       L"restart Loomy fresh",                L"reload",   1, c_reload },
-    { L"Update",       L"get the latest version from GitHub", L"update",   1, c_update },
-    { L"Shutdown",     L"close Loomy completely",             L"shutdown", 1, c_shutdown },
+    { L"Help",         L"show this list",                     L"help",     0,       0, c_help },
+    { L"Loomy's Path", L"browse your folders",                L"lp",       0,       0, c_lp },
+    { L"Network",      L"see what's using the internet",      L"net",      0,       0, c_net },
+    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,       0, c_rb },
+    { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,       0, c_exe },
+    { L"Config",       L"open settings",                      L"config",   0,       1, c_config },
+    { L"Clear",        L"clear the screen",                   L"clear",    0,       1, c_clear },
+    { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,       1, c_hide },
+    { L"Reload",       L"restart Loomy fresh",                L"reload",   0,       1, c_reload },
+    { L"Update",       L"get the latest version from GitHub", L"update",   0,       1, c_update },
+    { L"Version",      L"show version + check for updates",   L"version",  L"ver",  1, c_version },
+    { L"Versions",     L"list all versions and dates",        L"vh",       L"versionhistory", 1, c_vhist },
+    { L"Changelog",    L"browse what changed in each version", L"verc",     L"versionchangelog", 1, c_verc },
+    { L"Shutdown",     L"close Loomy completely",             L"shutdown", 0,       1, c_shutdown },
 };
 static const int NCOMMANDS = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
 
@@ -150,7 +163,7 @@ void cmd_run(wchar_t *line) {
     wchar_t *word = slashed ? line + 1 : line;   // the command name without any /
 
     for (int i = 0; i < NCOMMANDS; i++) {
-        if (!s_ieq(COMMANDS[i].type, word)) continue;
+        if (!cmd_matches(&COMMANDS[i], word)) continue;
         if (COMMANDS[i].sys && !slashed) {
             // they typed a system command without the slash
             outf(OUT_ERR, L"'%s' changes Loomy, so type /%s.", word, COMMANDS[i].type);

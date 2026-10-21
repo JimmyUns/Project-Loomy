@@ -160,7 +160,7 @@ int  ui_register_hotkey(void) { register_hotkey(0); InvalidateRect(g_wnd, 0, FAL
 void ui_unregister_hotkey(void) { UnregisterHotKey(g_wnd, HOTKEY_ID); }
 void ui_redraw(void) { InvalidateRect(g_wnd, 0, FALSE); }
 
-static int screen_active(void) { return settings_active() || browser_active() || net_active(); }
+static int screen_active(void) { return settings_active() || browser_active() || net_active() || changelog_active(); }
 static void reset_history_pos(void);
 
 // ---------------------------------------------------------------- show / hide
@@ -204,6 +204,7 @@ void ui_hide(void) {
     settings_close();
     browser_close();
     net_close();
+    changelog_close();
     g_fresh = 1;
     KillTimer(g_wnd, TIMER_CLOCK);
     ShowWindow(g_wnd, SW_HIDE);
@@ -326,8 +327,9 @@ static void paint(HWND w) {
 
     // header
     SelectObject(dc, g_fontTitle);
-    ui_text(dc, px, S(14), L"Loomy", g_accent);
+    int tw = ui_text(dc, px, S(14), L"Loomy", g_accent);
     SelectObject(dc, g_fontSmall);
+    ui_text(dc, px + tw + S(10), S(17), L"v" LOOMY_VERSION, C_DIM);
 
     SYSTEMTIME t; GetLocalTime(&t);
     wchar_t right[96];
@@ -346,6 +348,7 @@ static void paint(HWND w) {
     if (settings_active()) settings_paint(dc, area);
     else if (browser_active()) browser_paint(dc, area);
     else if (net_active()) net_paint(dc, area);
+    else if (changelog_active()) changelog_paint(dc, area);
     int y = screen_active() ? area.top : area.bottom;
     int indent = S(20);
     for (int k = g_scroll; k < g_count && y > area.top; k++) {
@@ -456,6 +459,9 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (net_active()) {
         if (m == WM_KEYDOWN && net_key(wp)) return 0;
         if (m == WM_CHAR && net_char(wp)) return 0;
+    } else if (changelog_active()) {
+        if (m == WM_KEYDOWN && changelog_key(wp)) return 0;
+        if (m == WM_CHAR && changelog_char(wp)) return 0;
     }
     if (m == WM_KEYDOWN) {
         switch (wp) {
@@ -463,8 +469,19 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         case VK_ESCAPE:
             if (GetWindowTextLengthW(h)) SetWindowTextW(h, L""); else ui_hide();
             return 0;
-        case VK_UP:   history(-1); return 0;
-        case VK_DOWN: history(+1); return 0;
+        case VK_UP:
+            if (GetKeyState(VK_CONTROL) < 0) {   // Ctrl+Up scrolls the chat up
+                g_scroll += 3;
+                if (g_scroll > g_count - 1) g_scroll = g_count > 0 ? g_count - 1 : 0;
+                InvalidateRect(g_wnd, 0, FALSE);
+            } else history(-1);
+            return 0;
+        case VK_DOWN:
+            if (GetKeyState(VK_CONTROL) < 0) {   // Ctrl+Down scrolls the chat down
+                g_scroll -= 3; if (g_scroll < 0) g_scroll = 0;
+                InvalidateRect(g_wnd, 0, FALSE);
+            } else history(+1);
+            return 0;
         case VK_PRIOR: g_scroll += 5; if (g_scroll > g_count - 1) g_scroll = g_count > 0 ? g_count - 1 : 0;
                        InvalidateRect(g_wnd, 0, FALSE); return 0;
         case VK_NEXT:  g_scroll -= 5; if (g_scroll < 0) g_scroll = 0; InvalidateRect(g_wnd, 0, FALSE); return 0;
@@ -508,6 +525,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         if (settings_active()) settings_click((short)LOWORD(lp), (short)HIWORD(lp));
         else if (browser_active()) browser_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (net_active()) net_click((short)LOWORD(lp), (short)HIWORD(lp));
+        else if (changelog_active()) changelog_click((short)LOWORD(lp), (short)HIWORD(lp));
         SetFocus(g_edit);
         return 0;
     case WM_LBUTTONDBLCLK:
@@ -519,6 +537,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     case WM_MOUSEWHEEL: {
         if (browser_active()) { browser_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (net_active()) { net_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (changelog_active()) { changelog_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         int d = (short)HIWORD(wp) / WHEEL_DELTA * 3;
         g_scroll += d;
         if (g_scroll > g_count - 1) g_scroll = g_count > 0 ? g_count - 1 : 0;

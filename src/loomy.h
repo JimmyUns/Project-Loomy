@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.6"
+#define LOOMY_VERSION L"2.7"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
@@ -56,6 +56,8 @@ void cmd_run(wchar_t *line);
 void cmd_complete(wchar_t *line, int cap);            // Tab completion, edits line in place
 void cmd_greet(void);
 void cmd_update(wchar_t *args);
+void cmd_version(wchar_t *args);
+void cmd_versionhistory(wchar_t *args);
 const wchar_t *folders_dir(void);                     // %APPDATA%\Loomy\Folders
 
 // ---------- settings.c (the config screen) ----------
@@ -78,6 +80,16 @@ int  browser_key(WPARAM vk);
 int  browser_char(WPARAM ch);
 void browser_click(int x, int y, int dbl);
 void browser_wheel(int notches);
+
+// ---------- changelog.c (the /verc panel) ----------
+int  changelog_active(void);
+void changelog_open(const wchar_t *arg);
+void changelog_close(void);
+void changelog_paint(HDC dc, RECT area);
+int  changelog_key(WPARAM vk);
+int  changelog_char(WPARAM ch);
+void changelog_click(int x, int y);
+void changelog_wheel(int notches);
 
 // ---------- net.c (the `net` connections screen) ----------
 int  net_active(void);

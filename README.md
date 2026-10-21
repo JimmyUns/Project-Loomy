@@ -1,4 +1,4 @@
-# Loomy 2.6
+# Loomy 2.7
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -10,7 +10,7 @@ In `lp` and `config`: ↑↓ choose, Enter picks, Esc goes back. In `lp`, → go
 
 Every time Loomy hides, it comes back with a clean screen.
 
-Keys: **Tab** completes (also folder names after `lp`), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **PgUp/PgDn** or the mouse wheel scrolls.
+Keys: **Tab** completes (also folder names after `lp`), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
 
 Settings and your folders live in `%APPDATA%\Loomy`.
 
@@ -20,3 +20,6 @@ Linux: install `mingw-w64`, run `./build.sh`.
 
 ## Add a command
 Open `src/commands.c`, write a function, add one row to `COMMANDS` (name, what it does, bare word, sys flag, function — sys 1 means it needs the `/`). `help` and Tab completion pick it up on their own.
+
+## Changelog
+See `CHANGELOG.md`, or type `/verc` in Loomy to browse what changed in each version.
