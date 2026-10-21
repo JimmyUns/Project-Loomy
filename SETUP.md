@@ -32,10 +32,10 @@ replacing nothing — just run them:
 
 ## 3. Publish the first version
 A "release" is what your `update` command downloads. To make one, you push a version tag.
-The number here must match `LOOMY_VERSION` in `src/loomy.h` (currently 2.5):
+The number here must match `LOOMY_VERSION` in `src/loomy.h` (currently 2.6):
 
-    git tag v2.5
-    git push origin v2.5
+    git tag v2.6
+    git push origin v2.6
 
 Now go look at your repo's **Actions** tab on GitHub. You'll see the robot building.
 After a minute or two it finishes and a **Release** appears with `loomy.exe` attached.
@@ -54,8 +54,8 @@ That's the one `update` pulls.
 3. Bump the version: edit `LOOMY_VERSION` in `src/loomy.h` (e.g. to 2.5), commit that too,
    then:
 
-       git tag v2.5
-       git push origin v2.5
+       git tag v2.6
+       git push origin v2.6
 
 4. The robot builds and releases it automatically.
 5. On your home PC, open Loomy and type **update**. Done.

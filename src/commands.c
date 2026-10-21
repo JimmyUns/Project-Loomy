@@ -11,9 +11,19 @@ typedef void (*CmdFn)(wchar_t *args);
 typedef struct {
     const wchar_t *name;    // shown in help
     const wchar_t *about;   // shown in help
-    const wchar_t *type;    // what you actually type
+    const wchar_t *type;    // the bare word (sys commands are typed with a / in front)
+    int            sys;     // 1 = acts on Loomy itself, needs the / prefix
     CmdFn fn;
 } Command;
+
+#define SYS_PREFIX L'/'
+
+// build what the user actually types for a command: "/config" or "net"
+static void typed_form(const Command *c, wchar_t *out, int cap) {
+    out[0] = 0;
+    if (c->sys) { out[0] = SYS_PREFIX; out[1] = 0; }
+    s_cat(out, c->type, cap);
+}
 
 // ---------------------------------------------------------------- Loomy's Path folders
 
@@ -79,18 +89,20 @@ static void c_shutdown(wchar_t *args) { ui_quit(); }
 
 // ---------------------------------------------------------------- the list
 
+// sys = 1 means it acts on Loomy itself, so you type it with a / (e.g. /config).
+// sys = 0 means it does a task for you or just prints, so it's plain (e.g. net, help).
 static const Command COMMANDS[] = {
-    { L"Help",         L"show this list",                  L"help",     c_help },
-    { L"Config",       L"open settings",                   L"config",   c_config },
-    { L"Loomy's Path", L"browse your folders",  L"lp",           c_lp },
-    { L"Network",      L"see what's using the internet",   L"net",      c_net },
-    { L"Recycle Bin",  L"open the recycle bin",            L"rb",       c_rb },
-    { L"Exe Location", L"show where loomy.exe lives",      L"exe",      c_exe },
-    { L"Clear",        L"clear the screen",                L"clear",    c_clear },
-    { L"Hide",         L"hide Loomy (Esc works too)",      L"hide",     c_hide },
-    { L"Reload",       L"restart Loomy fresh",             L"reload",   c_reload },
-    { L"Update",       L"get the latest version from GitHub", L"update", c_update },
-    { L"Shutdown",     L"close Loomy completely",          L"shutdown", c_shutdown },
+    { L"Help",         L"show this list",                     L"help",     0, c_help },
+    { L"Loomy's Path", L"browse your folders",                L"lp",       0, c_lp },
+    { L"Network",      L"see what's using the internet",      L"net",      0, c_net },
+    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0, c_rb },
+    { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0, c_exe },
+    { L"Config",       L"open settings",                      L"config",   1, c_config },
+    { L"Clear",        L"clear the screen",                   L"clear",    1, c_clear },
+    { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     1, c_hide },
+    { L"Reload",       L"restart Loomy fresh",                L"reload",   1, c_reload },
+    { L"Update",       L"get the latest version from GitHub", L"update",   1, c_update },
+    { L"Shutdown",     L"close Loomy completely",             L"shutdown", 1, c_shutdown },
 };
 static const int NCOMMANDS = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
 
@@ -106,12 +118,14 @@ static void c_help(wchar_t *args) {
     pad_to(head, 51, 160); s_cat(head, L"Type", 160);
     out(OUT_DIM, head);
     for (int i = 0; i < NCOMMANDS; i++) {
-        wchar_t row[160];
+        wchar_t row[160], typed[40];
+        typed_form(&COMMANDS[i], typed, 40);
         s_cpy(row, COMMANDS[i].name, 160);   pad_to(row, 16, 160);
         s_cat(row, COMMANDS[i].about, 160);  pad_to(row, 51, 160);
-        s_cat(row, COMMANDS[i].type, 160);
+        s_cat(row, typed, 160);
         out(OUT_TEXT, row);
     }
+    out(OUT_DIM, L"Commands with / change Loomy itself.");
 }
 
 // ---------------------------------------------------------------- running a line
@@ -131,8 +145,25 @@ void cmd_run(wchar_t *line) {
     out(OUT_ECHO, line);
 
     wchar_t *args = s_split(line);
-    for (int i = 0; i < NCOMMANDS; i++)
-        if (s_ieq(COMMANDS[i].type, line)) { COMMANDS[i].fn(args); return; }
+
+    int slashed = line[0] == SYS_PREFIX;
+    wchar_t *word = slashed ? line + 1 : line;   // the command name without any /
+
+    for (int i = 0; i < NCOMMANDS; i++) {
+        if (!s_ieq(COMMANDS[i].type, word)) continue;
+        if (COMMANDS[i].sys && !slashed) {
+            // they typed a system command without the slash
+            outf(OUT_ERR, L"'%s' changes Loomy, so type /%s.", word, COMMANDS[i].type);
+            return;
+        }
+        if (!COMMANDS[i].sys && slashed) {
+            // they slashed a plain command
+            outf(OUT_ERR, L"Just type %s (no slash needed).", COMMANDS[i].type);
+            return;
+        }
+        COMMANDS[i].fn(args);
+        return;
+    }
 
     outf(OUT_ERR, L"Hmm, I don't know '%s'.", line);
     out(OUT_DIM, L"Type help to see what I can do.");
@@ -165,9 +196,15 @@ void cmd_complete(wchar_t *line, int cap) {
             } while (FindNextFileW(h, &fd));
             FindClose(h);
         }
-    } else {
+    } else if (line[0] == SYS_PREFIX) {          // "/..." completes only system commands, with the /
+        for (int i = 0; i < NCOMMANDS; i++) {
+            if (!COMMANDS[i].sys) continue;
+            wchar_t typed[40]; typed_form(&COMMANDS[i], typed, 40);
+            if (s_istarts(typed, line)) add_match(typed);
+        }
+    } else {                                     // plain word completes only non-system commands
         for (int i = 0; i < NCOMMANDS; i++)
-            if (s_istarts(COMMANDS[i].type, line)) add_match(COMMANDS[i].type);
+            if (!COMMANDS[i].sys && s_istarts(COMMANDS[i].type, line)) add_match(COMMANDS[i].type);
     }
     if (!g_nmatches) return;
 

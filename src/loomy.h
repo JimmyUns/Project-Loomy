@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.5"
+#define LOOMY_VERSION L"2.6"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
