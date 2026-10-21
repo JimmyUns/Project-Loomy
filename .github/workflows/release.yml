@@ -1,0 +1,31 @@
+name: Build and release Loomy
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Install the Windows cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Build loomy.exe
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Publish the release with loomy.exe attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: loomy.exe
+          name: Loomy ${{ github.ref_name }}
+          generate_release_notes: true
