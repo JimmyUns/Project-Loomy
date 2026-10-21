@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.7"
+#define LOOMY_VERSION L"2.8"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
@@ -59,6 +59,40 @@ void cmd_update(wchar_t *args);
 void cmd_version(wchar_t *args);
 void cmd_versionhistory(wchar_t *args);
 const wchar_t *folders_dir(void);                     // %APPDATA%\Loomy\Folders
+const wchar_t *cmd_typed(void);                       // the command word as typed, e.g. "/m"
+void cmd_usage(const wchar_t *shape);                 // prints "Usage: <typed> <shape>"
+void complete_add(const wchar_t *candidate, const wchar_t *partial);   // for Tab completion
+
+// ---------- modes.c (home / work, the /mode command + picker panel) ----------
+#define NMODES 2
+enum { MODE_HOME = 1, MODE_WORK = 2, MODE_ALL = 3 };  // bit masks: which modes a command lives in
+int  mode_current(void);                              // index into the mode list
+int  mode_find(const wchar_t *name);                  // -1 if no such mode
+const wchar_t *mode_name(int m);
+int  mode_is_hidden(int m);
+void cmd_mode(wchar_t *args);
+int  mode_active(void);
+void mode_open(void);
+void mode_close(void);
+void mode_paint(HDC dc, RECT area);
+int  mode_key(WPARAM vk);
+int  mode_char(WPARAM ch);
+void mode_click(int x, int y, int dbl);
+void mode_wheel(int notches);
+
+// ---------- web.c (saved websites, per mode) ----------
+void cmd_web(wchar_t *args);
+void cmd_webconfig(wchar_t *args);
+void web_complete(const wchar_t *partial);
+void webconfig_complete(wchar_t **words, int n, const wchar_t *partial);
+int  web_active(void);
+void web_open(void);
+void web_close(void);
+void web_paint(HDC dc, RECT area);
+int  web_key(WPARAM vk);
+int  web_char(WPARAM ch);
+void web_click(int x, int y, int dbl);
+void web_wheel(int notches);
 
 // ---------- settings.c (the config screen) ----------
 int  settings_active(void);
@@ -107,6 +141,8 @@ typedef struct {
     wchar_t  hotkey[64];
     wchar_t  name[64];
     COLORREF accent;
+    int      modeMain;      // the mode Loomy starts in
+    unsigned modeHidden;    // bit per mode: 1 = hidden from the /mode list
 } Config;
 extern Config g_cfg;
 
@@ -127,5 +163,7 @@ void     s_lower(wchar_t *s);
 wchar_t *s_trim(wchar_t *s);
 wchar_t *s_split(wchar_t *s);                          // cuts first word, returns the rest
 int      s_hex(const wchar_t *s, unsigned *out);
+int      s_words(wchar_t *s, wchar_t **w, int max);    // split in place, returns the true count
+int      s_count_words(const wchar_t *s);
 
 #endif

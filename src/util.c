@@ -64,6 +64,32 @@ wchar_t *s_split(wchar_t *s) {
     return s;
 }
 
+// splits s into words in place. Fills w[] with up to max of them, but always returns
+// the true count, so the caller can tell if there were too many.
+int s_words(wchar_t *s, wchar_t **w, int max) {
+    int n = 0;
+    for (;;) {
+        while (is_space(*s)) s++;
+        if (!*s) break;
+        if (n < max) w[n] = s;
+        n++;
+        while (*s && !is_space(*s)) s++;
+        if (*s) *s++ = 0;
+    }
+    return n;
+}
+
+// same count, but leaves the string alone
+int s_count_words(const wchar_t *s) {
+    int n = 0;
+    for (;;) {
+        while (is_space(*s)) s++;
+        if (!*s) return n;
+        n++;
+        while (*s && !is_space(*s)) s++;
+    }
+}
+
 // "#A24DF0" or "A24DF0" -> 0xA24DF0
 int s_hex(const wchar_t *s, unsigned *out) {
     if (*s == L'#') s++;

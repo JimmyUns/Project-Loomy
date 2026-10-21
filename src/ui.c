@@ -160,7 +160,9 @@ int  ui_register_hotkey(void) { register_hotkey(0); InvalidateRect(g_wnd, 0, FAL
 void ui_unregister_hotkey(void) { UnregisterHotKey(g_wnd, HOTKEY_ID); }
 void ui_redraw(void) { InvalidateRect(g_wnd, 0, FALSE); }
 
-static int screen_active(void) { return settings_active() || browser_active() || net_active() || changelog_active(); }
+static int screen_active(void) {
+    return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active();
+}
 static void reset_history_pos(void);
 
 // ---------------------------------------------------------------- show / hide
@@ -205,6 +207,8 @@ void ui_hide(void) {
     browser_close();
     net_close();
     changelog_close();
+    mode_close();
+    web_close();
     g_fresh = 1;
     KillTimer(g_wnd, TIMER_CLOCK);
     ShowWindow(g_wnd, SW_HIDE);
@@ -329,7 +333,8 @@ static void paint(HWND w) {
     SelectObject(dc, g_fontTitle);
     int tw = ui_text(dc, px, S(14), L"Loomy", g_accent);
     SelectObject(dc, g_fontSmall);
-    ui_text(dc, px + tw + S(10), S(17), L"v" LOOMY_VERSION, C_DIM);
+    int vw = ui_text(dc, px + tw + S(10), S(17), L"v" LOOMY_VERSION L" \x00B7 ", C_DIM);
+    ui_text(dc, px + tw + S(10) + vw, S(17), mode_name(mode_current()), g_accent);   // current mode
 
     SYSTEMTIME t; GetLocalTime(&t);
     wchar_t right[96];
@@ -349,6 +354,8 @@ static void paint(HWND w) {
     else if (browser_active()) browser_paint(dc, area);
     else if (net_active()) net_paint(dc, area);
     else if (changelog_active()) changelog_paint(dc, area);
+    else if (mode_active()) mode_paint(dc, area);
+    else if (web_active()) web_paint(dc, area);
     int y = screen_active() ? area.top : area.bottom;
     int indent = S(20);
     for (int k = g_scroll; k < g_count && y > area.top; k++) {
@@ -462,6 +469,12 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (changelog_active()) {
         if (m == WM_KEYDOWN && changelog_key(wp)) return 0;
         if (m == WM_CHAR && changelog_char(wp)) return 0;
+    } else if (mode_active()) {
+        if (m == WM_KEYDOWN && mode_key(wp)) return 0;
+        if (m == WM_CHAR && mode_char(wp)) return 0;
+    } else if (web_active()) {
+        if (m == WM_KEYDOWN && web_key(wp)) return 0;
+        if (m == WM_CHAR && web_char(wp)) return 0;
     }
     if (m == WM_KEYDOWN) {
         switch (wp) {
@@ -526,10 +539,14 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         else if (browser_active()) browser_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (net_active()) net_click((short)LOWORD(lp), (short)HIWORD(lp));
         else if (changelog_active()) changelog_click((short)LOWORD(lp), (short)HIWORD(lp));
+        else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
+        else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         SetFocus(g_edit);
         return 0;
     case WM_LBUTTONDBLCLK:
         if (browser_active()) browser_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
+        else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
+        else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         SetFocus(g_edit);
         return 0;
     case WM_ACTIVATE: if (LOWORD(wp) != WA_INACTIVE) SetFocus(g_edit); return 0;
@@ -538,6 +555,8 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         if (browser_active()) { browser_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (net_active()) { net_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (changelog_active()) { changelog_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (mode_active()) { mode_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (web_active()) { web_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         int d = (short)HIWORD(wp) / WHEEL_DELTA * 3;
         g_scroll += d;
         if (g_scroll > g_count - 1) g_scroll = g_count > 0 ? g_count - 1 : 0;
@@ -648,7 +667,7 @@ void entry(void) {
     cmd_greet();
     if (!g_hotkeyOk) {
         outf(OUT_ERR, L"Couldn't grab %s, another app is using it.", g_cfg.hotkey);
-        out(OUT_DIM, L"Pick another in: config");
+        out(OUT_DIM, L"Pick another in: /config");
         if (silent) tray_balloon(L"Loomy", L"My hotkey is taken by another app. Click my tray icon to open me.");
     }
     if (restarted) out(OUT_OK, L"Reloaded. Fresh as new.");

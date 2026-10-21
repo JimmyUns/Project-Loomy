@@ -13,6 +13,15 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.8", L"2026-10-21", {
+        L"Modes: home and work. /mode (/m) to switch, hide, show, pick main.",
+        L"The header shows which mode you're in.",
+        L"New web: open saved sites by alias, or pick from a list.",
+        L"New /webconfig (/webc): add, remove, batch, info, rename, update.",
+        L"Each mode keeps its own saved sites.",
+        L"Strict input: stray or missing words show the command's usage.",
+        L"Tab completes modes, site aliases and subcommands.",
+        0 } },
     { L"2.7", L"2026-10-21", {
         L"Show the version number next to the title.",
         L"Ctrl+Up / Ctrl+Down scroll the chat.",

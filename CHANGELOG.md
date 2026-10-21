@@ -2,6 +2,15 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.8
+- Modes: `home` and `work`. `/mode` (or `/m`) opens a picker; `/m switch|hide|show|main <mode>` does the rest. At least one mode always stays visible, and Loomy starts in the main one.
+- The header shows the current mode next to the version.
+- New `web`: open a saved site by alias (`web yt`), or type `web` for a list to pick from.
+- New `/webconfig` (`/webc`): `add`, `remove`, `batch`, `info`, `rename`, `update` for saved sites. A batch opens several sites at once; ending it with `false` folds the singles into it.
+- Each mode keeps its own saved sites, so the same alias can open different things at home and at work.
+- Input is strict now: extra or missing words get a one-line usage reply instead of being ignored.
+- Tab completes mode names, site aliases, and subcommands.
+
 ## v2.7
 - Show the version number next to the title in the header.
 - Ctrl+Up / Ctrl+Down now scroll the chat (plain Up/Down stays command history).

@@ -14,6 +14,19 @@ static void set_defaults(void) {
     s_cpy(g_cfg.hotkey, L"ctrl+alt+space", 64);
     g_cfg.name[0] = 0;
     g_cfg.accent = RGB(0xA8, 0x55, 0xF7);
+    g_cfg.modeMain = 0;
+    g_cfg.modeHidden = 0;
+}
+
+// never let every mode be hidden, and never let main be a hidden one
+static void fix_modes(void) {
+    unsigned all = (1u << NMODES) - 1;
+    if (g_cfg.modeMain < 0 || g_cfg.modeMain >= NMODES) g_cfg.modeMain = 0;
+    g_cfg.modeHidden &= all;
+    if (g_cfg.modeHidden == all) g_cfg.modeHidden &= ~(1u << g_cfg.modeMain);
+    if (g_cfg.modeHidden & (1u << g_cfg.modeMain))
+        for (int i = 0; i < NMODES; i++)
+            if (!(g_cfg.modeHidden & (1u << i))) { g_cfg.modeMain = i; break; }
 }
 
 static int read_stamp(FILETIME *ft) {
@@ -40,18 +53,40 @@ static void parse(wchar_t *text) {
             else if (s_ieq(k, L"name")) s_cpy(g_cfg.name, v, 64);
             else if (s_ieq(k, L"accent") && s_hex(v, &hex))
                 g_cfg.accent = RGB((hex >> 16) & 255, (hex >> 8) & 255, hex & 255);
+            else if (s_ieq(k, L"mode_main")) {
+                int m = mode_find(v);
+                if (m >= 0) g_cfg.modeMain = m;
+            }
+            else if (s_ieq(k, L"mode_hidden")) {         // "work" or "home, work"
+                g_cfg.modeHidden = 0;
+                for (wchar_t *p = v; *p; p++) if (*p == L',') *p = L' ';
+                wchar_t *w[NMODES + 4];
+                int n = s_words(v, w, NMODES + 4);
+                for (int i = 0; i < n && i < NMODES + 4; i++) {
+                    int m = mode_find(w[i]);
+                    if (m >= 0) g_cfg.modeHidden |= 1u << m;
+                }
+            }
         }
         line = next;
     }
 }
 
 void cfg_save(void) {
-    wchar_t text[512];
+    wchar_t hidden[64] = L"";
+    for (int i = 0; i < NMODES; i++)
+        if (g_cfg.modeHidden & (1u << i)) {
+            if (hidden[0]) s_cat(hidden, L", ", 64);
+            s_cat(hidden, mode_name(i), 64);
+        }
+    wchar_t text[640];
     wsprintfW(text,
-        L"# Loomy settings. Easiest way to change them: type config in Loomy.\r\n"
-        L"hotkey = %s\r\nname = %s\r\naccent = #%02X%02X%02X\r\n",
+        L"# Loomy settings. Easiest way to change them: type /config or /mode in Loomy.\r\n"
+        L"hotkey = %s\r\nname = %s\r\naccent = #%02X%02X%02X\r\n"
+        L"mode_main = %s\r\nmode_hidden = %s\r\n",
         g_cfg.hotkey, g_cfg.name,
-        GetRValue(g_cfg.accent), GetGValue(g_cfg.accent), GetBValue(g_cfg.accent));
+        GetRValue(g_cfg.accent), GetGValue(g_cfg.accent), GetBValue(g_cfg.accent),
+        mode_name(g_cfg.modeMain), hidden);
     char utf8[1024];
     int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), 0, 0) - 1;
     HANDLE f = CreateFileW(g_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
@@ -88,6 +123,7 @@ void cfg_load(void) {
     int w = MultiByteToWideChar(CP_UTF8, 0, src, (int)n, wide, 8 * 1024 - 1);
     wide[w] = 0;
     parse(wide);
+    fix_modes();
     read_stamp(&g_stamp);
 }
 
