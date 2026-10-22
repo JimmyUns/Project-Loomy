@@ -3,6 +3,7 @@
 #include "../src/loomy.h"
 extern wchar_t g_out[400][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
+extern int g_topo, g_screens, g_setcalls;
 extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
 static int last_out;
@@ -38,14 +39,11 @@ int main(void) {
 
     wprintf(L"\n== strict args ==\n");
     run(L"help blabla");        EXPECT(saw(L"Usage: help (nothing goes after it)"), "help extra");
-    run(L"/ver now");           EXPECT(saw(L"Usage: /ver (nothing"), "ver extra");
-    run(L"/verc v2.6 extra");   EXPECT(saw(L"Usage: /verc [version]"), "verc extra");
-    run(L"/verc v2.6");         EXPECT(saw(L"changelog_open 'v2.6'"), "verc ok");
     run(L"rb now");             EXPECT(saw(L"Usage: rb"), "rb extra");
     run(L"web a b");            EXPECT(saw(L"Usage: web [alias | many]"), "web extra");
     run(L"/m blah");            EXPECT(saw(L"Usage: /m [switch|hide|show|main <mode>]"), "m bad sub");
-    run(L"/m switch");          EXPECT(saw(L"Usage: /m switch <home|work>"), "m switch no arg");
-    run(L"/m switch work now"); EXPECT(saw(L"Usage: /m switch <home|work>"), "m switch extra");
+    run(L"/m switch");          EXPECT(saw(L"Usage: /m switch <home|work|core>"), "m switch no arg");
+    run(L"/m switch work now"); EXPECT(saw(L"Usage: /m switch <home|work|core>"), "m switch extra");
     run(L"/webconfig");         EXPECT(saw(L"Usage: /webconfig <add|remove|batch|info|rename|update> ..."), "wc bare");
     run(L"/webc info");         EXPECT(saw(L"Usage: /webc info <alias>"), "wc info bare");
     run(L"/webconfig add yt");  EXPECT(saw(L"Usage: /webconfig add <alias> <site>"), "wc add short");
@@ -62,7 +60,9 @@ int main(void) {
     run(L"/m main work");       EXPECT(g_cfg.modeMain == 1, "main work");
     run(L"/m hide work");       EXPECT(mode_current() == 0 && g_cfg.modeMain == 0 && mode_is_hidden(1), "hide current+main moves both");
     EXPECT(!wcscmp(g_restartNote, L"Hid work.|It was the main mode, so home is main now.|Switched to home mode."), "hide-current note survives the reload");
+    run(L"/m hide core");       EXPECT(mode_is_hidden(2) && mode_current() == 0, "hide core (not current)");
     run(L"/m hide home");       EXPECT(saw(L"at least one") && !mode_is_hidden(0), "can't hide last");
+    run(L"/m show core");
     run(L"/m switch work");     EXPECT(saw(L"hidden. Show it first"), "switch to hidden");
     run(L"/m main work");       EXPECT(saw(L"hidden. Show it first"), "main hidden");
     { int r = g_restarts;
@@ -77,13 +77,44 @@ int main(void) {
     cfg_load();                 EXPECT(g_cfg.modeMain == 1, "main survives reload");
     run(L"/m main home");
     // hand-edited cfg with everything hidden -> main stays visible
-    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "mode_main = work\nmode_hidden = home, work\n"); fclose(f); }
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "mode_main = work\nmode_hidden = home, work, core\n"); fclose(f); }
     cfg_load();                 EXPECT(g_cfg.modeMain == 1 && !mode_is_hidden(1) && mode_is_hidden(0), "sanitize all-hidden");
     { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "mode_main = work\nmode_hidden = work\n"); fclose(f); }
     cfg_load();                 EXPECT(g_cfg.modeMain == 0, "sanitize hidden main");
     g_cfg.modeHidden = 0; g_cfg.modeMain = 0; cfg_save();
     run(L"/m switch home");
     run(L"help");               EXPECT(saw(L"/mode  /m") && saw(L"/webconfig  /webc") && saw(L"home mode"), "help shows aliases + mode");
+
+    wprintf(L"\n== core mode lock ==\n");
+    // update/version commands only exist in core; anywhere else they're plain typos
+    run(L"/update");            EXPECT(saw(L"don't know '/update'"), "update unknown in home");
+    run(L"update");             EXPECT(saw(L"don't know 'update'") && !saw(L"changes Loomy"), "no slash hint either");
+    run(L"/ver");               EXPECT(saw(L"don't know '/ver'"), "ver unknown in home");
+    run(L"/vh");                EXPECT(saw(L"don't know '/vh'"), "vh unknown in home");
+    run(L"/verc v2.6");         EXPECT(saw(L"don't know '/verc'") && !saw(L"changelog_open"), "verc unknown in home");
+    run(L"help");               EXPECT(!saw(L"/update") && !saw(L"/verc"), "help hides core commands");
+    tab(L"/up", L"/up");
+    tab(L"/verc ", L"/verc ");
+    run(L"/m switch work");
+    run(L"/version");           EXPECT(saw(L"don't know '/version'"), "unknown in work too");
+    run(L"/m switch core");     EXPECT(mode_current() == 2 && !wcscmp(g_restartNote, L"Switched to core mode."), "switch to core");
+    run(L"/ver");               EXPECT(saw(L"[version ran]"), "ver runs in core");
+    run(L"/ver now");           EXPECT(saw(L"Usage: /ver (nothing"), "ver extra");
+    run(L"/verc v2.6 extra");   EXPECT(saw(L"Usage: /verc [version]"), "verc extra");
+    run(L"/verc v2.6");         EXPECT(saw(L"changelog_open 'v2.6'"), "verc ok");
+    run(L"help");               EXPECT(saw(L"/update") && saw(L"/verc") && saw(L"/mode  /m") && saw(L"core mode"), "help in core");
+    tab(L"/up", L"/update ");
+    run(L"/m hide core");       EXPECT(mode_current() == 0 && mode_is_hidden(2), "hide current core goes to home, not past it");
+    run(L"/m show core");
+    run(L"/m main core");
+    run(L"/m hide home");       EXPECT(mode_current() == 1 && g_cfg.modeMain == 2, "hiding home (main core) keeps core main, moves to work");
+    run(L"/m show home");
+    run(L"/m main home");
+    { // hiding work from work, with core also visible: lands on home, not core
+      run(L"/m switch work");
+      run(L"/m hide work");     EXPECT(mode_current() == 0, "work hidden -> home, skipping core");
+      run(L"/m show work"); }
+    run(L"/m switch home");
 
     wprintf(L"\n== web (home mode) ==\n");
     run(L"web");                // empty panel opens
@@ -131,6 +162,35 @@ int main(void) {
     run(L"/m switch home");
     run(L"web tube");           EXPECT(!wcscmp(g_opened[0], L"https://youtu.be"), "home alias intact");
 
+    wprintf(L"\n== display ==\n");
+    run(L"display");            EXPECT(display_active() && g_setcalls == 0, "bare display opens picker, changes nothing");
+    display_key(VK_RETURN);     EXPECT(!display_active() && g_topo == SDC_TOPOLOGY_EXTEND && g_hidden, "Enter on first row = Extend, hides Loomy");
+    g_hidden = 0; display_open(); display_key(VK_DOWN); display_key(VK_RETURN);
+    EXPECT(g_topo == SDC_TOPOLOGY_EXTERNAL, "second row = second screen only");
+    display_open(); display_char(L'p'); display_key(VK_RETURN);   EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "letter p jumps to PC screen only");
+    display_open(); display_char(L'd'); display_key(VK_RETURN);   EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "letter d = duplicate");
+    display_open(); display_key(VK_END); display_key(VK_UP); display_key(VK_ESCAPE);
+    EXPECT(!display_active() && g_topo == SDC_TOPOLOGY_CLONE, "Esc closes without switching");
+    run(L"display Extend");     EXPECT(g_topo == SDC_TOPOLOGY_EXTEND && saw(L"Switched to Extend"), "by name, any case");
+    run(L"dp second");          EXPECT(g_topo == SDC_TOPOLOGY_EXTERNAL, "dp alias");
+    { int c = g_setcalls; g_hidden = 0;
+    run(L"display second");     EXPECT(saw(L"Already on Second screen only") && g_setcalls == c && !g_hidden, "already: no switch, stays open"); }
+    run(L"display pc");         EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "pc");
+    run(L"display duplicate");  EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "duplicate");
+    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate]"), "unknown layout");
+    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate]"), "strict args");
+    run(L"/display");           EXPECT(saw(L"no slash"), "display is plain");
+    g_screens = 1; g_hidden = 0;
+    run(L"display extend");     EXPECT(saw(L"couldn't switch to Extend") && saw(L"plugged in") && !g_hidden, "one screen: clear error, stays open");
+    g_screens = 2;
+    run(L"/m switch core");
+    run(L"display extend");     EXPECT(g_topo == SDC_TOPOLOGY_EXTEND, "works in core too");
+    run(L"/m switch home");
+    tab(L"display s", L"display second ");
+    tab(L"dp d", L"dp duplicate ");
+    tab(L"display ", 0);
+    tab(L"di", L"display ");
+
     wprintf(L"\n== Tab ==\n");
     tab(L"/m", L"/mode ");
     tab(L"/mode s", 0);
@@ -138,7 +198,7 @@ int main(void) {
     tab(L"/m switch w", L"/m switch work ");
     run(L"/m hide work");
     tab(L"/m show ", L"/m show work ");
-    tab(L"/m switch ", L"/m switch home ");
+    tab(L"/m switch ", 0);              // home and core left
     run(L"/m show work");
     tab(L"/webc", L"/webconfig ");
     tab(L"/webconfig re", 0);

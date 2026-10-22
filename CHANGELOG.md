@@ -2,6 +2,15 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.11
+- `/version`, `/update` and `/vh` give up on a dead or slow connection within seconds, instead of freezing Loomy for up to a minute.
+- "Checking GitHub..." now actually shows up before the check starts.
+- `/vh` can show the full history again (it used to cut off around 15 releases).
+- New **core** mode for Loomy's own upkeep. `/update`, `/version`, `/vh` and `/verc` only exist there; in home or work they're unknown commands, aren't in `help`, and Tab won't offer them.
+- Hiding the mode you're in never drops you into core if home or work is still visible.
+- After `/update`, Loomy comes back in the mode you updated from.
+- New `display` (`dp`): switch your screens like Win+P. Bare `display` opens a picker (Extend first, Second screen only second); `display extend|second|pc|duplicate` switches straight away. Loomy hides after switching.
+
 ## v2.10
 - `/update` only installs a release that **you** published and whose `loomy.exe` was uploaded by **your GitHub Actions build**. Anything else (like a release or exe from another account) is refused, and `/version` warns about it.
 - Fix builds with a letter are understood: 2.9 < 2.9b < 2.9c < 2.10.

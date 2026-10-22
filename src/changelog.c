@@ -13,6 +13,14 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.11", L"2026-10-22", {
+        L"Update checks give up on a bad connection in seconds, not a minute.",
+        L"\u201cChecking GitHub\u2026\u201d shows up before the check starts.",
+        L"/vh shows the full history (it used to cut off around 15).",
+        L"New core mode: /update, /version, /vh and /verc only exist there.",
+        L"After /update, Loomy comes back in the mode you were in.",
+        L"New display (dp): switch screens like Win+P, by picker or name.",
+        0 } },
     { L"2.10", L"2026-10-22", {
         L"/update only installs releases you published, built by GitHub Actions.",
         L"Fix builds like v2.9b are understood (2.9 < 2.9b < 2.9c < 2.10).",

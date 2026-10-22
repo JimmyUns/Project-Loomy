@@ -58,7 +58,7 @@ That's the one `update` pulls.
        git push origin v2.7
 
 4. The robot builds and releases it automatically.
-5. On your home PC, open Loomy and type **update**. Done.
+5. On your home PC, open Loomy, switch to core mode (`/m switch core`) and type **/update**. Done.
 
 > Tip: the version in `loomy.h` and the tag (`v2.5`) must match, or `update` won't know
 > a new one exists. If you forget, just push the right tag.

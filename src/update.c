@@ -19,6 +19,11 @@
 #define GH_DL_HOST  L"github.com"
 #define GH_DL_BASE  L"/" GH_USER L"/" GH_REPO L"/releases/download/"   // + tag + /loomy.exe
 
+#define NET_RESOLVE_MS  5000
+#define NET_CONNECT_MS  5000
+#define NET_SEND_MS     5000
+#define NET_RECV_MS    10000
+
 // Fetch host+path over HTTPS. Writes up to cap bytes into buf, sets *got. Follows redirects.
 // If toFile is set, writes the body to that file instead and buf/cap are ignored.
 static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *accept,
@@ -28,6 +33,10 @@ static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *ac
 
     HINTERNET s = WinHttpOpen(L"Loomy", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, 0, 0, 0);
     if (!s) return 0;
+    // This runs on the UI thread, so Loomy is frozen while it waits. Windows' defaults
+    // (no DNS limit, 60 s to connect, 30 s per read) could lock it up for a minute on a bad
+    // connection; these give up quickly instead. Receive is per read, not the whole download.
+    WinHttpSetTimeouts(s, NET_RESOLVE_MS, NET_CONNECT_MS, NET_SEND_MS, NET_RECV_MS);
     HINTERNET c = WinHttpConnect(s, host, 443, 0);
     if (!c) { WinHttpCloseHandle(s); return 0; }
 
@@ -91,7 +100,9 @@ static int trusted(int r) {
     return 0;
 }
 
-static char g_json[64 * 1024];
+// Each release is ~4 KB of JSON, so /vh's list of 30 needs ~120 KB (64 KB used to cut it off
+// around 15). Zeroed statics cost nothing in the exe, and RAM only for what a download fills.
+static char g_json[256 * 1024];
 
 // ---------------------------------------------------------------- local update log
 // A tiny text file in %APPDATA%\Loomy: one line per version we installed, "2.6|2026-10-21 14:03".
@@ -151,7 +162,7 @@ static int update_log_find(const wchar_t *ver, wchar_t *out, int cap) {
 void cmd_version(wchar_t *args) {
     outf(OUT_TEXT, L"You're running Loomy v%s.", LOOMY_VERSION);
     out(OUT_DIM, L"Checking GitHub...");
-    ui_redraw();
+    ui_flush();
 
     DWORD got = 0;
     if (!https_get(GH_API_HOST, GH_API_PATH, L"application/vnd.github+json", g_json, sizeof(g_json), &got, 0) || got == 0) {
@@ -192,6 +203,7 @@ static int next_release(const char **pp, wchar_t *ver, int vcap, wchar_t *date, 
     if (*q=='v'||*q=='V') q++;
     int n=0; while (*q && *q!='"' && n<vcap-1) ver[n++]=(wchar_t)*q++;
     ver[n]=0;
+    if (*q != '"') return 0;     // the download got cut off mid-tag: don't show a half version
 
     // find published_at after this tag
     const char *d = q;
@@ -225,7 +237,7 @@ static int next_release(const char **pp, wchar_t *ver, int vcap, wchar_t *date, 
 
 void cmd_versionhistory(wchar_t *args) {
     out(OUT_DIM, L"Fetching version history from GitHub...");
-    ui_redraw();
+    ui_flush();
 
     DWORD got = 0;
     if (!https_get(GH_API_HOST, GH_LIST_PATH, L"application/vnd.github+json", g_json, sizeof(g_json), &got, 0) || got == 0) {
@@ -270,7 +282,7 @@ void cmd_update(wchar_t *args) {
     }
 
     out(OUT_DIM, L"Checking for updates...");
-    ui_redraw();
+    ui_flush();
 
     DWORD got = 0;
     if (!https_get(GH_API_HOST, GH_API_PATH, L"application/vnd.github+json", g_json, sizeof(g_json), &got, 0) || got == 0) {
@@ -294,7 +306,7 @@ void cmd_update(wchar_t *args) {
 
     outf(OUT_ACCENT, L"New version available: v%s (you have v%s)", latest, LOOMY_VERSION);
     out(OUT_DIM, L"Downloading...");
-    ui_redraw();
+    ui_flush();
 
     // download next to the current exe as loomy.new.exe
     wchar_t exe[MAX_PATH], newExe[MAX_PATH], dir[MAX_PATH], bat[MAX_PATH];
@@ -338,7 +350,8 @@ void cmd_update(wchar_t *args) {
     // write the swap script: wait for us to close, replace, relaunch, delete self
     // (ASCII .bat; keep it simple and robust)
     char script[1024];
-    char exeA[MAX_PATH], newA[MAX_PATH], batA[MAX_PATH];
+    char exeA[MAX_PATH], newA[MAX_PATH], batA[MAX_PATH], modeA[32];
+    WideCharToMultiByte(CP_ACP, 0, mode_name(mode_current()), -1, modeA, 32, 0, 0);   // come back in this mode
     WideCharToMultiByte(CP_ACP, 0, exe, -1, exeA, MAX_PATH, 0, 0);
     WideCharToMultiByte(CP_ACP, 0, newExe, -1, newA, MAX_PATH, 0, 0);
     WideCharToMultiByte(CP_ACP, 0, bat, -1, batA, MAX_PATH, 0, 0);
@@ -349,9 +362,9 @@ void cmd_update(wchar_t *args) {
         "del \"%s\" >nul 2>&1\r\n"
         "if exist \"%s\" ( ping 127.0.0.1 -n 2 >nul & goto retry )\r\n"
         "move /y \"%s\" \"%s\" >nul\r\n"
-        "start \"\" \"%s\" --restarted\r\n"
+        "start \"\" \"%s\" --restarted --mode %s\r\n"
         "del \"%s\" >nul 2>&1\r\n",
-        exeA, exeA, newA, exeA, exeA, batA);
+        exeA, exeA, newA, exeA, exeA, modeA, batA);
 
     HANDLE bf = CreateFileW(bat, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     if (bf == INVALID_HANDLE_VALUE) {
@@ -365,7 +378,7 @@ void cmd_update(wchar_t *args) {
     update_log_write(latest);   // remember we updated to this version, and when
 
     outf(OUT_OK, L"Updating to v%s. Loomy will blink and come back.", latest);
-    ui_redraw();
+    ui_flush();
     Sleep(600);
 
     // launch the helper hidden, then quit so it can replace us

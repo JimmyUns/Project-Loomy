@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.10"
+#define LOOMY_VERSION L"2.11"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
@@ -36,6 +36,7 @@ void     ui_fill(HDC dc, int l, int t, int r, int b, COLORREF c);
 int      ui_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c);   // returns width
 COLORREF ui_mix(COLORREF a, COLORREF b, int pctA);
 void     ui_redraw(void);
+void     ui_flush(void);                              // paint right now (before a slow call)
 void     ui_apply_colors(void);
 void     ui_set_input(const wchar_t *t);
 void     ui_get_input(wchar_t *buf, int cap);
@@ -66,9 +67,9 @@ const wchar_t *cmd_typed(void);                       // the command word as typ
 void cmd_usage(const wchar_t *shape);                 // prints "Usage: <typed> <shape>"
 void complete_add(const wchar_t *candidate, const wchar_t *partial);   // for Tab completion
 
-// ---------- modes.c (home / work, the /mode command + picker panel) ----------
-#define NMODES 2
-enum { MODE_HOME = 1, MODE_WORK = 2, MODE_ALL = 3 };  // bit masks: which modes a command lives in
+// ---------- modes.c (home / work / core, the /mode command + picker panel) ----------
+#define NMODES 3
+enum { MODE_HOME = 1, MODE_WORK = 2, MODE_CORE = 4, MODE_ALL = 7 };  // bit masks: which modes a command lives in
 int  mode_current(void);                              // index into the mode list
 int  mode_find(const wchar_t *name);                  // -1 if no such mode
 const wchar_t *mode_name(int m);
@@ -83,6 +84,18 @@ int  mode_char(WPARAM ch);
 void mode_click(int x, int y, int dbl);
 void mode_wheel(int notches);
 void mode_start(int m);                               // a reload told us which mode to start in
+
+// ---------- display.c (switch screen layout, like Win+P) ----------
+void cmd_display(wchar_t *args);
+void display_complete(const wchar_t *partial);
+int  display_active(void);
+void display_open(void);
+void display_close(void);
+void display_paint(HDC dc, RECT area);
+int  display_key(WPARAM vk);
+int  display_char(WPARAM ch);
+void display_click(int x, int y, int dbl);
+void display_wheel(int notches);
 
 // ---------- web.c (saved websites, per mode) ----------
 void cmd_web(wchar_t *args);

@@ -56,6 +56,17 @@ HANDLE FindFirstFileW(const wchar_t *p, WIN32_FIND_DATAW *d) { return INVALID_HA
 BOOL FindNextFileW(HANDLE h, WIN32_FIND_DATAW *d) { return 0; }
 BOOL FindClose(HANDLE h) { return 1; }
 DWORD GetModuleFileNameW(void *m, wchar_t *b, DWORD n) { wcscpy(b, L"C:\\loomy.exe"); return 1; }
+// fake screens: g_topo is what Windows is on; g_screens = how many are plugged in
+int g_topo = SDC_TOPOLOGY_INTERNAL, g_screens = 2, g_setcalls;
+LONG GetDisplayConfigBufferSizes(UINT32 f, UINT32 *np, UINT32 *nm) { *np = g_screens; *nm = g_screens * 2; return 0; }
+LONG QueryDisplayConfig(UINT32 f, UINT32 *np, DISPLAYCONFIG_PATH_INFO *p, UINT32 *nm, DISPLAYCONFIG_MODE_INFO *m, DISPLAYCONFIG_TOPOLOGY_ID *t) { *t = g_topo; return 0; }
+LONG SetDisplayConfig(UINT32 a, void *b, UINT32 c, void *d, UINT32 flags) {
+    g_setcalls++;
+    if (!(flags & SDC_APPLY)) return 87;
+    int topo = flags & 15;
+    if (g_screens < 2 && topo != SDC_TOPOLOGY_INTERNAL) return 31;   // ERROR_GEN_FAILURE, like a lone screen
+    g_topo = topo; return 0;
+}
 
 // ---- ui.c stand-ins
 #include "../src/loomy.h"
