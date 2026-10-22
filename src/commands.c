@@ -111,7 +111,10 @@ static void c_shutdown(wchar_t *args) { ui_quit(); }
 
 // sys = 1 means it acts on Loomy itself, so you type it with a / (e.g. /config).
 // sys = 0 means it does a task for you or just prints, so it's plain (e.g. net, help).
-#define ALL MODE_ALL
+// modes: where it exists. Outside those modes it acts like it doesn't exist at all
+// (unknown command, not in help, no Tab). CORE = updating/versions, only in core mode.
+#define ALL  MODE_ALL
+#define CORE MODE_CORE
 static const Command COMMANDS[] = {
 //    name            about                                   type        alias               sys modes usage                              maxargs    fn
     { L"Help",         L"show this list",                     L"help",     0,                  0, ALL, 0,                                  0,         c_help },
@@ -120,17 +123,17 @@ static const Command COMMANDS[] = {
     { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net },
     { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
-    { L"Mode",         L"switch between home and work",       L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
+    { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig },
     { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, 0,                                  0,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
     { L"Reload",       L"restart Loomy fresh",                L"reload",   0,                  1, ALL, 0,                                  0,         c_reload },
     { L"Reset Window", L"move Loomy back to the middle",      L"resetwindow", 0,               1, ALL, 0,                                  0,         c_resetwin },
-    { L"Update",       L"get the latest version from GitHub", L"update",   0,                  1, ALL, 0,                                  0,         c_update },
-    { L"Version",      L"show version + check for updates",   L"version",  L"ver",             1, ALL, 0,                                  0,         c_version },
-    { L"Versions",     L"list all versions and dates",        L"vh",       L"versionhistory",  1, ALL, 0,                                  0,         c_vhist },
-    { L"Changelog",    L"what changed in each version", L"verc",    L"versionchangelog", 1, ALL, L"[version]",                      1,         c_verc },
+    { L"Update",       L"get the latest version from GitHub", L"update",   0,                  1, CORE, 0,                                  0,         c_update },
+    { L"Version",      L"show version + check for updates",   L"version",  L"ver",             1, CORE, 0,                                  0,         c_version },
+    { L"Versions",     L"list all versions and dates",        L"vh",       L"versionhistory",  1, CORE, 0,                                  0,         c_vhist },
+    { L"Changelog",    L"what changed in each version", L"verc",    L"versionchangelog", 1, CORE, L"[version]",                      1,         c_verc },
     { L"Shutdown",     L"close Loomy completely",             L"shutdown", 0,                  1, ALL, 0,                                  0,         c_shutdown },
 };
 static const int NCOMMANDS = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
@@ -188,14 +191,10 @@ void cmd_usage(const wchar_t *shape) {
     outf(OUT_ERR, L"Usage: %s %s", g_typed, shape);
 }
 
+// only commands that exist in the current mode: the rest act like typos
 static const Command *find_command(const wchar_t *word) {
-    for (int i = 0; i < NCOMMANDS; i++) if (cmd_matches(&COMMANDS[i], word)) return &COMMANDS[i];
-    return 0;
-}
-
-// first mode a command lives in, for the "switch to it" hint
-static int home_of(const Command *c) {
-    for (int m = 0; m < NMODES; m++) if ((c->modes >> m) & 1) return m;
+    for (int i = 0; i < NCOMMANDS; i++)
+        if (cmd_matches(&COMMANDS[i], word) && in_mode(&COMMANDS[i])) return &COMMANDS[i];
     return 0;
 }
 
@@ -223,11 +222,6 @@ void cmd_run(wchar_t *line) {
     }
     if (!c->sys && slashed) {             // they slashed a plain command
         outf(OUT_ERR, L"Just type %s (no slash needed).", c->type);
-        return;
-    }
-    if (!in_mode(c)) {                    // lives in another mode
-        int m = home_of(c);
-        outf(OUT_ERR, L"%s is a %s mode command. Switch with: /m switch %s", g_typed, mode_name(m), mode_name(m));
         return;
     }
     if (c->maxargs >= 0 && s_count_words(args) > c->maxargs) {   // strict: no stray words

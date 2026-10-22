@@ -1,4 +1,4 @@
-// modes.c - Loomy's modes (home / work). The list is hardcoded on purpose: no creating modes.
+// modes.c - Loomy's modes (home / work / core). core is for Loomy itself: updates and versions. The list is hardcoded on purpose: no creating modes.
 //   /mode  (or /m)                     the picker panel: Up/Down, Enter switches, Esc closes
 //   /m switch|hide|show|main <mode>
 //
@@ -7,8 +7,8 @@
 // (/reload, or a mode switch, which always reloads) passes the mode along on its command line.
 #include "loomy.h"
 
-static const wchar_t *NAMES[NMODES] = { L"home", L"work" };
-static const wchar_t *ABOUT[NMODES] = { L"everyday, personal stuff", L"work tools and sites" };
+static const wchar_t *NAMES[NMODES] = { L"home", L"work", L"core" };
+static const wchar_t *ABOUT[NMODES] = { L"everyday, personal stuff", L"work tools and sites", L"Loomy itself: updates, versions" };
 
 static int g_cur = -1;
 
@@ -21,11 +21,15 @@ const wchar_t *mode_name(int m) { return (m >= 0 && m < NMODES) ? NAMES[m] : L"?
 
 int mode_is_hidden(int m) { return (g_cfg.modeHidden >> m) & 1; }
 
+#define CORE_IDX 2   // core is for Loomy's own upkeep: never the place you get moved to if another mode is visible
+
 static int next_visible(int from) {
-    for (int k = 1; k <= NMODES; k++) {
-        int i = (from + k) % NMODES;
-        if (!mode_is_hidden(i)) return i;
-    }
+    for (int pass = 0; pass < 2; pass++)
+        for (int k = 1; k <= NMODES; k++) {
+            int i = (from + k) % NMODES;
+            if (pass == 0 && i == CORE_IDX) continue;
+            if (!mode_is_hidden(i)) return i;
+        }
     return from;
 }
 

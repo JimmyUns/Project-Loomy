@@ -67,9 +67,9 @@ const wchar_t *cmd_typed(void);                       // the command word as typ
 void cmd_usage(const wchar_t *shape);                 // prints "Usage: <typed> <shape>"
 void complete_add(const wchar_t *candidate, const wchar_t *partial);   // for Tab completion
 
-// ---------- modes.c (home / work, the /mode command + picker panel) ----------
-#define NMODES 2
-enum { MODE_HOME = 1, MODE_WORK = 2, MODE_ALL = 3 };  // bit masks: which modes a command lives in
+// ---------- modes.c (home / work / core, the /mode command + picker panel) ----------
+#define NMODES 3
+enum { MODE_HOME = 1, MODE_WORK = 2, MODE_CORE = 4, MODE_ALL = 7 };  // bit masks: which modes a command lives in
 int  mode_current(void);                              // index into the mode list
 int  mode_find(const wchar_t *name);                  // -1 if no such mode
 const wchar_t *mode_name(int m);

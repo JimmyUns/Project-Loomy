@@ -350,7 +350,8 @@ void cmd_update(wchar_t *args) {
     // write the swap script: wait for us to close, replace, relaunch, delete self
     // (ASCII .bat; keep it simple and robust)
     char script[1024];
-    char exeA[MAX_PATH], newA[MAX_PATH], batA[MAX_PATH];
+    char exeA[MAX_PATH], newA[MAX_PATH], batA[MAX_PATH], modeA[32];
+    WideCharToMultiByte(CP_ACP, 0, mode_name(mode_current()), -1, modeA, 32, 0, 0);   // come back in this mode
     WideCharToMultiByte(CP_ACP, 0, exe, -1, exeA, MAX_PATH, 0, 0);
     WideCharToMultiByte(CP_ACP, 0, newExe, -1, newA, MAX_PATH, 0, 0);
     WideCharToMultiByte(CP_ACP, 0, bat, -1, batA, MAX_PATH, 0, 0);
@@ -361,9 +362,9 @@ void cmd_update(wchar_t *args) {
         "del \"%s\" >nul 2>&1\r\n"
         "if exist \"%s\" ( ping 127.0.0.1 -n 2 >nul & goto retry )\r\n"
         "move /y \"%s\" \"%s\" >nul\r\n"
-        "start \"\" \"%s\" --restarted\r\n"
+        "start \"\" \"%s\" --restarted --mode %s\r\n"
         "del \"%s\" >nul 2>&1\r\n",
-        exeA, exeA, newA, exeA, exeA, batA);
+        exeA, exeA, newA, exeA, exeA, modeA, batA);
 
     HANDLE bf = CreateFileW(bat, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     if (bf == INVALID_HANDLE_VALUE) {
