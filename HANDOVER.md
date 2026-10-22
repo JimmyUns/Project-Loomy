@@ -28,7 +28,7 @@ time — eventually voice input/output and optional AI, but always staying light
 
 ---
 
-## 2. Current state (v2.8)
+## 2. Current state (v2.9)
 
 Fully working, deployed through the user's own GitHub auto-update pipeline (see §6). The user
 runs it on his **personal PC and his work laptop**. (Earlier the work laptop showed the blue
@@ -40,7 +40,7 @@ him get around workplace security.)
 Two classes, separated by a `/` prefix:
 - **Plain** (a task or a print — no slash): `help`, `lp`, `web`, `net`, `rb`, `exe`
 - **Slash** (acts on Loomy itself — needs `/`): `/mode` (`/m`), `/webconfig` (`/webc`), `/config`,
-  `/clear`, `/hide`, `/reload`, `/update`, `/version` (`/ver`), `/vh`, `/verc`, `/shutdown`
+  `/clear`, `/hide`, `/reload`, `/resetwindow`, `/update`, `/version` (`/ver`), `/vh`, `/verc`, `/shutdown`
 
 Typing the wrong prefix nudges the user to the right one. The rule: **slash = changes Loomy,
 plain = Loomy does something for you or just prints.**
@@ -48,14 +48,15 @@ plain = Loomy does something for you or just prints.**
 | Command | Prefix | What it does |
 |---|---|---|
 | `help` | none | lists commands (shows each one's correct typed form) |
-| `web` | none | saved sites for the current mode. `web` = list panel (Enter opens); `web <alias>` opens it (a batch opens all its sites) |
+| `web` | none | saved sites for the current mode. `web` = list panel (Enter opens, Loomy hides); `web many` = same list but it stays open and marks what you opened; `web <alias>` opens it (a batch opens all its sites) |
+| `/resetwindow` | `/` | re-centers the window and forgets the remembered position |
 | `lp` | none | folder browser over `%APPDATA%\Loomy\Folders` (arrows, Enter opens, →/← in/out). `lp <name>` makes+opens a folder |
 | `net` | none | live list of apps using the internet, grouped per app, with ↓/↑ speeds; Delete ends the whole app (confirm first); refreshes every 5s, R = refresh now |
 | `rb` | none | opens the recycle bin |
 | `exe` | none | opens the folder with loomy.exe highlighted |
 | `/mode` `/m` | `/` | modes panel (Enter switches). `/m switch\|hide\|show\|main <mode>` |
 | `/webconfig` `/webc` | `/` | `add <alias> <site>`, `remove <alias>`, `batch <name> <alias...> [true\|false]`, `info <alias>`, `rename <alias> <new>`, `update <alias> <site>` |
-| `/config` | `/` | in-app settings panel: hotkey (press-to-capture), name, accent color, start-with-Windows |
+| `/config` | `/` | in-app settings panel: hotkey (press-to-capture), name, accent color, start-with-Windows, remember position |
 | `/clear` | `/` | clears the chat |
 | `/hide` | `/` | hides Loomy (also Esc) |
 | `/reload` | `/` | fully restarts Loomy |
@@ -69,7 +70,13 @@ plain = Loomy does something for you or just prints.**
 - Hardcoded list: `home`, `work` (`NAMES[]` in `modes.c`). The user does NOT want a way to create
   modes from inside Loomy.
 - Saved in `loomy.cfg`: `mode_main` (Loomy starts in it) and `mode_hidden` (comma list). The
-  current mode is memory-only, so a restart goes back to main.
+  current mode is memory-only, so a fresh start goes to main.
+- **Switching modes = a full reload (v2.9, the user asked for this).** `ui_restart_to(mode, note)`
+  starts a new process with `--restarted --mode <name> --note <text>`. `--note` always comes
+  last, and `|` in it means a new line. The new process starts in that mode and prints the note
+  (e.g. "Hid work.|It was the main mode...|Switched to home mode."). A plain `/reload` passes the
+  current mode with no note, so it keeps you in your mode. The `/update` relaunch passes no mode,
+  so it starts in main.
 - Rules: at least one mode stays visible. Hiding the current mode moves you to the next visible
   one; hiding the main mode moves main too. `show` never switches you. You can't switch to, or
   make main, a hidden mode.
@@ -96,6 +103,13 @@ Every `COMMANDS[]` row declares `usage` + `maxargs`. Extra words now give a one-
 of being ignored. Commands with subcommands (`/mode`, `/webconfig`) use `ARGS_SELF` and print the
 usage for the specific subcommand. `lp` is `ARGS_TEXT` (folder names can have spaces).
 
+### Window position (v2.9)
+- `remember_position = on|off` in `loomy.cfg`, toggled in `/config`. Off by default.
+- The spot is captured in `ui_hide()` and kept **in memory only**. A reload (and therefore a mode
+  switch) re-centers, which the user asked for. `/resetwindow` forgets it and re-centers now.
+- `pos_ok()` refuses a spot whose header isn't on a connected monitor (unplugged screen),
+  falling back to center.
+
 ### UI behaviors
 - Global hotkey (default **Ctrl+Alt+Space**), set in `/config`. Single-instance (second launch
   pops the first).
@@ -103,7 +117,7 @@ usage for the specific subcommand. `lp` is `ARGS_TEXT` (folder names can have sp
 - **Clears the chat each time it hides** (comes back fresh).
 - Command history with Up/Down. **Ctrl+Up/Ctrl+Down scrolls the chat** (also PgUp/PgDn, wheel).
 - Tab completion for commands and `lp` folder names.
-- Header shows "Loomy v2.8 · <mode>" (the mode is in the accent color).
+- Header shows "Loomy v2.9 · <mode>" (the mode is in the accent color).
 - Panels (lp / web / mode / net / config / verc) capture the arrow keys for their own navigation, so
   Ctrl+scroll and history are correctly inactive inside them.
 
@@ -239,7 +253,21 @@ Notes:
 
 ---
 
-## 7. What's verified vs. not, as of v2.8
+## 7. What's verified vs. not, as of v2.9
+
+- **v2.9, verified by `tests/run.sh`** (77 checks, 0 failures): switching reloads into the
+  right mode with the right note, hide-current carries its messages through the reload, `show`
+  and non-current `hide` don't reload, `/reload` keeps the mode, `/resetwindow` (plus strict
+  args), `remember_position` save/load, `web many` (stays open, marks rows, asks for refocus,
+  doesn't hide, `many` is a reserved alias, Tab offers it).
+- **v2.9, NOT verified (needs his Windows):** the real restart handing over the hotkey (it
+  reuses the same 20-retry path as `/reload`), the window actually reappearing at the
+  remembered spot, and **whether Windows lets Loomy take focus back from the browser in
+  `web many`**. It tries twice at 400 ms intervals; Windows only allows it if he hasn't clicked
+  elsewhere since. If it doesn't stick, he'll have to click Loomy or press the hotkey (which
+  refocuses a visible window).
+
+### As of v2.8
 
 - **v2.8, verified by `tests/run.sh`** (0 failures): all strict-arg cases, every `/m` rule
   (hide current/main, last-visible guard, hidden switch/main refused, cfg persistence and
@@ -269,7 +297,8 @@ Notes:
 
 ## 8. Likely next steps / ideas floated
 
-- Confirm v2.8's panels and header look right, and that batches open cleanly in his browser.
+- Confirm v2.8/v2.9 UI: panels, header, the settings row, remembered position, and the
+  `web many` focus grab.
 - The user will define what else differs between home and work (which commands get locked, etc.).
 - The long-term vision: voice input/output (Windows SAPI is available, no big deps), optional
   AI, more system controls. Keep each addition light and panel-based.

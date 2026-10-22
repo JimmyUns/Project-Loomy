@@ -1,0 +1,35 @@
+# The robot baker. When you push a version tag like v2.5, GitHub builds loomy.exe
+# and publishes it as a release — the exact file your `update` command downloads.
+#
+# One-time setup is in SETUP.md. After that you never touch this file.
+name: Build and release Loomy
+
+on:
+  push:
+    tags:
+      - 'v*'            # any tag starting with v (v2.5, v2.6, ...) triggers a build
+
+permissions:
+  contents: write      # lets the robot create the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Install the Windows cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Build loomy.exe
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Publish the release with loomy.exe attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: loomy.exe
+          name: Loomy ${{ github.ref_name }}
+          generate_release_notes: true

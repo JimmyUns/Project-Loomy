@@ -1,4 +1,4 @@
-# Loomy 2.8
+# Loomy 2.9
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -8,7 +8,9 @@ Type **help** to see every command. Commands that change Loomy itself (settings,
 
 In `lp` and `config`: ↑↓ choose, Enter picks, Esc goes back. In `lp`, → goes inside a folder and ← goes back out.
 
-Loomy has two modes, **home** and **work** — the current one shows in the header. Type `/m` to pick one. Saved websites (`web`, `/webconfig`) are kept separately per mode.
+Loomy has two modes, **home** and **work** — the current one shows in the header. Type `/m` to pick one (switching reloads Loomy fresh). Saved websites (`web`, `/webconfig`) are kept separately per mode; `web many` keeps the list open so you can open several.
+
+Turn on **Remember position** in `/config` to have Loomy reappear where you last hid it. `/resetwindow` puts it back in the middle.
 
 If you type a command wrong (extra or missing words), Loomy replies with its usage: `<this>` is required, `[this]` is optional.
 

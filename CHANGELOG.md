@@ -2,6 +2,13 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.9
+- Switching modes now reloads Loomy (clean chat, nothing stuck). Any note, like "Hid work.", carries over to the fresh window.
+- `/reload` keeps you in your current mode. A fresh start still begins in the main mode.
+- New setting in `/config`: **Remember position**. When it's on, Loomy shows up where you last hid it. A reload (and so a mode switch) re-centers it.
+- New `/resetwindow`: moves Loomy back to the middle and forgets the remembered spot.
+- New `web many`: the sites list stays open after you pick one, so you can open several. Opened rows get marked, and Loomy grabs focus back from the browser.
+
 ## v2.8
 - Modes: `home` and `work`. `/mode` (or `/m`) opens a picker; `/m switch|hide|show|main <mode>` does the rest. At least one mode always stays visible, and Loomy starts in the main one.
 - The header shows the current mode next to the version.
