@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.11
+- `/version`, `/update` and `/vh` give up on a dead or slow connection within seconds, instead of freezing Loomy for up to a minute.
+- "Checking GitHub..." now actually shows up before the check starts.
+- `/vh` can show the full history again (it used to cut off around 15 releases).
+
 ## v2.10
 - `/update` only installs a release that **you** published and whose `loomy.exe` was uploaded by **your GitHub Actions build**. Anything else (like a release or exe from another account) is refused, and `/version` warns about it.
 - Fix builds with a letter are understood: 2.9 < 2.9b < 2.9c < 2.10.

@@ -162,6 +162,9 @@ int  ui_hotkey_ok(void) { return g_hotkeyOk; }
 int  ui_register_hotkey(void) { register_hotkey(0); InvalidateRect(g_wnd, 0, FALSE); return g_hotkeyOk; }
 void ui_unregister_hotkey(void) { UnregisterHotKey(g_wnd, HOTKEY_ID); }
 void ui_redraw(void) { InvalidateRect(g_wnd, 0, FALSE); }
+// ui_redraw only queues a paint, which waits until we're back in the message loop.
+// Before a slow blocking call (network), use this so "Checking..." is on screen first.
+void ui_flush(void) { if (g_wnd) { InvalidateRect(g_wnd, 0, FALSE); UpdateWindow(g_wnd); } }
 
 static int screen_active(void) {
     return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active();
