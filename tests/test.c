@@ -3,6 +3,7 @@
 #include "../src/loomy.h"
 extern wchar_t g_out[400][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
+extern int g_topo, g_screens, g_setcalls;
 extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
 static int last_out;
@@ -160,6 +161,35 @@ int main(void) {
     run(L"web tube");           EXPECT(!wcscmp(g_opened[0], L"https://jira.example.com"), "same alias, different site at work");
     run(L"/m switch home");
     run(L"web tube");           EXPECT(!wcscmp(g_opened[0], L"https://youtu.be"), "home alias intact");
+
+    wprintf(L"\n== display ==\n");
+    run(L"display");            EXPECT(display_active() && g_setcalls == 0, "bare display opens picker, changes nothing");
+    display_key(VK_RETURN);     EXPECT(!display_active() && g_topo == SDC_TOPOLOGY_EXTEND && g_hidden, "Enter on first row = Extend, hides Loomy");
+    g_hidden = 0; display_open(); display_key(VK_DOWN); display_key(VK_RETURN);
+    EXPECT(g_topo == SDC_TOPOLOGY_EXTERNAL, "second row = second screen only");
+    display_open(); display_char(L'p'); display_key(VK_RETURN);   EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "letter p jumps to PC screen only");
+    display_open(); display_char(L'd'); display_key(VK_RETURN);   EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "letter d = duplicate");
+    display_open(); display_key(VK_END); display_key(VK_UP); display_key(VK_ESCAPE);
+    EXPECT(!display_active() && g_topo == SDC_TOPOLOGY_CLONE, "Esc closes without switching");
+    run(L"display Extend");     EXPECT(g_topo == SDC_TOPOLOGY_EXTEND && saw(L"Switched to Extend"), "by name, any case");
+    run(L"dp second");          EXPECT(g_topo == SDC_TOPOLOGY_EXTERNAL, "dp alias");
+    { int c = g_setcalls; g_hidden = 0;
+    run(L"display second");     EXPECT(saw(L"Already on Second screen only") && g_setcalls == c && !g_hidden, "already: no switch, stays open"); }
+    run(L"display pc");         EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "pc");
+    run(L"display duplicate");  EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "duplicate");
+    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate]"), "unknown layout");
+    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate]"), "strict args");
+    run(L"/display");           EXPECT(saw(L"no slash"), "display is plain");
+    g_screens = 1; g_hidden = 0;
+    run(L"display extend");     EXPECT(saw(L"couldn't switch to Extend") && saw(L"plugged in") && !g_hidden, "one screen: clear error, stays open");
+    g_screens = 2;
+    run(L"/m switch core");
+    run(L"display extend");     EXPECT(g_topo == SDC_TOPOLOGY_EXTEND, "works in core too");
+    run(L"/m switch home");
+    tab(L"display s", L"display second ");
+    tab(L"dp d", L"dp duplicate ");
+    tab(L"display ", 0);
+    tab(L"di", L"display ");
 
     wprintf(L"\n== Tab ==\n");
     tab(L"/m", L"/mode ");

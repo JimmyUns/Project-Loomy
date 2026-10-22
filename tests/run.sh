@@ -6,5 +6,5 @@
 set -e
 cd "$(dirname "$0")"
 gcc -std=gnu11 -w -Ishim -I../src -o /tmp/loomy_test test.c shim.c \
-    ../src/modes.c ../src/web.c ../src/commands.c ../src/config.c ../src/util.c ../src/version.c
+    ../src/modes.c ../src/web.c ../src/display.c ../src/commands.c ../src/config.c ../src/util.c ../src/version.c
 /tmp/loomy_test

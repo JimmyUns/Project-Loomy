@@ -102,6 +102,7 @@ static void c_exe(wchar_t *args) {
 }
 
 static void c_clear(wchar_t *args)    { ui_clear(); }
+static void c_display(wchar_t *args) { cmd_display(args); }
 static void c_hide(wchar_t *args)     { ui_hide(); }
 static void c_reload(wchar_t *args)   { ui_restart(); }
 static void c_resetwin(wchar_t *args) { ui_reset_window(); out(OUT_OK, L"Back in the middle."); }
@@ -122,6 +123,7 @@ static const Command COMMANDS[] = {
     { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web },
     { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net },
     { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb },
+    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate]",    1,         c_display },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig },
@@ -255,6 +257,7 @@ static void complete_args(wchar_t **words, int n, const wchar_t *partial) {
     if (!c) return;
     if (c->fn == c_web && n == 1) { complete_add(L"many", partial); web_complete(partial); }
     else if (c->fn == c_webconfig) webconfig_complete(words, n, partial);
+    else if (c->fn == c_display && n == 1) display_complete(partial);
     else if (c->fn == c_mode) {
         if (n == 1) for (int i = 0; i < 4; i++) complete_add(MODE_SUBS[i], partial);
         else if (n == 2) {

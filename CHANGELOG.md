@@ -9,6 +9,7 @@ All notable changes to Loomy, newest first.
 - New **core** mode for Loomy's own upkeep. `/update`, `/version`, `/vh` and `/verc` only exist there; in home or work they're unknown commands, aren't in `help`, and Tab won't offer them.
 - Hiding the mode you're in never drops you into core if home or work is still visible.
 - After `/update`, Loomy comes back in the mode you updated from.
+- New `display` (`dp`): switch your screens like Win+P. Bare `display` opens a picker (Extend first, Second screen only second); `display extend|second|pc|duplicate` switches straight away. Loomy hides after switching.
 
 ## v2.10
 - `/update` only installs a release that **you** published and whose `loomy.exe` was uploaded by **your GitHub Actions build**. Anything else (like a release or exe from another account) is refused, and `/version` warns about it.

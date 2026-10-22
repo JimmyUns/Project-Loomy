@@ -167,7 +167,7 @@ void ui_redraw(void) { InvalidateRect(g_wnd, 0, FALSE); }
 void ui_flush(void) { if (g_wnd) { InvalidateRect(g_wnd, 0, FALSE); UpdateWindow(g_wnd); } }
 
 static int screen_active(void) {
-    return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active();
+    return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active() || display_active();
 }
 static void reset_history_pos(void);
 
@@ -247,6 +247,7 @@ void ui_hide(void) {
     changelog_close();
     mode_close();
     web_close();
+    display_close();
     g_fresh = 1;
     KillTimer(g_wnd, TIMER_CLOCK);
     ShowWindow(g_wnd, SW_HIDE);
@@ -403,6 +404,7 @@ static void paint(HWND w) {
     else if (changelog_active()) changelog_paint(dc, area);
     else if (mode_active()) mode_paint(dc, area);
     else if (web_active()) web_paint(dc, area);
+    else if (display_active()) display_paint(dc, area);
     int y = screen_active() ? area.top : area.bottom;
     int indent = S(20);
     for (int k = g_scroll; k < g_count && y > area.top; k++) {
@@ -522,6 +524,9 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (web_active()) {
         if (m == WM_KEYDOWN && web_key(wp)) return 0;
         if (m == WM_CHAR && web_char(wp)) return 0;
+    } else if (display_active()) {
+        if (m == WM_KEYDOWN && display_key(wp)) return 0;
+        if (m == WM_CHAR && display_char(wp)) return 0;
     }
     if (m == WM_KEYDOWN) {
         switch (wp) {
@@ -588,12 +593,14 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         else if (changelog_active()) changelog_click((short)LOWORD(lp), (short)HIWORD(lp));
         else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
+        else if (display_active()) display_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         SetFocus(g_edit);
         return 0;
     case WM_LBUTTONDBLCLK:
         if (browser_active()) browser_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
+        else if (display_active()) display_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         SetFocus(g_edit);
         return 0;
     case WM_ACTIVATE: if (LOWORD(wp) != WA_INACTIVE) SetFocus(g_edit); return 0;
@@ -604,6 +611,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         if (changelog_active()) { changelog_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (mode_active()) { mode_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (web_active()) { web_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (display_active()) { display_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         int d = (short)HIWORD(wp) / WHEEL_DELTA * 3;
         g_scroll += d;
         if (g_scroll > g_count - 1) g_scroll = g_count > 0 ? g_count - 1 : 0;

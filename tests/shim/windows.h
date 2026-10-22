@@ -70,3 +70,18 @@ HANDLE FindFirstFileW(const wchar_t*, WIN32_FIND_DATAW*);
 BOOL FindNextFileW(HANDLE, WIN32_FIND_DATAW*);
 BOOL FindClose(HANDLE);
 DWORD GetModuleFileNameW(void*, wchar_t*, DWORD);
+// display layout (Win+P)
+typedef unsigned int UINT32;
+typedef struct { char b[72]; } DISPLAYCONFIG_PATH_INFO;
+typedef struct { char b[64]; } DISPLAYCONFIG_MODE_INFO;
+typedef int DISPLAYCONFIG_TOPOLOGY_ID;
+#define ERROR_SUCCESS 0
+#define QDC_DATABASE_CURRENT 4
+#define SDC_TOPOLOGY_INTERNAL 1
+#define SDC_TOPOLOGY_CLONE 2
+#define SDC_TOPOLOGY_EXTEND 4
+#define SDC_TOPOLOGY_EXTERNAL 8
+#define SDC_APPLY 0x80
+LONG GetDisplayConfigBufferSizes(UINT32, UINT32*, UINT32*);
+LONG QueryDisplayConfig(UINT32, UINT32*, DISPLAYCONFIG_PATH_INFO*, UINT32*, DISPLAYCONFIG_MODE_INFO*, DISPLAYCONFIG_TOPOLOGY_ID*);
+LONG SetDisplayConfig(UINT32, void*, UINT32, void*, UINT32);

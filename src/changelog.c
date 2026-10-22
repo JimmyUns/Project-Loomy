@@ -17,9 +17,9 @@ static const Release RELEASES[] = {
         L"Update checks give up on a bad connection in seconds, not a minute.",
         L"\u201cChecking GitHub\u2026\u201d shows up before the check starts.",
         L"/vh shows the full history (it used to cut off around 15).",
-        L"New core mode: /update, /version, /vh and /verc live only there.",
-        L"In home and work those are unknown commands now.",
+        L"New core mode: /update, /version, /vh and /verc only exist there.",
         L"After /update, Loomy comes back in the mode you were in.",
+        L"New display (dp): switch screens like Win+P, by picker or name.",
         0 } },
     { L"2.10", L"2026-10-22", {
         L"/update only installs releases you published, built by GitHub Actions.",

@@ -85,6 +85,18 @@ void mode_click(int x, int y, int dbl);
 void mode_wheel(int notches);
 void mode_start(int m);                               // a reload told us which mode to start in
 
+// ---------- display.c (switch screen layout, like Win+P) ----------
+void cmd_display(wchar_t *args);
+void display_complete(const wchar_t *partial);
+int  display_active(void);
+void display_open(void);
+void display_close(void);
+void display_paint(HDC dc, RECT area);
+int  display_key(WPARAM vk);
+int  display_char(WPARAM ch);
+void display_click(int x, int y, int dbl);
+void display_wheel(int notches);
+
 // ---------- web.c (saved websites, per mode) ----------
 void cmd_web(wchar_t *args);
 void cmd_webconfig(wchar_t *args);
