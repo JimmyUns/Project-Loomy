@@ -1,8 +1,9 @@
 # Loomy — Handover Document
 
 This is a complete brief for continuing the Loomy project in a fresh chat with no prior
-context. Read it top to bottom before making changes. Attach `Loomy.zip` (the full source)
-to the new chat so the assistant has the actual code.
+context. Read it top to bottom before making changes. The code lives in the repo
+(github.com/JimmyUns/Project-Loomy). Clone it with the bot token from the project file
+`github-bot.txt` (see §6). Always work from the repo's current `main`, not an old zip.
 
 ---
 
@@ -28,7 +29,7 @@ time — eventually voice input/output and optional AI, but always staying light
 
 ---
 
-## 2. Current state (v2.9)
+## 2. Current state (v2.10)
 
 Fully working, deployed through the user's own GitHub auto-update pipeline (see §6). The user
 runs it on his **personal PC and his work laptop**. (Earlier the work laptop showed the blue
@@ -117,11 +118,28 @@ usage for the specific subcommand. `lp` is `ARGS_TEXT` (folder names can have sp
 - **Clears the chat each time it hides** (comes back fresh).
 - Command history with Up/Down. **Ctrl+Up/Ctrl+Down scrolls the chat** (also PgUp/PgDn, wheel).
 - Tab completion for commands and `lp` folder names.
-- Header shows "Loomy v2.9 · <mode>" (the mode is in the accent color).
+- Header shows "Loomy v2.10 · <mode>" (the mode is in the accent color).
 - Panels (lp / web / mode / net / config / verc) capture the arrow keys for their own navigation, so
   Ctrl+scroll and history are correctly inactive inside them.
 
 ---
+
+### Versions (v2.10)
+- Tag = `v` + `LOOMY_VERSION`, exactly. A trailing letter is a **fix build** (same features, a
+  deploy/run fix): `2.9` → `2.9b` → `2.9c` → then `2.10`. There's no default `a`. The user chose
+  this scheme. `ver_gt()` in `version.c` orders them and can't loop forever on junk.
+- History: v2.9 was uploaded wrong (files landed in the repo root), and v2.9b re-uploaded the
+  same code into `src/`. The old `ver_gt` froze on the letter; v2.10 fixed it.
+
+### /update safety check (v2.10)
+`release_check()` in `version.c` only trusts the latest release if its **author is `JimmyUns`**
+and the `loomy.exe` asset's **uploader is `github-actions[bot]`**. Every real release so far
+matches that (checked via the API). Then `/update` downloads from that exact tag
+(`/releases/download/<tag>/loomy.exe`), not `/latest/`. This is the guard on his machine that
+works even if the GitHub-side rules fail. **Don't weaken it.** If the release flow ever changes
+(e.g. a different builder), update the check deliberately. Possible upgrade: verify the asset's
+`digest` (sha256) from the same JSON against the download, to close the seconds-long window
+between check and download.
 
 ## 3. How it's built (environment)
 
@@ -145,6 +163,8 @@ real Windows. Testing options, in order of usefulness:
   ```
   There's a demo build path (`-DLOOMY_NET_DEMO`) that injects fake `net` data so the net UI can
   be screenshotted without real connections.
+- **`tests/run.sh`** also covers version ordering and the release check against a saved real
+  release JSON (`tests/fixtures/release_v2.9b.json`), plus tampered copies of it.
 - **The user is the real tester.** Each change ships and he reports back. Be upfront about what
   was and wasn't verified.
 
@@ -180,6 +200,7 @@ All under `src/`. ~4000 lines total. `tests/` holds the Linux test harness (not 
   usage replies pick it up. Argument completion for a command goes in `complete_args()`.
   `cmd_usage(shape)` / `cmd_typed()` are for commands that check their own args.
 - **`modes.c`** — modes list, `/mode` command, the mode picker panel.
+- **`version.c`** — `ver_gt()` and `release_check()`. Pure logic, no network, so it's tested.
 - **`web.c`** — saved sites: per-mode file load/save, `web`, `/webconfig`, the sites panel.
 - **`settings.c`** — the `/config` panel + start-with-Windows registry logic.
 - **`browser.c`** — the `lp` folder browser panel.
@@ -211,8 +232,8 @@ Other files: `res/` (icon built from `loomy_logo.png` by `make_icon.py`, manifes
 - **Typography**: real apostrophes/quotes in user-facing text where appropriate; the code uses
   `\x2191` etc. for arrows. Accent color is themeable (`g_accent`) — don't hardcode purple for
   new UI, use the color tokens.
-- **Deliverables**: build `loomy.exe`, put it + updated source in `Loomy.zip`, present both.
-  The user deploys via GitHub.
+- **Deliverables**: open a PR as the bot (see §6). Also present the built `loomy.exe` in chat
+  when it helps him test before merging. No more `Loomy.zip` hand-offs.
 
 ---
 
@@ -228,24 +249,43 @@ The user has a public repo: **github.com/JimmyUns/Project-Loomy**. It's wired so
 
 **`GH_USER` and `GH_REPO` are already set in `update.c`** to `JimmyUns` / `Project-Loomy`.
 
-**Deploy loop (the user does this):**
-1. Upload changed `src/` files (and `CHANGELOG.md`) to the repo — he usually uses the GitHub
-   web UI (drag-drop into the `src` folder to overwrite). He found browser upload easier than
-   git CLI. Watch out: dragging the *folder* nests it; he uploads the *contents*.
-2. Create a Release with tag `vX.Y` **matching `LOOMY_VERSION`**. (Mismatch = `/update` won't
-   fire correctly.)
-3. Actions builds it (~35s), attaches the exe.
-4. He types `/update` in his running Loomy → it pulls the new version.
+**Deploy loop (since v2.10): the bot opens PRs, he merges and releases.**
+1. Claude works on a clone of the repo and pushes a branch `claude/<what>` as **LoomyBot**, then
+   opens a PR into `main` with a clear description: what changed, what was tested, and what he
+   needs to eyeball.
+2. He reviews and clicks **Merge**.
+3. He creates a Release with tag `vX.Y` **matching `LOOMY_VERSION`**.
+4. Actions builds it (~35s) and attaches the exe. He types `/update`.
+
+**The bot (set up in v2.10's session, tested live):**
+- Account `LoomyBot` (email on Proton, 2FA on; the user holds those credentials). It's a
+  collaborator (push, not admin) on Project-Loomy.
+- Token: a **classic** PAT with only `public_repo` (fine-grained can't target another user's
+  repo). It lives in the project file `github-bot.txt` with its expiry date. **Warn him when
+  expiry is near.** Never echo the token. Read it from the file inside bash, and mask it in any
+  output. Clone with `https://x-access-token:$TOKEN@github.com/JimmyUns/Project-Loomy.git`.
+- Repo rulesets (made by him, verified from the bot's side): **"protect main"** (branch,
+  default branch: PR required with 0 approvals, no force push, no deletion) and **"protect
+  releases"** (*tag* ruleset, `refs/tags/v*`: restrict creations, updates, deletions). Bypass:
+  Repository admin (him).
+- **Live-tested as the bot:** pushing to main gets refused ("must be made through a pull
+  request"); creating a `v*` tag, sneaking one in via a release, and moving `v2.5` are all
+  refused; editing `.github/workflows` is refused (no `workflow` scope); branches and PRs work.
+  Test PR #1 is the closed "access test".
+- The one thing the bot's access *could* still do is edit assets on existing releases. That's
+  what the `/update` release check guards against.
+- **Rules for Claude:** never push to `main`, never create tags or releases, never touch
+  `.github/workflows`. He merges and releases. He doesn't want a stored token with more power,
+  or anything that can ship without him.
+- The repo must stay **public**: `/update` reads releases without logging in.
+- No GitHub connector exists for chat. His "GitHub Integration" in Claude settings is a
+  read-only file picker. Everything goes through the bot token in the sandbox (github.com and
+  api.github.com are reachable). The unauthenticated API gets rate-limited on the sandbox's
+  shared IP, so always send the token.
 
 **This whole loop is tested and confirmed working end-to-end** (he updated 2.5→2.6→... live).
 
 Notes:
-- The assistant has **no GitHub connector** in-chat (checked repeatedly). It cannot push, open
-  PRs, or touch the repo. It only produces files; the user moves them. Don't keep offering to
-  do GitHub actions directly — you can't.
-- There IS the separate `@claude` GitHub app (github.com/apps/claude) the user could install to
-  get a "propose PR / click merge" flow, but it's a different Claude with no memory of context.
-  For careful C work, the chat-based build-and-hand-off approach is better.
 - Code signing / "unknown publisher": the blue SmartScreen warning is expected for an unsigned
   indie exe. On his personal PC it's a one-time "Run anyway." A real fix costs money (cert) and
   isn't worth it for a personal tool. VirusTotal does NOT whitelist anything — don't suggest it
@@ -253,7 +293,17 @@ Notes:
 
 ---
 
-## 7. What's verified vs. not, as of v2.9
+## 7. What's verified vs. not, as of v2.10
+
+- **v2.10, verified:** `ver_gt` across 16 cases including junk (no hangs), `release_check`
+  against the real v2.9b release JSON plus tampered copies (bot as author, bot as uploader,
+  no exe, weird tag), and compact JSON. It builds clean.
+- **v2.10, NOT verified:** the real WinHTTP download from the tag-specific URL
+  (`/releases/download/<tag>/loomy.exe`, which GitHub serves via a redirect, same as before).
+  The first `/update` *to* a version after 2.10 is the real test. The update *to* 2.10 itself
+  runs the old v2.9 code, which works because "2.10" vs "2.9" has no letter.
+
+### As of v2.9
 
 - **v2.9, verified by `tests/run.sh`** (77 checks, 0 failures): switching reloads into the
   right mode with the right note, hide-current carries its messages through the reload, `show`

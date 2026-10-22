@@ -17,7 +17,7 @@
 #define GH_API_PATH L"/repos/" GH_USER L"/" GH_REPO L"/releases/latest"
 #define GH_LIST_PATH L"/repos/" GH_USER L"/" GH_REPO L"/releases?per_page=30"
 #define GH_DL_HOST  L"github.com"
-#define GH_DL_PATH  L"/" GH_USER L"/" GH_REPO L"/releases/latest/download/loomy.exe"
+#define GH_DL_BASE  L"/" GH_USER L"/" GH_REPO L"/releases/download/"   // + tag + /loomy.exe
 
 // Fetch host+path over HTTPS. Writes up to cap bytes into buf, sets *got. Follows redirects.
 // If toFile is set, writes the body to that file instead and buf/cap are ignored.
@@ -73,38 +73,21 @@ static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *ac
     return ok;
 }
 
-// pull "tag_name":"v2.5" out of the API JSON -> "2.5" (leading v stripped)
-static int parse_tag(const char *json, wchar_t *out, int cap) {
-    const char *key = "\"tag_name\"";
-    const char *p = json;
-    while (*p) {
-        const char *k = key; const char *q = p;
-        while (*k && *q == *k) { q++; k++; }
-        if (!*k) { p = q; break; }
-        p++;
-    }
-    if (!*p) return 0;
-    while (*p && *p != ':') p++;
-    if (*p) p++;
-    while (*p == ' ' || *p == '"') p++;
-    if (*p == 'v' || *p == 'V') p++;
-    int n = 0;
-    while (*p && *p != '"' && n < cap - 1) out[n++] = (wchar_t)*p++;
-    out[n] = 0;
-    return n > 0;
-}
+// version compare and the release check live in version.c (so they can be tested)
 
-// compare dotted versions like "2.10" vs "2.4": returns 1 if a > b
-static int ver_gt(const wchar_t *a, const wchar_t *b) {
-    while (*a || *b) {
-        int na = 0, nb = 0;
-        while (*a >= L'0' && *a <= L'9') na = na * 10 + (*a++ - L'0');
-        while (*b >= L'0' && *b <= L'9') nb = nb * 10 + (*b++ - L'0');
-        if (na != nb) return na > nb;
-        if (*a == L'.') a++;
-        if (*b == L'.') b++;
-        if (!*a && !*b) break;
-    }
+// what a trusted release looks like: published by you, exe uploaded by your Actions build
+#define GH_OWNER_A "JimmyUns"
+
+// explain a failed check. Returns 1 if the release can be trusted.
+static int trusted(int r) {
+    if (r == REL_OK) return 1;
+    if (r == REL_BAD_AUTHOR)
+        out(OUT_ERR, L"The latest release wasn't published by " GH_USER L", so I won't install it.");
+    else if (r == REL_BAD_ASSET)
+        out(OUT_ERR, L"The latest loomy.exe wasn't built by GitHub Actions, so I won't install it.");
+    else
+        out(OUT_ERR, L"The latest release has no loomy.exe from the build, so I won't install it.");
+    out(OUT_DIM, L"Something's off on GitHub. Check the releases page before anything else.");
     return 0;
 }
 
@@ -175,13 +158,13 @@ void cmd_version(wchar_t *args) {
         out(OUT_ERR, L"Couldn't reach GitHub to check for the latest.");
         return;
     }
-    wchar_t latest[32];
-    if (!parse_tag(g_json, latest, 32)) { out(OUT_DIM, L"No releases published yet."); return; }
+    char tag[32]; wchar_t latest[32];
+    int rc = release_check(g_json, GH_OWNER_A, tag, 32, latest, 32);
+    if (rc == REL_NO_RELEASE) { out(OUT_DIM, L"No releases published yet."); return; }
 
-    if (ver_gt(latest, LOOMY_VERSION))
-        outf(OUT_ACCENT, L"A newer version is out: v%s. Type /update to get it.", latest);
-    else
-        out(OUT_OK, L"You're up to date.");
+    if (!ver_gt(latest, LOOMY_VERSION)) { out(OUT_OK, L"You're up to date."); return; }
+    if (rc != REL_OK) { outf(OUT_TEXT, L"GitHub shows v%s, but it fails the safety check:", latest); trusted(rc); return; }
+    outf(OUT_ACCENT, L"A newer version is out: v%s. Type /update to get it.", latest);
 }
 
 // ---------------------------------------------------------------- /versionhistory
@@ -295,8 +278,9 @@ void cmd_update(wchar_t *args) {
         return;
     }
 
-    wchar_t latest[32];
-    if (!parse_tag(g_json, latest, 32)) {
+    char tag[32]; wchar_t latest[32];
+    int rc = release_check(g_json, GH_OWNER_A, tag, 32, latest, 32);
+    if (rc == REL_NO_RELEASE) {
         out(OUT_ERR, L"No releases found yet on GitHub.");
         out(OUT_DIM, L"Once the first build is published, update will work.");
         return;
@@ -306,6 +290,7 @@ void cmd_update(wchar_t *args) {
         outf(OUT_OK, L"You're up to date (v%s).", LOOMY_VERSION);
         return;
     }
+    if (!trusted(rc)) return;
 
     outf(OUT_ACCENT, L"New version available: v%s (you have v%s)", latest, LOOMY_VERSION);
     out(OUT_DIM, L"Downloading...");
@@ -326,7 +311,12 @@ void cmd_update(wchar_t *args) {
         out(OUT_ERR, L"Couldn't save the download (no write access here?).");
         return;
     }
-    int dok = https_get(GH_DL_HOST, GH_DL_PATH, L"application/octet-stream", 0, 0, 0, f);
+    // download from the exact release we just checked (not "latest", which could change meanwhile)
+    wchar_t dl[160];
+    s_cpy(dl, GH_DL_BASE, 160);
+    for (int i = 0, n = s_len(dl); tag[i] && n < 140; i++) { dl[n++] = (wchar_t)tag[i]; dl[n] = 0; }
+    s_cat(dl, L"/loomy.exe", 160);
+    int dok = https_get(GH_DL_HOST, dl, L"application/octet-stream", 0, 0, 0, f);
     CloseHandle(f);
 
     // sanity check: a real exe starts with "MZ" and is more than a few KB

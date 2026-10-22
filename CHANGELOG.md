@@ -2,6 +2,13 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.10
+- `/update` only installs a release that **you** published and whose `loomy.exe` was uploaded by **your GitHub Actions build**. Anything else (like a release or exe from another account) is refused, and `/version` warns about it.
+- Fix builds with a letter are understood: 2.9 < 2.9b < 2.9c < 2.10.
+- Fixed `/update` and `/version` freezing when the latest release had a letter (v2.9b).
+- `/update` downloads the exact release it checked instead of whatever is "latest" a moment later.
+- Repo cleanup: removed stray copies of source files from the repo root, and `loomy.exe` is no longer committed (it lives in Releases).
+
 ## v2.9
 - Switching modes now reloads Loomy (clean chat, nothing stuck). Any note, like "Hid work.", carries over to the fresh window.
 - `/reload` keeps you in your current mode. A fresh start still begins in the main mode.

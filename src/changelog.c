@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.10", L"2026-10-22", {
+        L"/update only installs releases you published, built by GitHub Actions.",
+        L"Fix builds like v2.9b are understood (2.9 < 2.9b < 2.9c < 2.10).",
+        L"Fixed /update and /version freezing on a version with a letter.",
+        L"Downloads the exact release it checked, not whatever is newest.",
+        L"Repo cleanup: removed stray copies of files from the root.",
+        0 } },
     { L"2.9", L"2026-10-22", {
         L"Switching modes reloads Loomy: clean chat, nothing left over.",
         L"/reload keeps your current mode.",
