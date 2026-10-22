@@ -174,6 +174,45 @@ int main(void) {
     EXPECT(mode_current() == 1, "mode panel: hidden home isn't listed");
     run(L"/m show home");
 
+    wprintf(L"\n== versions ==\n");
+    {
+        struct { const wchar_t *a, *b; int gt; } V[] = {
+            { L"2.10", L"2.9", 1 },  { L"2.9", L"2.10", 0 },  { L"2.9b", L"2.9", 1 },  { L"2.9", L"2.9b", 0 },
+            { L"2.9c", L"2.9b", 1 }, { L"2.9b", L"2.9c", 0 }, { L"2.10", L"2.9c", 1 }, { L"2.9c", L"2.10", 0 },
+            { L"2.9b", L"2.9b", 0 }, { L"2.9B", L"2.9b", 0 }, { L"2.9.1", L"2.9", 1 }, { L"3.0", L"2.99z", 1 },
+            { L"2.x?!", L"2.9", 0 }, { L"", L"2.9", 0 },      { L"2.9", L"", 1 },      { L"..b..", L"2", 0 },
+        };
+        for (int i = 0; i < (int)(sizeof(V) / sizeof(V[0])); i++) {
+            int r = ver_gt(V[i].a, V[i].b);
+            wprintf(L"   %ls > %ls ? %d\n", V[i].a, V[i].b, r);
+            EXPECT(r == V[i].gt, "ver_gt");
+        }
+    }
+
+    wprintf(L"\n== release check (real v2.9b JSON from GitHub) ==\n");
+    {
+        static char real[256 * 1024], j[256 * 1024];
+        FILE *f = fopen("fixtures/release_v2.9b.json", "rb");
+        size_t n = f ? fread(real, 1, sizeof(real) - 1, f) : 0; if (f) fclose(f); real[n] = 0;
+        char tag[32]; wchar_t ver[32];
+        #define SWAP(from, to) do { strcpy(j, real); char *p = strstr(j, from); if (p) { memmove(p + strlen(to), p + strlen(from), strlen(p + strlen(from)) + 1); memcpy(p, to, strlen(to)); } } while (0)
+        int r = release_check(real, "JimmyUns", tag, 32, ver, 32);
+        wprintf(L"   real: %d tag=%s ver=%ls\n", r, tag, ver);
+        EXPECT(r == REL_OK && !strcmp(tag, "v2.9b") && !wcscmp(ver, L"2.9b"), "real release trusted");
+        EXPECT(release_check(real, "SomeoneElse", tag, 32, ver, 32) == REL_BAD_AUTHOR, "wrong owner refused");
+        SWAP("\"login\": \"JimmyUns\"", "\"login\": \"LoomyBot\"");
+        EXPECT(release_check(j, "JimmyUns", tag, 32, ver, 32) == REL_BAD_AUTHOR, "release made by the bot refused");
+        SWAP("\"login\": \"github-actions[bot]\"", "\"login\": \"LoomyBot\"");
+        EXPECT(release_check(j, "JimmyUns", tag, 32, ver, 32) == REL_BAD_ASSET, "exe uploaded by the bot refused");
+        SWAP("\"name\": \"loomy.exe\"", "\"name\": \"other.exe\"");
+        EXPECT(release_check(j, "JimmyUns", tag, 32, ver, 32) == REL_NO_ASSET, "no loomy.exe refused");
+        SWAP("\"tag_name\": \"v2.9b\"", "\"tag_name\": \"v2.9b&calc\"");
+        EXPECT(release_check(j, "JimmyUns", tag, 32, ver, 32) == REL_NO_RELEASE, "weird tag refused");
+        EXPECT(release_check("{}", "JimmyUns", tag, 32, ver, 32) == REL_NO_RELEASE, "empty json");
+        EXPECT(release_check("{\"tag_name\":\"v3.0\",\"author\":{\"login\":\"JimmyUns\"},\"assets\":[{\"name\":\"loomy.exe\",\"uploader\":{\"login\":\"github-actions[bot]\"}}]}",
+                               "JimmyUns", tag, 32, ver, 32) == REL_OK, "compact json (no spaces) works too");
+    }
+
     wprintf(L"\n%d failure(s)\n", fails);
     return fails != 0;
 }

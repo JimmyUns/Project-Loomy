@@ -1,4 +1,4 @@
-# Loomy 2.9
+# Loomy 2.10
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -26,6 +26,11 @@ Linux: install `mingw-w64`, run `./build.sh`.
 
 ## Add a command
 Open `src/commands.c`, write a function, add one row to `COMMANDS` (name, what it does, bare word, alias, sys flag, modes, usage, max args, function — sys 1 means it needs the `/`). `help`, Tab completion and the usage replies pick it up on their own.
+
+## Versions and updates
+Tags look like `v2.10`. A letter means a fix build of the same version with no new features: `v2.9` → `v2.9b` → `v2.9c`. `LOOMY_VERSION` in `src/loomy.h` must match the tag exactly (minus the `v`).
+
+`/update` only installs a release published by the repo owner whose `loomy.exe` was uploaded by the GitHub Actions build.
 
 ## Changelog
 See `CHANGELOG.md`, or type `/verc` in Loomy to browse what changed in each version.

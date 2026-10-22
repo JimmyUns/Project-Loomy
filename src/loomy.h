@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.9"
+#define LOOMY_VERSION L"2.10"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
@@ -97,6 +97,11 @@ int  web_key(WPARAM vk);
 int  web_char(WPARAM ch);
 void web_click(int x, int y, int dbl);
 void web_wheel(int notches);
+
+// ---------- version.c (version compare + is-this-release-mine check) ----------
+enum { REL_OK, REL_NO_RELEASE, REL_BAD_AUTHOR, REL_BAD_ASSET, REL_NO_ASSET };
+int ver_gt(const wchar_t *a, const wchar_t *b);       // 1 if a is newer: 2.10 > 2.9c > 2.9b > 2.9
+int release_check(const char *json, const char *owner, char *tag, int tagCap, wchar_t *ver, int verCap);
 
 // ---------- settings.c (the config screen) ----------
 int  settings_active(void);
