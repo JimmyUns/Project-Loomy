@@ -9,6 +9,7 @@
 #define HOTKEY_ID    1
 #define TIMER_CLOCK  1
 #define TIMER_NET    2
+#define TIMER_REFOCUS 3
 
 enum { MENU_OPEN = 1, MENU_SETTINGS, MENU_RELOAD, MENU_SHUTDOWN };
 
@@ -24,6 +25,8 @@ int              g_lineH;
 static int       g_dpi = 96;
 static int       g_hotkeyOk, g_dwmBorder, g_fresh;
 static UINT      g_taskbarMsg;
+static int       g_havePos, g_posX, g_posY;   // where it was last hidden (memory only: a reload forgets it)
+static int       g_refocusLeft;
 static NOTIFYICONDATAW g_nid;
 
 COLORREF         g_accent;
@@ -178,6 +181,37 @@ static void layout(void) {
     MoveWindow(g_edit, x, inputTop + (S(52) - g_lineH) / 2, S(WIN_W) - x - S(22), g_lineH, TRUE);
 }
 
+// the default spot: middle of the screen the mouse is on, a bit above center
+static void centered(int *x, int *y) {
+    POINT pt; GetCursorPos(&pt);
+    MONITORINFO mi = { sizeof(mi) };
+    GetMonitorInfoW(MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY), &mi);
+    RECT wa = mi.rcWork;
+    *x = wa.left + (wa.right - wa.left - S(WIN_W)) / 2;
+    *y = wa.top + (wa.bottom - wa.top - S(WIN_H)) * 2 / 9;
+}
+
+// is the remembered spot still usable? (its header has to be on a screen that still exists,
+// so an unplugged monitor can't strand the window off-screen)
+static int pos_ok(int x, int y) {
+    POINT top = { x + S(WIN_W) / 2, y + S(20) };
+    return MonitorFromPoint(top, MONITOR_DEFAULTTONULL) != 0;
+}
+
+void ui_reset_window(void) {
+    g_havePos = 0;
+    if (!IsWindowVisible(g_wnd)) return;
+    int x, y; centered(&x, &y);
+    SetWindowPos(g_wnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE);
+}
+
+// after opening a site, the browser takes focus. Ask for it back a couple of times;
+// Windows refuses on its own if you've clicked somewhere else since, so this never fights you.
+void ui_refocus_soon(void) {
+    g_refocusLeft = 2;
+    SetTimer(g_wnd, TIMER_REFOCUS, 400, 0);
+}
+
 static void show(void) {
     if (cfg_reload_if_changed()) { register_hotkey(0); ui_apply_colors(); }
     if (g_fresh) {                 // it was hidden last time: come back with a clean screen
@@ -187,13 +221,9 @@ static void show(void) {
         reset_history_pos();
     }
 
-    POINT pt; GetCursorPos(&pt);
-    MONITORINFO mi = { sizeof(mi) };
-    GetMonitorInfoW(MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY), &mi);
-    RECT wa = mi.rcWork;
-    int w = S(WIN_W), h = S(WIN_H);
-    int x = wa.left + (wa.right - wa.left - w) / 2;
-    int y = wa.top + (wa.bottom - wa.top - h) * 2 / 9;
+    int x, y, w = S(WIN_W), h = S(WIN_H);
+    if (g_cfg.rememberPos && g_havePos && pos_ok(g_posX, g_posY)) { x = g_posX; y = g_posY; }
+    else centered(&x, &y);
 
     SetWindowPos(g_wnd, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW);
     SetForegroundWindow(g_wnd);
@@ -203,6 +233,11 @@ static void show(void) {
 }
 
 void ui_hide(void) {
+    if (IsWindowVisible(g_wnd)) {          // remember where it was, for "Remember position"
+        RECT r; GetWindowRect(g_wnd, &r);
+        g_posX = r.left; g_posY = r.top; g_havePos = 1;
+    }
+    KillTimer(g_wnd, TIMER_REFOCUS);
     settings_close();
     browser_close();
     net_close();
@@ -272,11 +307,18 @@ static void cleanup(void) {
 
 void ui_quit(void) { cleanup(); ExitProcess(0); }
 
-void ui_restart(void) {
-    wchar_t exe[MAX_PATH], cmd[MAX_PATH + 32] = L"\"";
+// A reload is a brand-new process: clean chat, nothing stuck, window re-centered.
+// It carries the mode across (and an optional note to print) on its command line.
+void ui_restart_to(int mode, const wchar_t *note) {
+    wchar_t exe[MAX_PATH], cmd[MAX_PATH + 600] = L"\"";
     GetModuleFileNameW(0, exe, MAX_PATH);
-    s_cat(cmd, exe, MAX_PATH + 32);
-    s_cat(cmd, L"\" --restarted", MAX_PATH + 32);
+    s_cat(cmd, exe, MAX_PATH + 600);
+    s_cat(cmd, L"\" --restarted --mode ", MAX_PATH + 600);
+    s_cat(cmd, mode_name(mode), MAX_PATH + 600);
+    if (note && *note) {                       // always last: everything after it is the note
+        s_cat(cmd, L" --note ", MAX_PATH + 600);
+        s_cat(cmd, note, MAX_PATH + 600);
+    }
     cleanup();
     STARTUPINFOW si = { sizeof(si) };
     PROCESS_INFORMATION pi;
@@ -285,6 +327,8 @@ void ui_restart(void) {
     }
     ExitProcess(0);
 }
+
+void ui_restart(void) { ui_restart_to(mode_current(), 0); }
 
 // ---------------------------------------------------------------- painting
 void ui_fill(HDC dc, int l, int t, int r, int b, COLORREF c) {
@@ -569,6 +613,10 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     case WM_LOOMY_SHOW: show(); return 0;
     case WM_TIMER:
         if (wp == TIMER_NET) net_tick();
+        else if (wp == TIMER_REFOCUS) {
+            if (IsWindowVisible(w)) { SetForegroundWindow(w); SetFocus(g_edit); }
+            if (--g_refocusLeft <= 0) KillTimer(w, TIMER_REFOCUS);
+        }
         else InvalidateRect(w, 0, FALSE);
         return 0;
 
@@ -610,8 +658,14 @@ void entry(void) {
         ExitProcess(any ? code : 1);
     }
 
-    int silent = s_has(cmdline, L"--silent");
-    int restarted = s_has(cmdline, L"--restarted");
+    // a reload passes "--mode <name>" and maybe "--note <text>" (always last)
+    static wchar_t args[1024];
+    s_cpy(args, cmdline, 1024);
+    const wchar_t *note = 0;
+    for (wchar_t *p = args; *p; p++)
+        if (s_istarts(p, L" --note ")) { *p = 0; note = p + 8; break; }
+    int silent = s_has(args, L"--silent");
+    int restarted = s_has(args, L"--restarted");
 
     // only one Loomy at a time: a second launch just pops up the first one
     g_mutex = CreateMutexW(0, TRUE, L"Loomy.SingleInstance");
@@ -624,6 +678,15 @@ void entry(void) {
     HDC sdc = GetDC(0); g_dpi = GetDeviceCaps(sdc, LOGPIXELSY); ReleaseDC(0, sdc);
 
     cfg_load();
+    for (wchar_t *p = args; *p; p++)
+        if (s_istarts(p, L"--mode ")) {
+            wchar_t name[32]; int i = 0;
+            p += 7;
+            while (*p && *p != L' ' && i < 31) name[i++] = *p++;
+            name[i] = 0;
+            mode_start(mode_find(name));
+            break;
+        }
 
     g_icon = (HICON)LoadImageW(g_inst, MAKEINTRESOURCEW(1), IMAGE_ICON,
                                GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
@@ -670,7 +733,13 @@ void entry(void) {
         out(OUT_DIM, L"Pick another in: /config");
         if (silent) tray_balloon(L"Loomy", L"My hotkey is taken by another app. Click my tray icon to open me.");
     }
-    if (restarted) out(OUT_OK, L"Reloaded. Fresh as new.");
+    if (note && *note) {                       // e.g. "Switched to work mode."
+        static wchar_t lines[600];
+        s_cpy(lines, note, 600);
+        for (wchar_t *p = lines; *p; p++) if (*p == L'|') *p = L'\n';
+        out(OUT_OK, lines);
+    }
+    else if (restarted) out(OUT_OK, L"Reloaded. Fresh as new.");
     if (!silent || !g_hotkeyOk) show();
 
     MSG msg;

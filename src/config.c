@@ -16,6 +16,7 @@ static void set_defaults(void) {
     g_cfg.accent = RGB(0xA8, 0x55, 0xF7);
     g_cfg.modeMain = 0;
     g_cfg.modeHidden = 0;
+    g_cfg.rememberPos = 0;
 }
 
 // never let every mode be hidden, and never let main be a hidden one
@@ -53,6 +54,8 @@ static void parse(wchar_t *text) {
             else if (s_ieq(k, L"name")) s_cpy(g_cfg.name, v, 64);
             else if (s_ieq(k, L"accent") && s_hex(v, &hex))
                 g_cfg.accent = RGB((hex >> 16) & 255, (hex >> 8) & 255, hex & 255);
+            else if (s_ieq(k, L"remember_position"))
+                g_cfg.rememberPos = s_ieq(v, L"on") || s_ieq(v, L"1") || s_ieq(v, L"true") || s_ieq(v, L"yes");
             else if (s_ieq(k, L"mode_main")) {
                 int m = mode_find(v);
                 if (m >= 0) g_cfg.modeMain = m;
@@ -83,10 +86,10 @@ void cfg_save(void) {
     wsprintfW(text,
         L"# Loomy settings. Easiest way to change them: type /config or /mode in Loomy.\r\n"
         L"hotkey = %s\r\nname = %s\r\naccent = #%02X%02X%02X\r\n"
-        L"mode_main = %s\r\nmode_hidden = %s\r\n",
+        L"remember_position = %s\r\nmode_main = %s\r\nmode_hidden = %s\r\n",
         g_cfg.hotkey, g_cfg.name,
         GetRValue(g_cfg.accent), GetGValue(g_cfg.accent), GetBValue(g_cfg.accent),
-        mode_name(g_cfg.modeMain), hidden);
+        g_cfg.rememberPos ? L"on" : L"off", mode_name(g_cfg.modeMain), hidden);
     char utf8[1024];
     int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), 0, 0) - 1;
     HANDLE f = CreateFileW(g_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);

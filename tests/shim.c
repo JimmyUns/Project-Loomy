@@ -71,7 +71,16 @@ int g_hidden;
 void ui_hide(void) { g_hidden = 1; }
 void ui_clear(void) {}
 void ui_quit(void) {}
-void ui_restart(void) {}
+// a real reload exits and starts a new process; here we note it and "start" in that mode
+int g_restarts; wchar_t g_restartNote[600];
+void ui_restart_to(int mode, const wchar_t *note) {
+    g_restarts++; wcscpy(g_restartNote, note ? note : L"");
+    out(OUT_OK, L"[reload]"); if (note && *note) { wchar_t t[700]; swprintf(t, 700, L"[note: %ls]", note); out(OUT_DIM, t); }
+    mode_start(mode);
+}
+void ui_restart(void) { ui_restart_to(mode_current(), 0); }
+int g_resets; void ui_reset_window(void) { g_resets++; }
+int g_refocus; void ui_refocus_soon(void) { g_refocus++; }
 static const char *KIND[] = { "TXT", "DIM", "ACC", "OK ", "ERR", ">  " };
 void out(int kind, const wchar_t *t) { swprintf(g_out[g_nout++ % 400], 1100, L"%s %ls", KIND[kind], t); }
 void outf(int kind, const wchar_t *f, ...) { wchar_t b[1100]; va_list ap; va_start(ap, f); wvsprintfW(b, f, ap); va_end(ap); out(kind, b); }

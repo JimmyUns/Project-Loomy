@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.8"
+#define LOOMY_VERSION L"2.9"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
@@ -49,7 +49,10 @@ void ui_clear(void);
 void ui_set_timer_1s(int on);
 void ui_hide(void);
 void ui_quit(void);
-void ui_restart(void);
+void ui_restart(void);                                // reload, staying in the current mode
+void ui_restart_to(int mode, const wchar_t *note);    // reload into a mode; note ('|' = new line) shows after
+void ui_reset_window(void);                           // forget the remembered spot, re-center
+void ui_refocus_soon(void);                           // grab focus back after a browser steals it
 
 // ---------- commands.c ----------
 void cmd_run(wchar_t *line);
@@ -79,6 +82,7 @@ int  mode_key(WPARAM vk);
 int  mode_char(WPARAM ch);
 void mode_click(int x, int y, int dbl);
 void mode_wheel(int notches);
+void mode_start(int m);                               // a reload told us which mode to start in
 
 // ---------- web.c (saved websites, per mode) ----------
 void cmd_web(wchar_t *args);
@@ -86,7 +90,7 @@ void cmd_webconfig(wchar_t *args);
 void web_complete(const wchar_t *partial);
 void webconfig_complete(wchar_t **words, int n, const wchar_t *partial);
 int  web_active(void);
-void web_open(void);
+void web_open(int many);                              // many = stay open after each pick
 void web_close(void);
 void web_paint(HDC dc, RECT area);
 int  web_key(WPARAM vk);
@@ -143,6 +147,7 @@ typedef struct {
     COLORREF accent;
     int      modeMain;      // the mode Loomy starts in
     unsigned modeHidden;    // bit per mode: 1 = hidden from the /mode list
+    int      rememberPos;   // 1 = show up where it was last hidden
 } Config;
 extern Config g_cfg;
 

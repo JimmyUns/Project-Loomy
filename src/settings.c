@@ -2,7 +2,7 @@
 // Up/Down picks a row, Enter changes it, Esc goes back. Everything saves instantly.
 #include "loomy.h"
 
-enum { ROW_HOTKEY, ROW_NAME, ROW_ACCENT, ROW_STARTUP, NROWS };
+enum { ROW_HOTKEY, ROW_NAME, ROW_ACCENT, ROW_STARTUP, ROW_POSITION, NROWS };
 enum { EDIT_NONE, EDIT_NAME, EDIT_ACCENT };
 
 static int  g_active, g_sel, g_editing, g_capturing;
@@ -105,6 +105,11 @@ static void activate(int row) {
     } else if (row == ROW_STARTUP) {
         startup_set(!startup_get());
         msg(OUT_OK, startup_get() ? L"I'll start quietly with Windows." : L"I won't start with Windows.");
+    } else if (row == ROW_POSITION) {
+        g_cfg.rememberPos = !g_cfg.rememberPos;
+        cfg_save();
+        msg(OUT_OK, g_cfg.rememberPos ? L"I'll come back where you last hid me. /resetwindow re-centers."
+                                      : L"I'll always open in the middle of the screen.");
     }
     ui_redraw();
 }
@@ -196,7 +201,7 @@ int settings_key(WPARAM vk) {
             set_accent(PRESETS[i]);
             g_msg[0] = 0;
             ui_redraw();
-        } else if (g_sel == ROW_STARTUP) activate(ROW_STARTUP);
+        } else if (g_sel == ROW_STARTUP || g_sel == ROW_POSITION) activate(g_sel);
         return 1;
     }
     case VK_ESCAPE: settings_close(); return 1;
@@ -219,7 +224,7 @@ void settings_click(int x, int y) {
 
 // ---------------------------------------------------------------- drawing
 void settings_paint(HDC dc, RECT a) {
-    static const wchar_t *labels[NROWS] = { L"Hotkey", L"Your name", L"Accent color", L"Start with Windows" };
+    static const wchar_t *labels[NROWS] = { L"Hotkey", L"Your name", L"Accent color", L"Start with Windows", L"Remember position" };
     int rowH = g_lineH + S(16);
     int y = a.top;
     int valueX = a.left + S(240);
@@ -262,6 +267,11 @@ void settings_paint(HDC dc, RECT a) {
         case ROW_STARTUP:
             if (startup_get()) ui_text(dc, valueX, ty, L"on", C_OK);
             else ui_text(dc, valueX, ty, L"off", C_DIM);
+            break;
+        case ROW_POSITION:
+            if (g_cfg.rememberPos) ui_text(dc, valueX, ty, L"on", C_OK);
+            else ui_text(dc, valueX, ty, L"off", C_DIM);
+            if (sel) ui_text(dc, valueX + S(50), ty, L"open where I was last hidden", C_DIM);
             break;
         }
         y += rowH + S(4);

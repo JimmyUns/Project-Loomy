@@ -3,7 +3,7 @@
 #include "../src/loomy.h"
 extern wchar_t g_out[400][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
-extern int g_hidden;
+extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
 static int last_out;
 
@@ -42,7 +42,7 @@ int main(void) {
     run(L"/verc v2.6 extra");   EXPECT(saw(L"Usage: /verc [version]"), "verc extra");
     run(L"/verc v2.6");         EXPECT(saw(L"changelog_open 'v2.6'"), "verc ok");
     run(L"rb now");             EXPECT(saw(L"Usage: rb"), "rb extra");
-    run(L"web a b");            EXPECT(saw(L"Usage: web [alias]"), "web extra");
+    run(L"web a b");            EXPECT(saw(L"Usage: web [alias | many]"), "web extra");
     run(L"/m blah");            EXPECT(saw(L"Usage: /m [switch|hide|show|main <mode>]"), "m bad sub");
     run(L"/m switch");          EXPECT(saw(L"Usage: /m switch <home|work>"), "m switch no arg");
     run(L"/m switch work now"); EXPECT(saw(L"Usage: /m switch <home|work>"), "m switch extra");
@@ -56,18 +56,21 @@ int main(void) {
 
     wprintf(L"\n== modes ==\n");
     EXPECT(mode_current() == 0, "starts home");
-    run(L"/m switch work");     EXPECT(mode_current() == 1, "switched work");
-    run(L"/m switch work");     EXPECT(saw(L"Already"), "already");
+    run(L"/m switch work");     EXPECT(mode_current() == 1 && g_restarts == 1 && !wcscmp(g_restartNote, L"Switched to work mode."), "switch reloads into work");
+    run(L"/m switch work");     EXPECT(saw(L"Already") && g_restarts == 1, "already: no reload");
     run(L"/m switch office");   EXPECT(saw(L"No mode called 'office'"), "unknown mode");
     run(L"/m main work");       EXPECT(g_cfg.modeMain == 1, "main work");
     run(L"/m hide work");       EXPECT(mode_current() == 0 && g_cfg.modeMain == 0 && mode_is_hidden(1), "hide current+main moves both");
+    EXPECT(!wcscmp(g_restartNote, L"Hid work.|It was the main mode, so home is main now.|Switched to home mode."), "hide-current note survives the reload");
     run(L"/m hide home");       EXPECT(saw(L"at least one") && !mode_is_hidden(0), "can't hide last");
     run(L"/m switch work");     EXPECT(saw(L"hidden. Show it first"), "switch to hidden");
     run(L"/m main work");       EXPECT(saw(L"hidden. Show it first"), "main hidden");
-    run(L"/m show work");       EXPECT(!mode_is_hidden(1) && mode_current() == 0, "show doesn't move");
+    { int r = g_restarts;
+    run(L"/m show work");       EXPECT(!mode_is_hidden(1) && mode_current() == 0 && g_restarts == r, "show doesn't move or reload"); }
     run(L"/m show work");       EXPECT(saw(L"isn't hidden"), "show twice");
     wprintf(L"   loomy.cfg after hide/show:\n"); cat("/tmp/loomytest\\loomy.cfg");
-    run(L"/m hide work");
+    { int r = g_restarts;
+    run(L"/m hide work");       EXPECT(saw(L"Hid work.") && g_restarts == r, "hiding a non-current mode doesn't reload"); }
     cfg_load();                 EXPECT(mode_is_hidden(1) && g_cfg.modeMain == 0, "hidden survives reload");
     run(L"/m show work");
     run(L"/m main work");
@@ -84,11 +87,16 @@ int main(void) {
 
     wprintf(L"\n== web (home mode) ==\n");
     run(L"web");                // empty panel opens
+    run(L"/resetwindow");       EXPECT(g_resets == 1 && saw(L"middle"), "resetwindow");
+    run(L"/resetwindow now");   EXPECT(saw(L"Usage: /resetwindow (nothing"), "resetwindow strict");
+    run(L"/reload");            EXPECT(g_restarts > 0 && !g_restartNote[0] && mode_current() == 0, "reload keeps mode, no note");
     EXPECT(web_active(), "panel open"); web_close();
     run(L"web yt");             EXPECT(saw(L"No site called 'yt' in home mode"), "missing");
     run(L"/webconfig add yt youtube.com");        EXPECT(saw(L"Saved yt"), "add");
     run(L"/webconfig add yt other.com");          EXPECT(saw(L"already exists"), "dup add");
     run(L"/webconfig add true x.com");            EXPECT(saw(L"keep flag"), "reserved alias");
+    run(L"/webconfig add many x.com");            EXPECT(saw(L"web many"), "many is reserved");
+    run(L"web many now");                         EXPECT(saw(L"Usage: web [alias | many]"), "web usage");
     run(L"/webconfig add fb https://facebook.com/");
     run(L"/webconfig add ig http://instagram.com");
     run(L"/webconfig add YT2 www.youtube.com/feed");
@@ -137,17 +145,28 @@ int main(void) {
     tab(L"/webconfig ren", L"/webconfig rename ");
     tab(L"/webconfig info me", L"/webconfig info media ");
     tab(L"web T", L"web TUBE ");
+    tab(L"web ma", 0);
     tab(L"/webc batch x media f", 0);
     tab(L"/webc batch x media fa", L"/webc batch x media false ");
     tab(L"we", L"web ");
 
     wprintf(L"\n== panels ==\n");
-    g_nopened = 0; web_open(); web_key(VK_RETURN);
+    g_nopened = 0; web_open(0); web_key(VK_RETURN);
     EXPECT(g_nopened == 4 && !web_active(), "web panel: first A-Z is 'all' (4 sites), panel closes");
-    g_nopened = 0; web_open(); web_key(VK_DOWN); web_key(VK_RETURN);
+    g_nopened = 0; web_open(0); web_key(VK_DOWN); web_key(VK_RETURN);
     EXPECT(g_nopened == 1 && !wcscmp(g_opened[0], L"https://facebook.com/"), "web panel: second is fb");
-    g_nopened = 0; web_open(); web_char(L't'); web_key(VK_RETURN);
+    g_nopened = 0; web_open(0); web_char(L't'); web_key(VK_RETURN);
     EXPECT(g_nopened == 1 && !wcscmp(g_opened[0], L"https://youtu.be"), "web panel: letter jump to TUBE");
+    // web many: stays open, marks rows, asks for focus back; plain web hides
+    g_nopened = 0; g_refocus = 0; g_hidden = 0;
+    web_open(1); web_key(VK_RETURN); web_key(VK_DOWN); web_key(VK_RETURN);
+    EXPECT(web_active() && g_nopened == 5 && g_refocus == 2 && !g_hidden, "web many: two picks, panel stays, Loomy stays");
+    web_key(VK_ESCAPE); EXPECT(!web_active(), "web many: Esc closes");
+    run(L"web many");           EXPECT(web_active(), "web many opens the panel"); web_close();
+    // remember position setting persists
+    g_cfg.rememberPos = 1; cfg_save(); g_cfg.rememberPos = 0; cfg_load();
+    EXPECT(g_cfg.rememberPos == 1, "remember_position saved + loaded");
+    g_cfg.rememberPos = 0; cfg_save();
     mode_open(); mode_key(VK_DOWN); mode_key(VK_RETURN);
     EXPECT(mode_current() == 1 && !mode_active(), "mode panel: Down+Enter switches to work");
     run(L"/m hide home");

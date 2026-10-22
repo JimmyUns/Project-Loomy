@@ -3,7 +3,8 @@
 //   /m switch|hide|show|main <mode>
 //
 // Saved in loomy.cfg: which mode is main (Loomy starts in it) and which ones are hidden.
-// The current mode only lives in memory, so every fresh start (or /reload) begins in main.
+// The current mode only lives in memory: a fresh start begins in main, and a reload
+// (/reload, or a mode switch, which always reloads) passes the mode along on its command line.
 #include "loomy.h"
 
 static const wchar_t *NAMES[NMODES] = { L"home", L"work" };
@@ -40,10 +41,15 @@ int mode_current(void) {
     return g_cur;
 }
 
-static void switch_to(int m) {
-    g_cur = m;
-    outf(OUT_OK, L"Switched to %s mode.", NAMES[m]);
-    ui_redraw();                      // the header shows the mode
+void mode_start(int m) { if (m >= 0 && m < NMODES) g_cur = m; }
+
+// Switching modes reloads Loomy: clean chat, nothing left over from the old mode.
+// before: lines to show after the reload ('|' separated), or 0.
+static void switch_to(int m, const wchar_t *before) {
+    wchar_t note[300] = L"";
+    if (before && *before) { s_cpy(note, before, 300); s_cat(note, L"|", 300); }
+    s_cat(note, L"Switched to ", 300); s_cat(note, NAMES[m], 300); s_cat(note, L" mode.", 300);
+    ui_restart_to(m, note);
 }
 
 // ---------------------------------------------------------------- the /mode command
@@ -72,20 +78,25 @@ void cmd_mode(wchar_t *args) {
     if (sub == 1) {                                   // switch
         if (mode_is_hidden(m)) { outf(OUT_ERR, L"%s is hidden. Show it first: %s show %s", name, typed, name); return; }
         if (m == mode_current()) { outf(OUT_DIM, L"Already in %s mode.", name); return; }
-        switch_to(m);
+        switch_to(m, 0);
     }
     else if (sub == 2) {                              // hide
         if (mode_is_hidden(m)) { outf(OUT_DIM, L"%s is already hidden.", name); return; }
         if (visible_count() <= 1) { outf(OUT_ERR, L"Can't hide %s, at least one mode has to stay visible.", name); return; }
         int wasCurrent = m == mode_current();
+        wchar_t said[200];
+        wsprintfW(said, L"Hid %s.", name);
         g_cfg.modeHidden |= 1u << m;
-        outf(OUT_OK, L"Hid %s.", name);
         if (g_cfg.modeMain == m) {
             g_cfg.modeMain = next_visible(m);
-            outf(OUT_DIM, L"It was the main mode, so %s is main now.", NAMES[g_cfg.modeMain]);
+            wchar_t more[96];
+            wsprintfW(more, L"|It was the main mode, so %s is main now.", NAMES[g_cfg.modeMain]);
+            s_cat(said, more, 200);
         }
         cfg_save();
-        if (wasCurrent) switch_to(next_visible(m));
+        if (wasCurrent) { switch_to(next_visible(m), said); return; }   // reloads; the note carries the news
+        for (wchar_t *p = said; *p; p++) if (*p == L'|') *p = L'\n';
+        out(OUT_OK, said);
     }
     else if (sub == 3) {                              // show
         if (!mode_is_hidden(m)) { outf(OUT_DIM, L"%s isn't hidden.", name); return; }
@@ -129,7 +140,7 @@ static void pick(void) {
     int m = g_list[g_sel];
     mode_close();
     if (m == mode_current()) outf(OUT_DIM, L"Already in %s mode.", NAMES[m]);
-    else switch_to(m);
+    else switch_to(m, 0);
 }
 
 static void move(int d) {

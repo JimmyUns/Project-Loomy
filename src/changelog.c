@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.9", L"2026-10-22", {
+        L"Switching modes reloads Loomy: clean chat, nothing left over.",
+        L"/reload keeps your current mode.",
+        L"New setting: Remember position (show up where you last hid it).",
+        L"New /resetwindow: move Loomy back to the middle.",
+        L"New web many: the list stays open so you can open several sites.",
+        0 } },
     { L"2.8", L"2026-10-21", {
         L"Modes: home and work. /mode (/m) to switch, hide, show, pick main.",
         L"The header shows which mode you're in.",

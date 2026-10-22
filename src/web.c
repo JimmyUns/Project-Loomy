@@ -1,6 +1,7 @@
 // web.c - saved websites you open by alias. Each mode has its own list, stored in
 // %APPDATA%\Loomy\web-<mode>.txt, so "docs" can be one site at work and another at home.
 //   web                          list panel: Up/Down, Enter opens, Esc closes
+//   web many                     same list, but it stays open so you can open several
 //   web <alias>                  open it (a batch opens all its sites)
 //   /webconfig add|remove|batch|info|rename|update ...
 //
@@ -70,16 +71,20 @@ static void site_remove(int i) {
 static const wchar_t *url_of(const Site *s, int k) { return g_pool[s->url[k]]; }
 
 // aliases: no spaces (the input splits on them anyway), up to 31 chars, and not
-// "true"/"false", because those are batch's keep flag
+// "true"/"false" (batch's keep flag) or "many" (web many)
+static int reserved(const wchar_t *a) { return s_ieq(a, L"true") || s_ieq(a, L"false") || s_ieq(a, L"many"); }
+
 static int alias_ok(const wchar_t *a) {
     int n = s_len(a);
     if (n < 1 || n >= ALIAS_LEN) return 0;
     for (int i = 0; i < n; i++) if (a[i] < 33) return 0;
-    return !s_ieq(a, L"true") && !s_ieq(a, L"false");
+    return !reserved(a);
 }
 
 static void alias_bad(const wchar_t *a) {
-    if (s_ieq(a, L"true") || s_ieq(a, L"false"))
+    if (s_ieq(a, L"many"))
+        outf(OUT_ERR, L"'%s' can't be an alias, web uses it (web many).", a);
+    else if (reserved(a))
         outf(OUT_ERR, L"'%s' can't be an alias, batch uses it as the keep flag.", a);
     else
         outf(OUT_ERR, L"'%s' is too long for an alias (31 characters max).", a);
@@ -233,7 +238,8 @@ static int save(void) {
 }
 
 // ---------------------------------------------------------------- opening
-static void launch(int i) {
+// stay = 1 keeps Loomy up (web many); returns 1 if it opened
+static int launch(int i, int stay) {
     Site *s = &g_s[i];
     int failed = 0;
     for (int k = 0; k < s->n; k++) {
@@ -244,20 +250,23 @@ static void launch(int i) {
     if (failed == s->n) {
         short_url(url_of(s, 0), su, 60);
         outf(OUT_ERR, L"Windows couldn't open %s.", s->batch ? s->alias : su);
-        return;
+        return 0;
     }
     if (s->batch) outf(OUT_OK, L"Opening %s (%d sites)", s->alias, s->n);
     else { short_url(url_of(s, 0), su, 60); outf(OUT_OK, L"Opening %s", su); }
-    if (failed) outf(OUT_ERR, L"%d of them didn't open.", failed);
+    if (failed) { outf(OUT_ERR, L"%d of them didn't open.", failed); return 0; }
+    if (stay) ui_refocus_soon();
     else ui_hide();
+    return 1;
 }
 
 // ---------------------------------------------------------------- web
 void cmd_web(wchar_t *args) {
     load();
-    if (!*args) { web_open(); return; }
+    if (!*args) { web_open(0); return; }
+    if (s_ieq(args, L"many")) { web_open(1); return; }
     int i = find(args);
-    if (i >= 0) { launch(i); return; }
+    if (i >= 0) { launch(i, 0); return; }
     outf(OUT_ERR, L"No site called '%s' in %s mode.", args, cur_mode());
     out(OUT_DIM, g_n ? L"Type web to see them all." : L"Add one with: /webconfig add <alias> <site>");
 }
@@ -457,12 +466,15 @@ void webconfig_complete(wchar_t **words, int n, const wchar_t *partial) {
 }
 
 // ---------------------------------------------------------------- the list panel
-static int g_active, g_sel, g_top, g_vis = 8, g_listTop, g_rowStep;
-static int g_order[MAX_SITES];
+static int  g_active, g_many, g_sel, g_top, g_vis = 8, g_listTop, g_rowStep;
+static int  g_order[MAX_SITES];
+static char g_opened[MAX_SITES];          // web many: which rows you've opened this time
 
 int web_active(void) { return g_active; }
 
-void web_open(void) {
+void web_open(int many) {
+    g_many = many;
+    memset(g_opened, 0, sizeof(g_opened));
     settings_close();
     load();
     for (int i = 0; i < g_n; i++) {                        // A-Z by alias
@@ -505,8 +517,13 @@ static void move(int d) {
 static void open_selected(void) {
     if (!g_n) return;
     int i = g_order[g_sel];
+    if (g_many) {
+        if (launch(i, 1)) { g_opened[g_sel] = 1; ui_redraw(); }
+        else web_close();                     // show the error in the chat
+        return;
+    }
     web_close();
-    launch(i);
+    launch(i, 0);
 }
 
 int web_key(WPARAM vk) {
@@ -547,7 +564,8 @@ void web_paint(HDC dc, RECT a) {
     int y = a.top;
     int w = ui_text(dc, a.left, y, L"Websites", g_accent);
     wchar_t sub[48]; wsprintfW(sub, L"%s mode", cur_mode());
-    ui_text(dc, a.left + w + S(16), y, sub, C_DIM);
+    int sw = ui_text(dc, a.left + w + S(16), y, sub, C_DIM);
+    if (g_many) ui_text(dc, a.left + w + S(16) + sw + S(12), y, L"\x00B7 many", g_accent);
     y += g_lineH + S(14);
 
     int rowH = g_lineH + S(10);
@@ -587,7 +605,13 @@ void web_paint(HDC dc, RECT a) {
             if (k) s_cat(line, L", ", 512);
             s_cat(line, su, 512);
         }
-        RECT ur = { x, ty, a.right - S(10), ty + g_lineH };
+        int right = a.right - S(10);
+        if (g_opened[r]) {                    // web many: mark what you've opened
+            SIZE tz; GetTextExtentPoint32W(dc, L"opened", 6, &tz);
+            ui_text(dc, right - tz.cx, ty, L"opened", C_OK);
+            right -= tz.cx + S(14);
+        }
+        RECT ur = { x, ty, right, ty + g_lineH };
         SetTextColor(dc, sel ? C_TEXT : C_DIM);
         DrawTextW(dc, line, -1, &ur, DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
         y += g_rowStep;
@@ -600,6 +624,7 @@ void web_paint(HDC dc, RECT a) {
         ui_text(dc, a.right - sz.cx, a.bottom - S(16), pos, C_DIM);
     }
     SelectObject(dc, g_fontSmall);
-    ui_text(dc, a.left, a.bottom - S(16), L"\x2191\x2193 choose    Enter open    Esc close", C_DIM);
+    ui_text(dc, a.left, a.bottom - S(16), g_many ? L"\x2191\x2193 choose    Enter open (I stay open)    Esc close"
+                                                 : L"\x2191\x2193 choose    Enter open    Esc close", C_DIM);
     SelectObject(dc, g_font);
 }

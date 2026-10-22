@@ -104,6 +104,7 @@ static void c_exe(wchar_t *args) {
 static void c_clear(wchar_t *args)    { ui_clear(); }
 static void c_hide(wchar_t *args)     { ui_hide(); }
 static void c_reload(wchar_t *args)   { ui_restart(); }
+static void c_resetwin(wchar_t *args) { ui_reset_window(); out(OUT_OK, L"Back in the middle."); }
 static void c_shutdown(wchar_t *args) { ui_quit(); }
 
 // ---------------------------------------------------------------- the list
@@ -115,7 +116,7 @@ static const Command COMMANDS[] = {
 //    name            about                                   type        alias               sys modes usage                              maxargs    fn
     { L"Help",         L"show this list",                     L"help",     0,                  0, ALL, 0,                                  0,         c_help },
     { L"Loomy's Path", L"browse your folders",                L"lp",       0,                  0, ALL, L"[folder name]",                   ARGS_TEXT, c_lp },
-    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias]",                         1,         c_web },
+    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web },
     { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net },
     { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
@@ -125,6 +126,7 @@ static const Command COMMANDS[] = {
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
     { L"Reload",       L"restart Loomy fresh",                L"reload",   0,                  1, ALL, 0,                                  0,         c_reload },
+    { L"Reset Window", L"move Loomy back to the middle",      L"resetwindow", 0,               1, ALL, 0,                                  0,         c_resetwin },
     { L"Update",       L"get the latest version from GitHub", L"update",   0,                  1, ALL, 0,                                  0,         c_update },
     { L"Version",      L"show version + check for updates",   L"version",  L"ver",             1, ALL, 0,                                  0,         c_version },
     { L"Versions",     L"list all versions and dates",        L"vh",       L"versionhistory",  1, ALL, 0,                                  0,         c_vhist },
@@ -257,7 +259,7 @@ static void complete_args(wchar_t **words, int n, const wchar_t *partial) {
     wchar_t *w0 = words[0];
     const Command *c = find_command(w0[0] == SYS_PREFIX ? w0 + 1 : w0);
     if (!c) return;
-    if (c->fn == c_web && n == 1) web_complete(partial);
+    if (c->fn == c_web && n == 1) { complete_add(L"many", partial); web_complete(partial); }
     else if (c->fn == c_webconfig) webconfig_complete(words, n, partial);
     else if (c->fn == c_mode) {
         if (n == 1) for (int i = 0; i < 4; i++) complete_add(MODE_SUBS[i], partial);
