@@ -92,6 +92,8 @@ int main(void) {
     run(L"/ver");               EXPECT(saw(L"don't know '/ver'"), "ver unknown in home");
     run(L"/vh");                EXPECT(saw(L"don't know '/vh'"), "vh unknown in home");
     run(L"/verc v2.6");         EXPECT(saw(L"don't know '/verc'") && !saw(L"changelog_open"), "verc unknown in home");
+    run(L"github");             EXPECT(saw(L"don't know 'github'") && g_nopened == 0, "github unknown in home");
+    run(L"gh");                 EXPECT(saw(L"don't know 'gh'") && g_nopened == 0, "gh unknown in home");
     run(L"help");               EXPECT(!saw(L"/update") && !saw(L"/verc"), "help hides core commands");
     tab(L"/up", L"/up");
     tab(L"/verc ", L"/verc ");
@@ -104,6 +106,13 @@ int main(void) {
     run(L"/verc v2.6");         EXPECT(saw(L"changelog_open 'v2.6'"), "verc ok");
     run(L"help");               EXPECT(saw(L"/update") && saw(L"/verc") && saw(L"/mode  /m") && saw(L"core mode"), "help in core");
     tab(L"/up", L"/update ");
+    g_hidden = 0;
+    run(L"github");             EXPECT(g_nopened == 1 && !wcscmp(g_opened[0], L"https://github.com/JimmyUns/Project-Loomy") && g_hidden, "github opens the repo, hides");
+    g_hidden = 0;
+    run(L"gh");                 EXPECT(g_nopened == 1 && g_hidden, "gh alias");
+    run(L"github now");         EXPECT(saw(L"Usage: github") && g_nopened == 0, "github takes nothing");
+    run(L"/github");            EXPECT(saw(L"no slash") && g_nopened == 0, "github is plain");
+    tab(L"git", L"github ");
     run(L"/m hide core");       EXPECT(mode_current() == 0 && mode_is_hidden(2), "hide current core goes to home, not past it");
     run(L"/m show core");
     run(L"/m main core");

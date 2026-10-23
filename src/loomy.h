@@ -12,7 +12,9 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.11"
+#define LOOMY_VERSION L"2.12"
+#define GH_USER L"JimmyUns"          // the repo /update and `github` use
+#define GH_REPO L"Project-Loomy"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)

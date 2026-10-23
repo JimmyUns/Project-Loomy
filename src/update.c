@@ -10,8 +10,6 @@
 
 // ---- where your builds live. CHANGE "YOUR_USERNAME" to your GitHub username. ----
 // Repo name here must match what you create on GitHub (we're using Project-Loomy).
-#define GH_USER L"JimmyUns"
-#define GH_REPO L"Project-Loomy"
 
 #define GH_API_HOST L"api.github.com"
 #define GH_API_PATH L"/repos/" GH_USER L"/" GH_REPO L"/releases/latest"
