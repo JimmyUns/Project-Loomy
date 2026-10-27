@@ -16,7 +16,7 @@ If you type a command wrong (extra or missing words), Loomy replies with its usa
 
 Every time Loomy hides, it comes back with a clean screen.
 
-`display` (or `dp`) switches your screens like Win+P: pick from the list, or type `display extend`, `second`, `pc` or `duplicate`.
+`display` (or `dp`) switches your screens like Win+P: pick from the list, or type `display extend`, `second`, `pc` or `duplicate`. `dp off` puts the screens to standby without changing the layout (any key or mouse move wakes them).
 
 Keys: **Tab** completes (commands, folder names after `lp`, site aliases, modes), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
 

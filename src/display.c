@@ -1,23 +1,28 @@
 // display.c - the `display` command: switch how your screens are used, like Win+P.
 //   display                      picker panel: Up/Down, Enter switches, Esc closes
-//   display extend|second|pc|duplicate
+//   display extend|second|pc|duplicate|off
 //
 // Uses the same Windows call Win+P does (SetDisplayConfig with a topology), so no admin,
 // and Windows remembers each layout's resolution/arrangement on its own.
+// "off" isn't a layout: it puts the screens to standby (like their power button), so the
+// layout never changes and any key or mouse move wakes them in the same style.
 #include "loomy.h"
 
-#define NLAYOUTS 4
+#define NLAYOUTS 4          // real Win+P layouts
+#define ROW_OFF  4          // the extra "Screens off" row
+#define NROWS    5
 
 // list order is on purpose: the two you use most come first
-static const wchar_t *WORD_[NLAYOUTS]  = { L"extend", L"second", L"pc", L"duplicate" };
-static const wchar_t *LABEL[NLAYOUTS]  = { L"Extend", L"Second screen only", L"PC screen only", L"Duplicate" };
-static const wchar_t *ABOUT[NLAYOUTS]  = { L"both screens, one big desktop", L"just the extra screen",
-                                           L"just the main screen", L"same picture on both" };
+static const wchar_t *WORD_[NROWS]  = { L"extend", L"second", L"pc", L"duplicate", L"off" };
+static const wchar_t *LABEL[NROWS]  = { L"Extend", L"Second screen only", L"PC screen only", L"Duplicate", L"Screens off" };
+static const wchar_t *ABOUT[NROWS]  = { L"both screens, one big desktop", L"just the extra screen",
+                                        L"just the main screen", L"same picture on both",
+                                        L"any key or mouse wakes them" };
 static const UINT32   TOPO[NLAYOUTS]   = { SDC_TOPOLOGY_EXTEND, SDC_TOPOLOGY_EXTERNAL,
                                            SDC_TOPOLOGY_INTERNAL, SDC_TOPOLOGY_CLONE };
 
 static int find_layout(const wchar_t *w) {
-    for (int i = 0; i < NLAYOUTS; i++) if (s_ieq(WORD_[i], w)) return i;
+    for (int i = 0; i < NROWS; i++) if (s_ieq(WORD_[i], w)) return i;
     return -1;
 }
 
@@ -41,6 +46,12 @@ static int current_layout(void) {
 
 // returns 1 if Windows switched
 static int apply(int i) {
+    if (i == ROW_OFF) {
+        out(OUT_OK, L"Screens off.");
+        ui_hide();
+        ui_screens_off_soon();   // after a beat, so letting go of Enter doesn't wake them
+        return 1;
+    }
     if (i == current_layout()) { outf(OUT_DIM, L"Already on %s.", LABEL[i]); return 0; }
     LONG rc = SetDisplayConfig(0, 0, 0, 0, SDC_APPLY | TOPO[i]);
     if (rc != ERROR_SUCCESS) {
@@ -61,14 +72,14 @@ void cmd_display(wchar_t *args) {
     int i = find_layout(w[0]);
     if (i < 0) {
         outf(OUT_ERR, L"No display layout called '%s'.", w[0]);
-        cmd_usage(L"[extend|second|pc|duplicate]");
+        cmd_usage(L"[extend|second|pc|duplicate|off]");
         return;
     }
     apply(i);
 }
 
 void display_complete(const wchar_t *partial) {
-    for (int i = 0; i < NLAYOUTS; i++) complete_add(WORD_[i], partial);
+    for (int i = 0; i < NROWS; i++) complete_add(WORD_[i], partial);
 }
 
 // ---------------------------------------------------------------- the picker panel
@@ -100,7 +111,7 @@ static void pick(void) {
 static void move(int d) {
     g_sel += d;
     if (g_sel < 0) g_sel = 0;
-    if (g_sel > NLAYOUTS - 1) g_sel = NLAYOUTS - 1;
+    if (g_sel > NROWS - 1) g_sel = NROWS - 1;
     ui_redraw();
 }
 
@@ -108,16 +119,16 @@ int display_key(WPARAM vk) {
     switch (vk) {
     case VK_UP:     move(-1); break;
     case VK_DOWN:   move(+1); break;
-    case VK_HOME:   move(-NLAYOUTS); break;
-    case VK_END:    move(+NLAYOUTS); break;
+    case VK_HOME:   move(-NROWS); break;
+    case VK_END:    move(+NROWS); break;
     case VK_RETURN: pick(); break;
     case VK_ESCAPE: display_close(); break;
     }
     return 1;
 }
 
-int display_char(WPARAM ch) {      // e / s / p / d jump to a row
-    for (int i = 0; ch > 32 && i < NLAYOUTS; i++)
+int display_char(WPARAM ch) {      // e / s / p / d / o jump to a row
+    for (int i = 0; ch > 32 && i < NROWS; i++)
         if (WORD_[i][0] == s_low((wchar_t)ch)) { g_sel = i; ui_redraw(); break; }
     return 1;
 }
@@ -125,7 +136,7 @@ int display_char(WPARAM ch) {      // e / s / p / d jump to a row
 void display_click(int x, int y, int dbl) {
     if (!g_rowStep || y < g_listTop) return;
     int i = (y - g_listTop) / g_rowStep;
-    if (i >= NLAYOUTS) return;
+    if (i >= NROWS) return;
     g_sel = i;
     ui_redraw();
     if (dbl) pick();
@@ -143,7 +154,7 @@ void display_paint(HDC dc, RECT a) {
     g_rowStep = rowH + S(2);
     g_listTop = y;
 
-    for (int i = 0; i < NLAYOUTS; i++) {
+    for (int i = 0; i < NROWS; i++) {
         int sel = i == g_sel;
         if (sel) ui_fill(dc, a.left, y, a.right, y + rowH, ui_mix(g_accent, C_BG, 13));
         int ty = y + (rowH - g_lineH) / 2;
@@ -159,7 +170,7 @@ void display_paint(HDC dc, RECT a) {
 
     SelectObject(dc, g_fontSmall);
     ui_text(dc, a.left, a.bottom - S(16), L"\x2191\x2193 choose    Enter switch    Esc close", C_DIM);
-    const wchar_t *hint = L"or: display extend \x00B7 second \x00B7 pc \x00B7 duplicate";
+    const wchar_t *hint = L"or: dp extend \x00B7 second \x00B7 pc \x00B7 duplicate \x00B7 off";
     SIZE sz; GetTextExtentPoint32W(dc, hint, s_len(hint), &sz);
     ui_text(dc, a.right - sz.cx, a.bottom - S(16), hint, C_DIM);
     SelectObject(dc, g_font);

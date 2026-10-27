@@ -3,7 +3,7 @@
 #include "../src/loomy.h"
 extern wchar_t g_out[400][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
-extern int g_topo, g_screens, g_setcalls;
+extern int g_topo, g_screens, g_setcalls, g_screensOff;
 extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
 static int last_out;
@@ -186,8 +186,8 @@ int main(void) {
     run(L"display second");     EXPECT(saw(L"Already on Second screen only") && g_setcalls == c && !g_hidden, "already: no switch, stays open"); }
     run(L"display pc");         EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "pc");
     run(L"display duplicate");  EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "duplicate");
-    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate]"), "unknown layout");
-    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate]"), "strict args");
+    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate|off]"), "unknown layout");
+    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate|off]"), "strict args");
     run(L"/display");           EXPECT(saw(L"no slash"), "display is plain");
     g_screens = 1; g_hidden = 0;
     run(L"display extend");     EXPECT(saw(L"couldn't switch to Extend") && saw(L"plugged in") && !g_hidden, "one screen: clear error, stays open");
@@ -198,6 +198,18 @@ int main(void) {
     tab(L"display s", L"display second ");
     tab(L"dp d", L"dp duplicate ");
     tab(L"display ", 0);
+    tab(L"dp o", L"dp off ");
+    { int c = g_setcalls, t = g_topo; g_hidden = 0; g_screensOff = 0;
+    run(L"dp off");             EXPECT(g_screensOff == 1 && g_hidden && g_setcalls == c && g_topo == t && saw(L"Screens off"), "dp off: standby, hides, layout untouched");
+    g_hidden = 0;
+    run(L"display Off");        EXPECT(g_screensOff == 2 && g_hidden, "off, any case");
+    run(L"dp off now");         EXPECT(g_screensOff == 2 && saw(L"Usage: dp [extend|second|pc|duplicate|off]"), "off takes nothing more");
+    display_open(); display_key(VK_END); display_key(VK_RETURN);
+    EXPECT(g_screensOff == 3 && g_setcalls == c && !display_active(), "End = last row = screens off");
+    display_open(); display_char(L'o'); display_key(VK_RETURN);
+    EXPECT(g_screensOff == 4 && g_topo == t, "letter o = screens off");
+    display_open(); display_char(L'o'); display_key(VK_UP); display_key(VK_RETURN);
+    EXPECT(g_screensOff == 4 && g_topo == SDC_TOPOLOGY_CLONE, "row above off is duplicate"); }
     tab(L"di", L"display ");
 
     wprintf(L"\n== Tab ==\n");
