@@ -12,7 +12,9 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.11"
+#define LOOMY_VERSION L"2.12"
+#define GH_USER L"JimmyUns"          // the repo /update and `github` use
+#define GH_REPO L"Project-Loomy"
 
 // ---------- palette (accent comes from settings) ----------
 #define C_BG      RGB(0x13, 0x09, 0x1C)
@@ -36,7 +38,8 @@ void     ui_fill(HDC dc, int l, int t, int r, int b, COLORREF c);
 int      ui_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c);   // returns width
 COLORREF ui_mix(COLORREF a, COLORREF b, int pctA);
 void     ui_redraw(void);
-void     ui_flush(void);                              // paint right now (before a slow call)
+void     ui_flush(void);
+void     ui_screens_off_soon(void);                   // screens to standby in ~0.5 s                              // paint right now (before a slow call)
 void     ui_apply_colors(void);
 void     ui_set_input(const wchar_t *t);
 void     ui_get_input(wchar_t *buf, int cap);

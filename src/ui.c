@@ -10,6 +10,7 @@
 #define TIMER_CLOCK  1
 #define TIMER_NET    2
 #define TIMER_REFOCUS 3
+#define TIMER_SCREENS 4
 
 enum { MENU_OPEN = 1, MENU_SETTINGS, MENU_RELOAD, MENU_SHUTDOWN };
 
@@ -164,6 +165,11 @@ void ui_unregister_hotkey(void) { UnregisterHotKey(g_wnd, HOTKEY_ID); }
 void ui_redraw(void) { InvalidateRect(g_wnd, 0, FALSE); }
 // ui_redraw only queues a paint, which waits until we're back in the message loop.
 // Before a slow blocking call (network), use this so "Checking..." is on screen first.
+// `dp off`: wait a beat so letting go of Enter isn't the input that wakes them back up.
+// Sent to our own window (DefWindowProc does the work), not broadcast: a broadcast
+// waits on every app, so one hung window could freeze Loomy.
+void ui_screens_off_soon(void) { SetTimer(g_wnd, TIMER_SCREENS, 500, 0); }
+
 void ui_flush(void) { if (g_wnd) { InvalidateRect(g_wnd, 0, FALSE); UpdateWindow(g_wnd); } }
 
 static int screen_active(void) {
@@ -216,6 +222,7 @@ void ui_refocus_soon(void) {
 }
 
 static void show(void) {
+    KillTimer(g_wnd, TIMER_SCREENS);       // summoned right after `dp off`: keep the screens on
     if (cfg_reload_if_changed()) { register_hotkey(0); ui_apply_colors(); }
     if (g_fresh) {                 // it was hidden last time: come back with a clean screen
         g_fresh = 0;
@@ -623,7 +630,11 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     case WM_HOTKEY: if (wp == HOTKEY_ID) toggle(); return 0;
     case WM_LOOMY_SHOW: show(); return 0;
     case WM_TIMER:
-        if (wp == TIMER_NET) net_tick();
+        if (wp == TIMER_SCREENS) {
+            KillTimer(w, TIMER_SCREENS);
+            SendMessageW(w, WM_SYSCOMMAND, SC_MONITORPOWER, 2);   // 2 = off (standby)
+        }
+        else if (wp == TIMER_NET) net_tick();
         else if (wp == TIMER_REFOCUS) {
             if (IsWindowVisible(w)) { SetForegroundWindow(w); SetFocus(g_edit); }
             if (--g_refocusLeft <= 0) KillTimer(w, TIMER_REFOCUS);

@@ -13,6 +13,10 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.12", L"2026-10-27", {
+        L"New github (gh) in core mode: opens Loomy\x2019s GitHub page.",
+        L"New dp off: screens to standby, layout untouched. Any key wakes them.",
+        0 } },
     { L"2.11", L"2026-10-22", {
         L"Update checks give up on a bad connection in seconds, not a minute.",
         L"\u201cChecking GitHub\u2026\u201d shows up before the check starts.",

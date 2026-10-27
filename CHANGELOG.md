@@ -2,6 +2,10 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.12
+- New `github` (`gh`) in core mode: opens Loomy's GitHub page.
+- New `dp off` and a "Screens off" row in the `display` picker: puts the screens to standby like their power button, so the layout doesn't change. Any key or mouse move wakes them.
+
 ## v2.11
 - `/version`, `/update` and `/vh` give up on a dead or slow connection within seconds, instead of freezing Loomy for up to a minute.
 - "Checking GitHub..." now actually shows up before the check starts.

@@ -3,7 +3,7 @@
 #include "../src/loomy.h"
 extern wchar_t g_out[400][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
-extern int g_topo, g_screens, g_setcalls;
+extern int g_topo, g_screens, g_setcalls, g_screensOff;
 extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
 static int last_out;
@@ -92,6 +92,8 @@ int main(void) {
     run(L"/ver");               EXPECT(saw(L"don't know '/ver'"), "ver unknown in home");
     run(L"/vh");                EXPECT(saw(L"don't know '/vh'"), "vh unknown in home");
     run(L"/verc v2.6");         EXPECT(saw(L"don't know '/verc'") && !saw(L"changelog_open"), "verc unknown in home");
+    run(L"github");             EXPECT(saw(L"don't know 'github'") && g_nopened == 0, "github unknown in home");
+    run(L"gh");                 EXPECT(saw(L"don't know 'gh'") && g_nopened == 0, "gh unknown in home");
     run(L"help");               EXPECT(!saw(L"/update") && !saw(L"/verc"), "help hides core commands");
     tab(L"/up", L"/up");
     tab(L"/verc ", L"/verc ");
@@ -104,6 +106,13 @@ int main(void) {
     run(L"/verc v2.6");         EXPECT(saw(L"changelog_open 'v2.6'"), "verc ok");
     run(L"help");               EXPECT(saw(L"/update") && saw(L"/verc") && saw(L"/mode  /m") && saw(L"core mode"), "help in core");
     tab(L"/up", L"/update ");
+    g_hidden = 0;
+    run(L"github");             EXPECT(g_nopened == 1 && !wcscmp(g_opened[0], L"https://github.com/JimmyUns/Project-Loomy") && g_hidden, "github opens the repo, hides");
+    g_hidden = 0;
+    run(L"gh");                 EXPECT(g_nopened == 1 && g_hidden, "gh alias");
+    run(L"github now");         EXPECT(saw(L"Usage: github") && g_nopened == 0, "github takes nothing");
+    run(L"/github");            EXPECT(saw(L"no slash") && g_nopened == 0, "github is plain");
+    tab(L"git", L"github ");
     run(L"/m hide core");       EXPECT(mode_current() == 0 && mode_is_hidden(2), "hide current core goes to home, not past it");
     run(L"/m show core");
     run(L"/m main core");
@@ -177,8 +186,8 @@ int main(void) {
     run(L"display second");     EXPECT(saw(L"Already on Second screen only") && g_setcalls == c && !g_hidden, "already: no switch, stays open"); }
     run(L"display pc");         EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "pc");
     run(L"display duplicate");  EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "duplicate");
-    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate]"), "unknown layout");
-    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate]"), "strict args");
+    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate|off]"), "unknown layout");
+    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate|off]"), "strict args");
     run(L"/display");           EXPECT(saw(L"no slash"), "display is plain");
     g_screens = 1; g_hidden = 0;
     run(L"display extend");     EXPECT(saw(L"couldn't switch to Extend") && saw(L"plugged in") && !g_hidden, "one screen: clear error, stays open");
@@ -189,6 +198,18 @@ int main(void) {
     tab(L"display s", L"display second ");
     tab(L"dp d", L"dp duplicate ");
     tab(L"display ", 0);
+    tab(L"dp o", L"dp off ");
+    { int c = g_setcalls, t = g_topo; g_hidden = 0; g_screensOff = 0;
+    run(L"dp off");             EXPECT(g_screensOff == 1 && g_hidden && g_setcalls == c && g_topo == t && saw(L"Screens off"), "dp off: standby, hides, layout untouched");
+    g_hidden = 0;
+    run(L"display Off");        EXPECT(g_screensOff == 2 && g_hidden, "off, any case");
+    run(L"dp off now");         EXPECT(g_screensOff == 2 && saw(L"Usage: dp [extend|second|pc|duplicate|off]"), "off takes nothing more");
+    display_open(); display_key(VK_END); display_key(VK_RETURN);
+    EXPECT(g_screensOff == 3 && g_setcalls == c && !display_active(), "End = last row = screens off");
+    display_open(); display_char(L'o'); display_key(VK_RETURN);
+    EXPECT(g_screensOff == 4 && g_topo == t, "letter o = screens off");
+    display_open(); display_char(L'o'); display_key(VK_UP); display_key(VK_RETURN);
+    EXPECT(g_screensOff == 4 && g_topo == SDC_TOPOLOGY_CLONE, "row above off is duplicate"); }
     tab(L"di", L"display ");
 
     wprintf(L"\n== Tab ==\n");
