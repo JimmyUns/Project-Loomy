@@ -1,4 +1,4 @@
-# Loomy 2.13
+# Loomy 2.13b
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it

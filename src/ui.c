@@ -179,6 +179,11 @@ static int screen_active(void) {
 static void reset_history_pos(void);
 
 // ---------------------------------------------------------------- show / hide
+// Panels (lists, pickers, sysinfo...) take their keys straight from the edit box, so it
+// keeps focus, but you can't type into them. Only settings' name/color edit uses the box.
+static int input_shown(void) { return !screen_active() || settings_wants_input(); }
+static int g_inputShown = 1;
+
 static void layout(void) {
     HDC dc = GetDC(g_wnd);
     HGDIOBJ old = SelectObject(dc, g_font);
@@ -190,7 +195,9 @@ static void layout(void) {
     if (rc.right <= 0) { rc.right = S(WIN_W); rc.bottom = S(WIN_H); }
     int inputTop = rc.bottom - S(52);
     int x = S(22) + S(20);
-    MoveWindow(g_edit, x, inputTop + (S(52) - g_lineH) / 2, rc.right - x - S(22), g_lineH, TRUE);
+    g_inputShown = input_shown();
+    if (!g_inputShown) x = -S(4000);       // parked off-screen: still has focus, so panel keys keep working
+    MoveWindow(g_edit, x, inputTop + (S(52) - g_lineH) / 2, rc.right - S(42) - S(22), g_lineH, TRUE);
 }
 
 // the default spot: middle of the screen the mouse is on, a bit above center
@@ -362,6 +369,10 @@ void ui_restart_to(int mode, const wchar_t *note) {
         s_cat(cmd, L" --note ", MAX_PATH + 600);
         s_cat(cmd, note, MAX_PATH + 600);
     }
+    // We're the foreground app right now (you just typed). Let the new copy take the
+    // foreground too, or Windows opens it behind your other windows and your typing
+    // goes to whatever's underneath. Has to happen before cleanup() closes our window.
+    AllowSetForegroundWindow(ASFW_ANY);
     cleanup();
     STARTUPINFOW si = { sizeof(si) };
     PROCESS_INFORMATION pi;
@@ -433,7 +444,8 @@ static void paint(HWND w) {
     halftone(dc, S(46), W);
 
     // output lines, newest at the bottom
-    int inputTop = H - S(52);
+    if (input_shown() != g_inputShown) layout();   // a panel opened/closed: show or hide the input bar
+    int inputTop = g_inputShown ? H - S(52) : H - S(8);
     RECT area = { px, S(84), W - px, inputTop - S(12) };
     SelectObject(dc, g_font);
     IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
@@ -476,11 +488,13 @@ static void paint(HWND w) {
         ui_text(dc, W - px - sz.cx, inputTop - S(12) - sz.cy, more, C_DIM);
     }
 
-    // input bar
-    ui_fill(dc, 0, inputTop, W, H, C_INPUTBG);
-    ui_fill(dc, 0, inputTop, W, inputTop + 1, C_RULE);
-    SelectObject(dc, g_font);
-    ui_text(dc, px, inputTop + (S(52) - g_lineH) / 2, L"\x203A", g_accent);
+    // input bar (hidden while a panel that doesn't take typing is open)
+    if (g_inputShown) {
+        ui_fill(dc, 0, inputTop, W, H, C_INPUTBG);
+        ui_fill(dc, 0, inputTop, W, inputTop + 1, C_RULE);
+        SelectObject(dc, g_font);
+        ui_text(dc, px, inputTop + (S(52) - g_lineH) / 2, L"\x203A", g_accent);
+    }
 
     // fallback border for Windows 10 (Windows 11 draws a rounded one for us)
     if (!g_dwmBorder) {

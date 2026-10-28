@@ -135,6 +135,7 @@ static void commit_edit(void) {
 
 // ---------------------------------------------------------------- open / close
 int settings_active(void) { return g_active; }
+int settings_wants_input(void) { return g_active && g_editing; }
 
 void settings_open(void) {
     browser_close();

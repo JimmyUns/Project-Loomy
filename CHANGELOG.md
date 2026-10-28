@@ -2,6 +2,10 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.13b
+- When a list or panel is open (web, display, sysinfo, the mode picker, `lp`, `net`, `/verc`...), the input bar hides, since you can't type there anyway. It comes back when you close the panel, and shows while you're editing your name or accent color in `/config`.
+- Switching modes (and `/reload`) brings Loomy back in front with the input focused, instead of opening behind your other windows so your typing went to the app underneath.
+
 ## v2.13
 - New `sysinfo` (`si`): live CPU, GPU, memory, disk, network and top apps. Bare `sysinfo` opens a picker; `si general`, `si cpu` and `si gpu [n]` go straight to a view. Loomy grows to about 1.5x for it (less if your screen is smaller) and goes back to normal size when you close it.
 - Every GPU Windows lists gets its own card and view, so a laptop with integrated + dedicated graphics shows both (dedicated first).
