@@ -39,6 +39,10 @@ If something's unclear, ask (one question). When he asks "what do you think, don
   rate-limited (shared IP), so always send the token.
 - No GitHub connector exists in chat. His "GitHub Integration" is a read-only file picker.
 - Present the built `loomy.exe` in chat when he might want to test before merging.
+- **If the session can't reach the repo** (network rules block GitHub or `JimmyUns/Project-Loomy`), don't try to get
+  around it. Commit locally, `git format-patch` the work, **present the .patch file** (a file that isn't presented
+  can't be downloaded), and tell him: start the chat inside the Loomy project, or add the repo as a source for the
+  session. A chat that can push can apply the patch (`git am`) and push it (v2.13 was rescued that way).
 - **He creates the release** (GitHub UI "Draft a new release" with tag `vX.Y`, which also creates the tag). The workflow
   then builds and attaches `loomy.exe` (and renames it "Loomy vX.Y"). Builds are flaky: see §6.
 - **If he says "don't push until the version is done"**, keep commits local on `claude/vX.Y` (no branch push, no PR)
@@ -142,15 +146,11 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   screen, Bahnschrift fonts loading, and how long the first open takes (PDH setup).
 - **v2.12 is released** (PR #6 merged, tag `v2.12`, exe built by Actions on the 3rd attempt). Ask how the
   `/update` went (he hasn't said for 2.11 or 2.12), and whether `dp off` blanks his screens.
-- **Release builds hang on "Install the Windows cross-compiler"** (`apt-get` on Ubuntu's servers): v2.10, 2.11 and
-  2.12 all needed re-runs; a good run takes ~40 s. He added a job `timeout-minutes` via PR #7 (it's **5** on
-  `main`), so a hang now fails at 5 min and he re-runs. A tag build uses the workflow file *at the tag*, so
-  fixes only apply from the next tag on. Suggested, not applied yet: a retry loop in that step
-  (`for i in 1 2 3; do timeout ... apt-get update && timeout ... apt-get install ... && break; done`). If he
-  applies it, the per-try timeouts times 3 must fit under the job timeout (e.g. 60 s + 90 s per try, and raise
-  the job to 10 min). Only he can edit workflows.
-- **Old PR #3 "docs: compact handover"** (from an earlier chat) is still open and is superseded by this file.
-  Suggest he closes it (and deletes branch `claude/compact-handover`).
+- **Release builds:** the "Install the Windows cross-compiler" step (`apt-get`) used to hang (v2.10, 2.11 and 2.12
+  all needed re-runs; a good run takes ~40 s). Fixed on `main` via PR #9 (Oct 2026): the step retries up to 3 times
+  (60 s update + 120 s install per try) and the job timeout is 10 min. A tag build uses the workflow file *at the
+  tag*, so v2.13 is the first build with it: check it went through in one go. Only he can edit workflows; `main`
+  is protected, so his edits land as a PR he merges.
 - **Never verified on his machine:** the WinHTTP timeouts, "Checking GitHub..." showing before the wait,
   the mode picker with 3 rows, `/update` relaunching into core, `display` actually switching + the "current" tag +
   the picker text fitting (now 5 rows), `github` opening the page, `dp off` actually blanking the screens. Older: v2.8/v2.9 UI (panels, header mode label, settings row),
