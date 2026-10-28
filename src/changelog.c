@@ -13,6 +13,10 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.13b", L"2026-10-28", {
+        L"The input bar hides while a list or panel is open (you can\x2019t type there).",
+        L"Switching modes or /reload keeps Loomy in front with the input focused.",
+        0 } },
     { L"2.13", L"2026-10-28", {
         L"New sysinfo (si): live CPU, GPU, memory, disk, network, top apps.",
         L"si general / cpu / gpu [n], or pick from the list. Loomy grows ~1.5x.",

@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.13 in progress)
+# Loomy — Handover (v2.13b in progress)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -139,7 +139,16 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.13 (sysinfo) is on `claude/v2.13`, draft PR, not ended yet.** Never run on Windows. Ask him to check: the numbers vs
+- **v2.13b is on `claude/v2.13b`, draft PR** (fix build, no new features):
+  - Input bar hides while a panel is open: `input_shown()` in `ui.c` = no panel, or settings is editing name/accent
+    (`settings_wants_input()`). Hidden = the edit box is parked off-screen (it keeps focus, so panel keys still route
+    through `edit_proc`), the bar isn't painted, and the panel area grows down. `paint()` re-runs `layout()` when it
+    changes, so every panel open/close is covered with no per-panel wiring. **New panels get this for free.**
+  - Mode switch / `/reload` focus: `ui_restart_to` calls `AllowSetForegroundWindow(ASFW_ANY)` before `cleanup()`
+    (while Loomy is still the foreground app), so the new copy's `SetForegroundWindow` isn't blocked by Windows'
+    focus-stealing rule. Not covered: the `/update` relaunch (started from a .bat, not from Loomy).
+  - Neither can be tested off Windows. Ask him to check both.
+- **v2.13 (sysinfo) is released** (PR #10, tag `v2.13`). Never confirmed on Windows. Ask him to check: the numbers vs
   Task Manager (CPU %, speed, GPU %, VRAM), that **both** laptop GPUs show up with the right names (and discrete first),
   whether temp/clock show or say n/a, that opening sysinfo **doesn't keep the NVIDIA GPU awake on battery**
   (D3DKMT queries every second while open; Task Manager does the same, but verify), the window fitting his laptop
@@ -149,7 +158,7 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
 - **Release builds:** the "Install the Windows cross-compiler" step (`apt-get`) used to hang (v2.10, 2.11 and 2.12
   all needed re-runs; a good run takes ~40 s). Fixed on `main` via PR #9 (Oct 2026): the step retries up to 3 times
   (60 s update + 120 s install per try) and the job timeout is 10 min. A tag build uses the workflow file *at the
-  tag*, so v2.13 is the first build with it: check it went through in one go. Only he can edit workflows; `main`
+  tag*; v2.13 was the first build with it and went through first try in 37 s. Only he can edit workflows; `main`
   is protected, so his edits land as a PR he merges.
 - **Never verified on his machine:** the WinHTTP timeouts, "Checking GitHub..." showing before the wait,
   the mode picker with 3 rows, `/update` relaunching into core, `display` actually switching + the "current" tag +

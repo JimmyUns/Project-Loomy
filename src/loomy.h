@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.13"
+#define LOOMY_VERSION L"2.13b"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -122,6 +122,7 @@ int release_check(const char *json, const char *owner, char *tag, int tagCap, wc
 
 // ---------- settings.c (the config screen) ----------
 int  settings_active(void);
+int  settings_wants_input(void);                     // typing a name/color into the input box
 void settings_open(void);
 void settings_close(void);
 void settings_paint(HDC dc, RECT area);
