@@ -173,7 +173,8 @@ void ui_screens_off_soon(void) { SetTimer(g_wnd, TIMER_SCREENS, 500, 0); }
 void ui_flush(void) { if (g_wnd) { InvalidateRect(g_wnd, 0, FALSE); UpdateWindow(g_wnd); } }
 
 static int screen_active(void) {
-    return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active() || display_active();
+    return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active() ||
+           display_active() || sysinfo_active();
 }
 static void reset_history_pos(void);
 
@@ -185,9 +186,11 @@ static void layout(void) {
     SelectObject(dc, old); ReleaseDC(g_wnd, dc);
     g_lineH = tm.tmHeight;
 
-    int inputTop = S(WIN_H) - S(52);
+    RECT rc; GetClientRect(g_wnd, &rc);
+    if (rc.right <= 0) { rc.right = S(WIN_W); rc.bottom = S(WIN_H); }
+    int inputTop = rc.bottom - S(52);
     int x = S(22) + S(20);
-    MoveWindow(g_edit, x, inputTop + (S(52) - g_lineH) / 2, S(WIN_W) - x - S(22), g_lineH, TRUE);
+    MoveWindow(g_edit, x, inputTop + (S(52) - g_lineH) / 2, rc.right - x - S(22), g_lineH, TRUE);
 }
 
 // the default spot: middle of the screen the mouse is on, a bit above center
@@ -212,6 +215,34 @@ void ui_reset_window(void) {
     if (!IsWindowVisible(g_wnd)) return;
     int x, y; centered(&x, &y);
     SetWindowPos(g_wnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE);
+}
+
+// sysinfo's big view: ~1.5x, grown around the window's middle, shrunk to fit the screen
+// (a 150% scaled laptop screen can't fit the full size). Back to normal the same way.
+static int g_big;
+void ui_set_big(int on) {
+    if (!g_wnd || on == g_big) return;
+    g_big = on;
+    RECT r; GetWindowRect(g_wnd, &r);
+    MONITORINFO mi = { sizeof(mi) };
+    GetMonitorInfoW(MonitorFromWindow(g_wnd, MONITOR_DEFAULTTONEAREST), &mi);
+    RECT wa = mi.rcWork;
+    int w = S(WIN_W), h = S(WIN_H);
+    if (on) {
+        w = S(WIN_W * 3 / 2); h = S(WIN_H * 3 / 2);
+        if (w > wa.right - wa.left - S(24)) w = wa.right - wa.left - S(24);
+        if (h > wa.bottom - wa.top - S(24)) h = wa.bottom - wa.top - S(24);
+        if (w < S(WIN_W)) w = S(WIN_W);
+        if (h < S(WIN_H)) h = S(WIN_H);
+    }
+    int x = (r.left + r.right) / 2 - w / 2, y = (r.top + r.bottom) / 2 - h / 2;
+    if (x + w > wa.right) x = wa.right - w;
+    if (y + h > wa.bottom) y = wa.bottom - h;
+    if (x < wa.left) x = wa.left;
+    if (y < wa.top) y = wa.top;
+    SetWindowPos(g_wnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
+    layout();
+    InvalidateRect(g_wnd, 0, FALSE);
 }
 
 // after opening a site, the browser takes focus. Ask for it back a couple of times;
@@ -243,6 +274,7 @@ static void show(void) {
 }
 
 void ui_hide(void) {
+    sysinfo_close();                       // first: it puts the normal size back
     if (IsWindowVisible(g_wnd)) {          // remember where it was, for "Remember position"
         RECT r; GetWindowRect(g_wnd, &r);
         g_posX = r.left; g_posY = r.top; g_havePos = 1;
@@ -304,7 +336,7 @@ static void tray_menu(void) {
     int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_wnd, 0);
     DestroyMenu(m);
     if (id == MENU_OPEN) show();
-    else if (id == MENU_SETTINGS) { show(); settings_open(); }
+    else if (id == MENU_SETTINGS) { show(); sysinfo_close(); settings_open(); }
     else if (id == MENU_RELOAD) ui_restart();
     else if (id == MENU_SHUTDOWN) ui_quit();
 }
@@ -412,6 +444,7 @@ static void paint(HWND w) {
     else if (mode_active()) mode_paint(dc, area);
     else if (web_active()) web_paint(dc, area);
     else if (display_active()) display_paint(dc, area);
+    else if (sysinfo_active()) sysinfo_paint(dc, area);
     int y = screen_active() ? area.top : area.bottom;
     int indent = S(20);
     for (int k = g_scroll; k < g_count && y > area.top; k++) {
@@ -534,6 +567,9 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (display_active()) {
         if (m == WM_KEYDOWN && display_key(wp)) return 0;
         if (m == WM_CHAR && display_char(wp)) return 0;
+    } else if (sysinfo_active()) {
+        if (m == WM_KEYDOWN && sysinfo_key(wp)) return 0;
+        if (m == WM_CHAR && sysinfo_char(wp)) return 0;
     }
     if (m == WM_KEYDOWN) {
         switch (wp) {
@@ -601,6 +637,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (display_active()) display_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
+        else if (sysinfo_active()) sysinfo_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         SetFocus(g_edit);
         return 0;
     case WM_LBUTTONDBLCLK:
@@ -608,6 +645,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         else if (display_active()) display_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
+        else if (sysinfo_active()) sysinfo_click((short)LOWORD(lp), (short)HIWORD(lp), 1);
         SetFocus(g_edit);
         return 0;
     case WM_ACTIVATE: if (LOWORD(wp) != WA_INACTIVE) SetFocus(g_edit); return 0;
@@ -619,6 +657,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         if (mode_active()) { mode_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (web_active()) { web_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (display_active()) { display_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (sysinfo_active()) { sysinfo_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         int d = (short)HIWORD(wp) / WHEEL_DELTA * 3;
         g_scroll += d;
         if (g_scroll > g_count - 1) g_scroll = g_count > 0 ? g_count - 1 : 0;
@@ -634,7 +673,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
             KillTimer(w, TIMER_SCREENS);
             SendMessageW(w, WM_SYSCOMMAND, SC_MONITORPOWER, 2);   // 2 = off (standby)
         }
-        else if (wp == TIMER_NET) net_tick();
+        else if (wp == TIMER_NET) { net_tick(); sysinfo_tick(); }
         else if (wp == TIMER_REFOCUS) {
             if (IsWindowVisible(w)) { SetForegroundWindow(w); SetFocus(g_edit); }
             if (--g_refocusLeft <= 0) KillTimer(w, TIMER_REFOCUS);

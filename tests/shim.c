@@ -72,7 +72,7 @@ LONG SetDisplayConfig(UINT32 a, void *b, UINT32 c, void *d, UINT32 flags) {
 // ---- ui.c stand-ins
 #include "../src/loomy.h"
 COLORREF g_accent; HFONT g_font, g_fontSmall; int g_lineH = 16;
-wchar_t g_out[400][1100]; int g_nout;
+wchar_t g_out[4000][1100]; int g_nout;
 int S(int px) { return px; }
 void ui_fill(HDC dc, int l, int t, int r, int b, COLORREF c) {}
 int ui_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c) { return wcslen(t) * 8; }
@@ -94,8 +94,27 @@ void ui_restart(void) { ui_restart_to(mode_current(), 0); }
 int g_resets; void ui_reset_window(void) { g_resets++; }
 int g_refocus; void ui_refocus_soon(void) { g_refocus++; }
 static const char *KIND[] = { "TXT", "DIM", "ACC", "OK ", "ERR", ">  " };
-void out(int kind, const wchar_t *t) { swprintf(g_out[g_nout++ % 400], 1100, L"%s %ls", KIND[kind], t); }
+void out(int kind, const wchar_t *t) { swprintf(g_out[g_nout++ % 4000], 1100, L"%s %ls", KIND[kind], t); }
 void outf(int kind, const wchar_t *f, ...) { wchar_t b[1100]; va_list ap; va_start(ap, f); wvsprintfW(b, f, ap); va_end(ap); out(kind, b); }
 int settings_active(void){return 0;} void settings_open(void){} void settings_close(void){}
 void net_open(void){} void browser_open(const wchar_t *r){} void changelog_open(const wchar_t *a){ outf(OUT_TEXT, L"[changelog_open '%s']", a); }
 void cmd_update(wchar_t *a){} void cmd_version(wchar_t *a){ out(OUT_TEXT, L"[version ran]"); } void cmd_versionhistory(wchar_t *a){}
+
+// ---- sysinfo stand-ins: fake sensors (sysdata.c is Windows-only) and the window growing
+void browser_close(void){} void net_close(void){} void changelog_close(void){}
+int g_shift; SHORT GetKeyState(int k) { return k == VK_SHIFT && g_shift ? -1 : 0; }
+int g_timer, g_big, g_sysOpen, g_sysSamples, g_fonts;
+void ui_set_timer_1s(int on) { g_timer = on; }
+void ui_set_big(int on) { g_big = on; }
+void sysview_fonts(int on) { g_fonts = on; }
+void sysview_paint(HDC dc, RECT a, SiView *v) { v->ntabs = 2 + v->snap->ngpu; }
+int g_fakeGpus = 2;
+int sysdata_open(SiSnap *s) {
+    memset(s, 0, sizeof(*s)); g_sysOpen = 1;
+    wcscpy(s->cpuName, L"Fake CPU"); s->logical = 16; s->cores = 8; s->nthread = 16;
+    s->ngpu = g_fakeGpus;
+    for (int i = 0; i < s->ngpu; i++) { swprintf(s->gpu[i].name, 80, L"Fake GPU %d", i + 1); s->gpu[i].integrated = i == 1; }
+    return 1;
+}
+void sysdata_sample(SiSnap *s) { g_sysSamples++; s->ready = 1; }
+void sysdata_close(void) { g_sysOpen = 0; }

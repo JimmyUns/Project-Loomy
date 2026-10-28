@@ -1,4 +1,4 @@
-# Loomy 2.12
+# Loomy 2.13
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -17,6 +17,8 @@ If you type a command wrong (extra or missing words), Loomy replies with its usa
 Every time Loomy hides, it comes back with a clean screen.
 
 `display` (or `dp`) switches your screens like Win+P: pick from the list, or type `display extend`, `second`, `pc` or `duplicate`. `dp off` puts the screens to standby without changing the layout (any key or mouse move wakes them).
+
+`sysinfo` (or `si`) shows what your PC is doing right now. Pick a view, or type `si general`, `si cpu` or `si gpu 2`, and Loomy grows to about 1.5x to show live graphs: CPU load, speed and per-thread bars; every GPU (laptops with two get both) with its load, engines, VRAM, temperature and clock; memory, disk, network and the top apps. Each CPU and GPU also gets a **Flow** score: it ignores plain busyness and only drops for things you'd feel, like threads stuck waiting, clocks held back by heat or power, RAM full and paging, drivers hogging the CPU, a hot GPU or full VRAM. Tab or the arrow keys switch views, Backspace goes back to the list, Esc closes. It only reads sensors while it's open.
 
 Keys: **Tab** completes (commands, folder names after `lp`, site aliases, modes), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
 

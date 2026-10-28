@@ -1,4 +1,4 @@
-# Loomy — Handover (after v2.12)
+# Loomy — Handover (v2.13 in progress)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -13,7 +13,7 @@ The repo is **public**: never put secrets or anything private in here.
 
 ## 1. What Loomy is
 A summon-anywhere command console for Windows (hotkey → dark overlay → short commands), built by the user,
-**Jimmy Younes**. It's one tiny C program with no runtime (~110 KB exe). Values: **as light as possible**, local-first,
+**Jimmy Younes**. It's one tiny C program with no runtime (~146 KB exe from 2.13; sysinfo added ~35 KB). Values: **as light as possible**, local-first,
 plum/purple theme with a halftone dot strip, accent themeable. Long-term: voice (SAPI) and optional AI, still light.
 He runs it on his personal PC and his work laptop (no admin there; never help get around workplace security).
 
@@ -39,6 +39,10 @@ If something's unclear, ask (one question). When he asks "what do you think, don
   rate-limited (shared IP), so always send the token.
 - No GitHub connector exists in chat. His "GitHub Integration" is a read-only file picker.
 - Present the built `loomy.exe` in chat when he might want to test before merging.
+- **If the session can't reach the repo** (network rules block GitHub or `JimmyUns/Project-Loomy`), don't try to get
+  around it. Commit locally, `git format-patch` the work, **present the .patch file** (a file that isn't presented
+  can't be downloaded), and tell him: start the chat inside the Loomy project, or add the repo as a source for the
+  session. A chat that can push can apply the patch (`git am`) and push it (v2.13 was rescued that way).
 - **He creates the release** (GitHub UI "Draft a new release" with tag `vX.Y`, which also creates the tag). The workflow
   then builds and attaches `loomy.exe` (and renames it "Loomy vX.Y"). Builds are flaky: see §6.
 - **If he says "don't push until the version is done"**, keep commits local on `claude/vX.Y` (no branch push, no PR)
@@ -55,15 +59,21 @@ If something's unclear, ask (one question). When he asks "what do you think, don
 - **`tests/run.sh`** builds the real `modes/web/display/commands/config/util/version.c` on Linux against a fake
   `windows.h` (`tests/shim/`): ~140 checks covering strict args, modes + the core lock, web, display (fake screens),
   Tab, panel keys, version ordering, and the release check (against `tests/fixtures/release_v2.9b.json` plus tampered
-  copies). **Run it after any change and extend it for new features.** Gotcha: on Linux a `\` in paths stays
+  copies), plus sysinfo (picker/keys/args with fake sensors) and the Flow score math.
+  **Run it after any change and extend it for new features.** Gotcha: on Linux a `\` in paths stays
   in the filename (files land as `/tmp/loomytest\x.txt`). `update.c` and `ui.c` aren't in the tests.
-- You **can't run the exe** (no Windows; Wine is unreliable, so don't bother). He's the real tester.
+- You **can't run the exe** (no Windows; Wine is unreliable for the real app). He's the real tester.
+- **Layout check for sysinfo (works):** `tests/render/render.c` draws the sysinfo views with fake data into BMPs.
+  `apt-get install -y --no-install-recommends wine64`, build it with the mingw line at its top, then
+  `WINEDEBUG=-all WINEPREFIX=/tmp/wp xvfb-run -a /usr/lib/wine/wine64 render.exe` and look at the images
+  (Wine has no Bahnschrift/Cascadia, so fonts fall back, but sizes/overlaps are right). Only GDI, no real sensors.
 
 ## 4. Source map (`src/`)
 `loomy.h` (version, colors, all decls — start here) · `ui.c` (window, paint, hotkey, tray, entry, panel router,
 reload/position, `ui_flush`) · `commands.c` (command table, strict args, Tab) · `modes.c` · `web.c` · `display.c` ·
 `version.c` (`ver_gt`, `release_check`) · `update.c` (WinHTTP, self-swap .bat) · `settings.c` (`/config`) ·
-`browser.c` (`lp`) · `net.c` · `changelog.c` (`/verc`, baked-in `RELEASES[]`) · `config.c` · `util.c`.
+`browser.c` (`lp`) · `net.c` · `changelog.c` (`/verc`, baked-in `RELEASES[]`) · `config.c` · `util.c` ·
+`sysinfo.c` (command, picker, keys, Flow score) · `sysdata.c` (all the Windows sensor reading) · `sysview.c` (the big view's drawing).
 
 **Conventions**
 - **Commands:** one row in `COMMANDS[]`: `{name, about, type, alias, sys, modes, usage, maxargs, fn}`.
@@ -88,6 +98,7 @@ Plain: `help` · `lp [folder]` · `web [alias|many]` · `display`/`dp [extend|se
 Slash (all modes): `/mode` `/m` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
 Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
+Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
 
 - **Strict input:** extra/missing words print one `Usage: <typed> <shape>` line (`<>` required, `[]` optional).
 - **Modes** `home`/`work`/`core` (hardcoded; he doesn't want user-made modes). **core** = Loomy's own upkeep
@@ -105,6 +116,22 @@ Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loom
   layout; ~0.5 s after hiding (`TIMER_SCREENS`, cancelled if Loomy is summoned) it sends `SC_MONITORPOWER` 2 to
   Loomy's own window (not broadcast). Layout untouched; any key/mouse wakes. His PC has no Modern Standby
   (`powercfg /a`, Oct 2026); work laptop unchecked.
+- **sysinfo (2.13):** bare = picker (General, CPU, one row per GPU). Picking a view calls `ui_set_big(1)`: the window
+  grows to 1.5x (1080x720 logical) around its middle, clamped to the monitor's work area (a 150%-scaled laptop gets
+  ~672 tall; the layout is fluid). Esc closes + shrinks + frees everything; Backspace goes back to the picker; Tab /
+  arrows / g / c / 1-9 switch views; `ui_hide` closes it first so the remembered position is the normal-size one.
+  **Dynamic everywhere:** GPUs come from `D3DKMTEnumAdapters2` (software/display-only adapters skipped, discrete first,
+  up to 4), each gets a card (compact when 2+) and its own view; per-thread bars use the real logical CPU count.
+  **Data** (no admin, all loaded by hand, only while open, 1 s timer shared with `net`): PDH English counters for CPU
+  utility/performance %, queue length, DPC+interrupt %, hard faults (`Pages Input/sec`), disk, network, and GPU engine
+  utilization + adapter memory (matched to adapters by LUID in the instance names); `NtQuerySystemInformation` for
+  per-thread load and per-app CPU/private memory (grouped by name); `GetPerformanceInfo` for processes/threads/commit;
+  D3DKMT `ADAPTERPERFDATA` (62, temp in deci-C), `NODEPERFDATA` (61, node 0 clock), `ADAPTERPERFDATA_CAPS` (63, the
+  driver's warning temp). Temp/clock need WDDM 2.4+, else "n/a". The first second shows "Measuring..." / "calibrating".
+  **Flow** (`flow_cpu`/`flow_gpu`, unit-tested): starts at 100, penalties only for felt problems: threads waiting per
+  core, clock under 90% of base *while busy* (idle downclock is fine), RAM <10% free, paging >300/s, DPC >=8%, maxed;
+  GPU: temp within 3 of the warn temp (85 if unknown), VRAM >90% (dedicated only), clock <70% of max while busy.
+  >=85 smooth, >=60 strained, else choking; text = top two reasons.
 - **Window:** `remember_position` (config, off by default) keeps the last hide position in memory only, so a
   reload/mode switch re-centers. `/resetwindow` re-centers now.
 - **/update safety:** only trusts a release authored by `JimmyUns` whose `loomy.exe` was uploaded by
@@ -112,17 +139,18 @@ Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loom
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.13 (sysinfo) is on `claude/v2.13`, draft PR, not ended yet.** Never run on Windows. Ask him to check: the numbers vs
+  Task Manager (CPU %, speed, GPU %, VRAM), that **both** laptop GPUs show up with the right names (and discrete first),
+  whether temp/clock show or say n/a, that opening sysinfo **doesn't keep the NVIDIA GPU awake on battery**
+  (D3DKMT queries every second while open; Task Manager does the same, but verify), the window fitting his laptop
+  screen, Bahnschrift fonts loading, and how long the first open takes (PDH setup).
 - **v2.12 is released** (PR #6 merged, tag `v2.12`, exe built by Actions on the 3rd attempt). Ask how the
   `/update` went (he hasn't said for 2.11 or 2.12), and whether `dp off` blanks his screens.
-- **Release builds hang on "Install the Windows cross-compiler"** (`apt-get` on Ubuntu's servers): v2.10, 2.11 and
-  2.12 all needed re-runs; a good run takes ~40 s. He added a job `timeout-minutes` via PR #7 (it's **5** on
-  `main`), so a hang now fails at 5 min and he re-runs. A tag build uses the workflow file *at the tag*, so
-  fixes only apply from the next tag on. Suggested, not applied yet: a retry loop in that step
-  (`for i in 1 2 3; do timeout ... apt-get update && timeout ... apt-get install ... && break; done`). If he
-  applies it, the per-try timeouts times 3 must fit under the job timeout (e.g. 60 s + 90 s per try, and raise
-  the job to 10 min). Only he can edit workflows.
-- **Old PR #3 "docs: compact handover"** (from an earlier chat) is still open and is superseded by this file.
-  Suggest he closes it (and deletes branch `claude/compact-handover`).
+- **Release builds:** the "Install the Windows cross-compiler" step (`apt-get`) used to hang (v2.10, 2.11 and 2.12
+  all needed re-runs; a good run takes ~40 s). Fixed on `main` via PR #9 (Oct 2026): the step retries up to 3 times
+  (60 s update + 120 s install per try) and the job timeout is 10 min. A tag build uses the workflow file *at the
+  tag*, so v2.13 is the first build with it: check it went through in one go. Only he can edit workflows; `main`
+  is protected, so his edits land as a PR he merges.
 - **Never verified on his machine:** the WinHTTP timeouts, "Checking GitHub..." showing before the wait,
   the mode picker with 3 rows, `/update` relaunching into core, `display` actually switching + the "current" tag +
   the picker text fitting (now 5 rows), `github` opening the page, `dp off` actually blanking the screens. Older: v2.8/v2.9 UI (panels, header mode label, settings row),

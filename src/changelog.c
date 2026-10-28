@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.13", L"2026-10-28", {
+        L"New sysinfo (si): live CPU, GPU, memory, disk, network, top apps.",
+        L"si general / cpu / gpu [n], or pick from the list. Loomy grows ~1.5x.",
+        L"Every GPU gets its own view: laptops show integrated and dedicated.",
+        L"New Flow score: drops for waiting, throttling, full RAM, not load.",
+        L"Sensors only run while sysinfo is open. Esc puts everything back.",
+        0 } },
     { L"2.12", L"2026-10-27", {
         L"New github (gh) in core mode: opens Loomy\x2019s GitHub page.",
         L"New dp off: screens to standby, layout untouched. Any key wakes them.",
