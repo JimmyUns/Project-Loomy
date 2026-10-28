@@ -11,13 +11,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Get the code
         uses: actions/checkout@v4
 
+      # Ubuntu's package servers sometimes hang on GitHub's machines. Each try gets
+      # 1 min to refresh + 2 min to install; a stuck try is cut off and retried (3 max).
       - name: Install the Windows cross-compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+        run: |
+          for i in 1 2 3; do
+            timeout 60 sudo apt-get update && \
+            timeout 120 sudo apt-get install -y gcc-mingw-w64-x86-64 && break
+            echo "Package servers stuck, retrying ($i)..."
+            sleep 5
+          done
+          command -v x86_64-w64-mingw32-gcc
 
       - name: Build loomy.exe
         run: |
