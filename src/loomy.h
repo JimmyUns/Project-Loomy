@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.12"
+#define LOOMY_VERSION L"2.13"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -57,6 +57,7 @@ void ui_restart(void);                                // reload, staying in the 
 void ui_restart_to(int mode, const wchar_t *note);    // reload into a mode; note ('|' = new line) shows after
 void ui_reset_window(void);                           // forget the remembered spot, re-center
 void ui_refocus_soon(void);                           // grab focus back after a browser steals it
+void ui_set_big(int on);                              // grow to ~1.5x for sysinfo (fits the screen), or back
 
 // ---------- commands.c ----------
 void cmd_run(wchar_t *line);
@@ -160,6 +161,85 @@ int  net_key(WPARAM vk);
 int  net_char(WPARAM ch);
 void net_click(int x, int y);
 void net_wheel(int notches);
+
+// ---------- sysdata.c (reads the machine: CPU, every GPU, memory, disk, net, top apps) ----------
+// Everything is read without admin and only while the sysinfo panel is open.
+// Numbers that Windows won't give us stay -1 ("n/a" on screen).
+#define SI_HIST   60        // one sample a second: a minute of graph
+#define SI_MAXCPU 64        // logical processors we draw bars for
+#define SI_MAXGPU 4
+#define SI_MAXENG 6         // engines shown per GPU (busiest first)
+#define SI_TOP    5         // top apps by CPU
+
+typedef struct { wchar_t name[24]; int pct; } SiEngine;
+typedef struct { wchar_t name[40]; int cpu10; ULONGLONG mem; } SiProc;   // cpu10 = tenths of a %
+
+typedef struct {
+    wchar_t name[80];
+    int  integrated;                      // 1 = shares system RAM (laptop iGPU)
+    int  util;                            // % (busiest engine, like Task Manager)
+    ULONGLONG memUsed, memTotal;   // VRAM, or shared RAM for an integrated GPU
+    int  tempC, tempWarnC;                // -1 = not reported
+    int  clkMHz, clkMaxMHz;               // -1 = not reported
+    int  neng; SiEngine eng[SI_MAXENG];
+    unsigned char hist[SI_HIST];
+} SiGpu;
+
+typedef struct {
+    int  ready;                           // 1 once a full second has been measured
+    // CPU
+    wchar_t cpuName[64];
+    int  cores, logical, baseMHz;
+    int  cpuUtil;                         // %
+    int  speedMHz, perfPct;               // current clock and % of base; -1 = unknown
+    int  queue10;                         // threads waiting for a core, tenths (smoothed)
+    int  dpc;                             // % of CPU time in drivers (DPC + interrupts); -1 = unknown
+    int  procs, threads, handles;
+    ULONGLONG uptimeMs;
+    int  nthread; unsigned char thread[SI_MAXCPU];
+    unsigned char cpuHist[SI_HIST];
+    // memory
+    ULONGLONG memTotal, memUsed, commit, commitLimit;
+    int  hardFaults;                      // pages read back from disk per second; -1 = unknown
+    unsigned char memHist[SI_HIST];
+    // disk + network (bytes per second)
+    int  diskActive;                      // %, -1 = unknown
+    ULONGLONG diskRead, diskWrite, netDown, netUp;
+    // GPUs, as many as Windows lists (software-only adapters skipped)
+    int  ngpu; SiGpu gpu[SI_MAXGPU];
+    // apps, grouped by name (all the chrome.exe processes = one row)
+    int  ntop; SiProc top[SI_TOP];
+    int  selfCpu10; ULONGLONG selfMem;   // what Loomy itself costs
+} SiSnap;
+
+int  sysdata_open(SiSnap *s);             // set up + fill the fixed info (names, GPU list); 0 = failed
+void sysdata_sample(SiSnap *s);           // call once a second
+void sysdata_close(void);                 // free everything (back to zero cost)
+
+// ---------- sysinfo.c (the `sysinfo` / `si` command, picker and live panel) ----------
+enum { FLOW_SMOOTH, FLOW_STRAINED, FLOW_CHOKING };
+typedef struct { int score, level; wchar_t why[112]; } SiFlow;
+void flow_cpu(const SiSnap *s, SiFlow *f);
+void flow_gpu(const SiGpu *g, SiFlow *f);
+
+enum { SIV_GENERAL = 0, SIV_CPU = 1, SIV_GPU = 2 };   // view; GPU views are SIV_GPU + index
+void cmd_sysinfo(wchar_t *args);
+void sysinfo_complete(wchar_t **words, int n, const wchar_t *partial);
+int  sysinfo_active(void);
+int  sysinfo_expanded(void);              // 1 = the big live view (window is enlarged)
+void sysinfo_open(int view);              // -1 = the picker
+void sysinfo_close(void);
+void sysinfo_tick(void);
+void sysinfo_paint(HDC dc, RECT area);
+int  sysinfo_key(WPARAM vk);
+int  sysinfo_char(WPARAM ch);
+void sysinfo_click(int x, int y, int dbl);
+void sysinfo_wheel(int notches);
+
+// sysview.c: drawing the big view (state lives in sysinfo.c)
+typedef struct { int view; const SiSnap *snap; RECT tabs[2 + SI_MAXGPU]; int ntabs; } SiView;
+void sysview_paint(HDC dc, RECT area, SiView *v);
+void sysview_fonts(int on);               // make / free the extra fonts (only while open)
 
 // ---------- config.c ----------
 typedef struct {

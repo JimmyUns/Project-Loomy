@@ -1,4 +1,4 @@
-# Loomy — Handover (after v2.12)
+# Loomy — Handover (v2.13 in progress)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -13,7 +13,7 @@ The repo is **public**: never put secrets or anything private in here.
 
 ## 1. What Loomy is
 A summon-anywhere command console for Windows (hotkey → dark overlay → short commands), built by the user,
-**Jimmy Younes**. It's one tiny C program with no runtime (~110 KB exe). Values: **as light as possible**, local-first,
+**Jimmy Younes**. It's one tiny C program with no runtime (~146 KB exe from 2.13; sysinfo added ~35 KB). Values: **as light as possible**, local-first,
 plum/purple theme with a halftone dot strip, accent themeable. Long-term: voice (SAPI) and optional AI, still light.
 He runs it on his personal PC and his work laptop (no admin there; never help get around workplace security).
 
@@ -55,15 +55,21 @@ If something's unclear, ask (one question). When he asks "what do you think, don
 - **`tests/run.sh`** builds the real `modes/web/display/commands/config/util/version.c` on Linux against a fake
   `windows.h` (`tests/shim/`): ~140 checks covering strict args, modes + the core lock, web, display (fake screens),
   Tab, panel keys, version ordering, and the release check (against `tests/fixtures/release_v2.9b.json` plus tampered
-  copies). **Run it after any change and extend it for new features.** Gotcha: on Linux a `\` in paths stays
+  copies), plus sysinfo (picker/keys/args with fake sensors) and the Flow score math.
+  **Run it after any change and extend it for new features.** Gotcha: on Linux a `\` in paths stays
   in the filename (files land as `/tmp/loomytest\x.txt`). `update.c` and `ui.c` aren't in the tests.
-- You **can't run the exe** (no Windows; Wine is unreliable, so don't bother). He's the real tester.
+- You **can't run the exe** (no Windows; Wine is unreliable for the real app). He's the real tester.
+- **Layout check for sysinfo (works):** `tests/render/render.c` draws the sysinfo views with fake data into BMPs.
+  `apt-get install -y --no-install-recommends wine64`, build it with the mingw line at its top, then
+  `WINEDEBUG=-all WINEPREFIX=/tmp/wp xvfb-run -a /usr/lib/wine/wine64 render.exe` and look at the images
+  (Wine has no Bahnschrift/Cascadia, so fonts fall back, but sizes/overlaps are right). Only GDI, no real sensors.
 
 ## 4. Source map (`src/`)
 `loomy.h` (version, colors, all decls — start here) · `ui.c` (window, paint, hotkey, tray, entry, panel router,
 reload/position, `ui_flush`) · `commands.c` (command table, strict args, Tab) · `modes.c` · `web.c` · `display.c` ·
 `version.c` (`ver_gt`, `release_check`) · `update.c` (WinHTTP, self-swap .bat) · `settings.c` (`/config`) ·
-`browser.c` (`lp`) · `net.c` · `changelog.c` (`/verc`, baked-in `RELEASES[]`) · `config.c` · `util.c`.
+`browser.c` (`lp`) · `net.c` · `changelog.c` (`/verc`, baked-in `RELEASES[]`) · `config.c` · `util.c` ·
+`sysinfo.c` (command, picker, keys, Flow score) · `sysdata.c` (all the Windows sensor reading) · `sysview.c` (the big view's drawing).
 
 **Conventions**
 - **Commands:** one row in `COMMANDS[]`: `{name, about, type, alias, sys, modes, usage, maxargs, fn}`.
@@ -88,6 +94,7 @@ Plain: `help` · `lp [folder]` · `web [alias|many]` · `display`/`dp [extend|se
 Slash (all modes): `/mode` `/m` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
 Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
+Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
 
 - **Strict input:** extra/missing words print one `Usage: <typed> <shape>` line (`<>` required, `[]` optional).
 - **Modes** `home`/`work`/`core` (hardcoded; he doesn't want user-made modes). **core** = Loomy's own upkeep
@@ -105,6 +112,22 @@ Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loom
   layout; ~0.5 s after hiding (`TIMER_SCREENS`, cancelled if Loomy is summoned) it sends `SC_MONITORPOWER` 2 to
   Loomy's own window (not broadcast). Layout untouched; any key/mouse wakes. His PC has no Modern Standby
   (`powercfg /a`, Oct 2026); work laptop unchecked.
+- **sysinfo (2.13):** bare = picker (General, CPU, one row per GPU). Picking a view calls `ui_set_big(1)`: the window
+  grows to 1.5x (1080x720 logical) around its middle, clamped to the monitor's work area (a 150%-scaled laptop gets
+  ~672 tall; the layout is fluid). Esc closes + shrinks + frees everything; Backspace goes back to the picker; Tab /
+  arrows / g / c / 1-9 switch views; `ui_hide` closes it first so the remembered position is the normal-size one.
+  **Dynamic everywhere:** GPUs come from `D3DKMTEnumAdapters2` (software/display-only adapters skipped, discrete first,
+  up to 4), each gets a card (compact when 2+) and its own view; per-thread bars use the real logical CPU count.
+  **Data** (no admin, all loaded by hand, only while open, 1 s timer shared with `net`): PDH English counters for CPU
+  utility/performance %, queue length, DPC+interrupt %, hard faults (`Pages Input/sec`), disk, network, and GPU engine
+  utilization + adapter memory (matched to adapters by LUID in the instance names); `NtQuerySystemInformation` for
+  per-thread load and per-app CPU/private memory (grouped by name); `GetPerformanceInfo` for processes/threads/commit;
+  D3DKMT `ADAPTERPERFDATA` (62, temp in deci-C), `NODEPERFDATA` (61, node 0 clock), `ADAPTERPERFDATA_CAPS` (63, the
+  driver's warning temp). Temp/clock need WDDM 2.4+, else "n/a". The first second shows "Measuring..." / "calibrating".
+  **Flow** (`flow_cpu`/`flow_gpu`, unit-tested): starts at 100, penalties only for felt problems: threads waiting per
+  core, clock under 90% of base *while busy* (idle downclock is fine), RAM <10% free, paging >300/s, DPC >=8%, maxed;
+  GPU: temp within 3 of the warn temp (85 if unknown), VRAM >90% (dedicated only), clock <70% of max while busy.
+  >=85 smooth, >=60 strained, else choking; text = top two reasons.
 - **Window:** `remember_position` (config, off by default) keeps the last hide position in memory only, so a
   reload/mode switch re-centers. `/resetwindow` re-centers now.
 - **/update safety:** only trusts a release authored by `JimmyUns` whose `loomy.exe` was uploaded by
@@ -112,6 +135,11 @@ Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loom
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.13 (sysinfo) is on `claude/v2.13`, draft PR, not ended yet.** Never run on Windows. Ask him to check: the numbers vs
+  Task Manager (CPU %, speed, GPU %, VRAM), that **both** laptop GPUs show up with the right names (and discrete first),
+  whether temp/clock show or say n/a, that opening sysinfo **doesn't keep the NVIDIA GPU awake on battery**
+  (D3DKMT queries every second while open; Task Manager does the same, but verify), the window fitting his laptop
+  screen, Bahnschrift fonts loading, and how long the first open takes (PDH setup).
 - **v2.12 is released** (PR #6 merged, tag `v2.12`, exe built by Actions on the 3rd attempt). Ask how the
   `/update` went (he hasn't said for 2.11 or 2.12), and whether `dp off` blanks his screens.
 - **Release builds hang on "Install the Windows cross-compiler"** (`apt-get` on Ubuntu's servers): v2.10, 2.11 and

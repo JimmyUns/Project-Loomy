@@ -1,9 +1,10 @@
 #include <windows.h>
 #include <locale.h>
 #include "../src/loomy.h"
-extern wchar_t g_out[400][1100]; extern int g_nout;
+extern wchar_t g_out[4000][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
 extern int g_topo, g_screens, g_setcalls, g_screensOff;
+extern int g_timer, g_big, g_sysOpen, g_sysSamples, g_fonts, g_fakeGpus, g_shift;
 extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
 static int last_out;
@@ -292,6 +293,88 @@ int main(void) {
         EXPECT(release_check("{}", "JimmyUns", tag, 32, ver, 32) == REL_NO_RELEASE, "empty json");
         EXPECT(release_check("{\"tag_name\":\"v3.0\",\"author\":{\"login\":\"JimmyUns\"},\"assets\":[{\"name\":\"loomy.exe\",\"uploader\":{\"login\":\"github-actions[bot]\"}}]}",
                                "JimmyUns", tag, 32, ver, 32) == REL_OK, "compact json (no spaces) works too");
+    }
+
+
+    wprintf(L"\n== sysinfo ==\n");
+    run(L"sysinfo");
+    EXPECT(sysinfo_active() && !sysinfo_expanded() && g_sysOpen && g_timer && !g_big, "bare sysinfo: picker at normal size, sensors on");
+    sysinfo_key(VK_DOWN); sysinfo_key(VK_RETURN);
+    EXPECT(sysinfo_expanded() && g_big && g_fonts, "Enter on CPU grows the window");
+    { RECT a = { 0, 0, 1000, 600 }; sysinfo_paint(0, a); }
+    sysinfo_tick(); EXPECT(g_sysSamples == 1, "a tick samples once");
+    sysinfo_key(VK_TAB); sysinfo_key(VK_TAB); sysinfo_key(VK_TAB);   // cpu -> gpu1 -> gpu2 -> general
+    sysinfo_char(L'c'); sysinfo_char(L'2'); sysinfo_char(L'9');       // 9: no such GPU, ignored
+    sysinfo_key(VK_LEFT); sysinfo_key(VK_LEFT); sysinfo_key(VK_LEFT); sysinfo_key(VK_LEFT);   // gpu2 -> wraps all the way round
+    g_shift = 1; sysinfo_key(VK_TAB); g_shift = 0;                    // shift+tab: back one (gpu1)
+    sysinfo_key(VK_BACK);
+    EXPECT(sysinfo_active() && !sysinfo_expanded() && !g_big && !g_fonts, "Backspace: back to the picker, normal size");
+    sysinfo_key(VK_ESCAPE);
+    EXPECT(!sysinfo_active() && !g_sysOpen && !g_timer && !g_big, "Esc closes and frees the sensors");
+
+    run(L"si gpu 2");       EXPECT(sysinfo_expanded() && g_big, "si gpu 2 opens the second GPU");
+    sysinfo_key(VK_ESCAPE);
+    run(L"si gpu 3");       EXPECT(saw(L"There's no GPU 3. This PC has 2.") && !sysinfo_active() && !g_sysOpen, "GPU out of range: clear error, nothing left open");
+    run(L"si gpu 0");       EXPECT(saw(L"There's no GPU 0") && !sysinfo_active(), "GPU 0");
+    run(L"si gpu x");       EXPECT(saw(L"'x' isn't a GPU number") && saw(L"Usage: si [general|cpu|gpu [n]]") && !sysinfo_active(), "GPU not a number");
+    run(L"si cpu now");     EXPECT(saw(L"Usage: si [general|cpu|gpu [n]]") && !sysinfo_active(), "strict args");
+    run(L"si gpu 1 2");     EXPECT(saw(L"Usage: si") && !sysinfo_active(), "too many words");
+    run(L"sysinfo banana"); EXPECT(saw(L"No sysinfo view called 'banana'") && saw(L"Usage: sysinfo"), "unknown view");
+    run(L"/sysinfo");       EXPECT(saw(L"no slash") && !sysinfo_active(), "sysinfo is plain");
+    run(L"SI General");     EXPECT(sysinfo_expanded(), "any case"); sysinfo_key(VK_ESCAPE);
+    run(L"si gpu");         EXPECT(sysinfo_expanded(), "gpu alone = GPU 1"); sysinfo_key(VK_ESCAPE);
+    g_fakeGpus = 0;
+    run(L"si gpu");         EXPECT(saw(L"isn't showing me any GPU") && !sysinfo_active(), "no GPU at all");
+    run(L"si");             EXPECT(sysinfo_active(), "picker still works with no GPU");
+    sysinfo_key(VK_END); sysinfo_key(VK_RETURN); EXPECT(sysinfo_expanded(), "End = last row (CPU when there's no GPU)");
+    sysinfo_char(L'1'); sysinfo_key(VK_ESCAPE);
+    g_fakeGpus = 2;
+    sysinfo_open(-1); sysinfo_click(5, 5, 0); sysinfo_wheel(-1); sysinfo_wheel(-5); sysinfo_key(VK_ESCAPE);
+    EXPECT(!sysinfo_active(), "wheel/click in the picker don't crash");
+    run(L"/m switch core"); run(L"si cpu"); EXPECT(sysinfo_expanded(), "works in core too"); sysinfo_key(VK_ESCAPE);
+    run(L"/m switch home");
+    run(L"help");           EXPECT(saw(L"System Info") && saw(L"sysinfo  si"), "in help with its alias");
+    tab(L"si c", L"si cpu ");
+    tab(L"sysinfo ge", L"sysinfo general ");
+    tab(L"si g", L"si g");
+    tab(L"sy", L"sysinfo ");
+
+    wprintf(L"\n== Flow score ==\n");
+    {
+        SiSnap s; SiFlow f; memset(&s, 0, sizeof(s));
+        s.logical = 16; s.memTotal = 16ull << 30; s.dpc = 2; s.hardFaults = 20;
+        flow_cpu(&s, &f); EXPECT(f.score == -1 && wcsstr(f.why, L"Measuring"), "not measured yet");
+        s.ready = 1;
+        // gaming: busy, boosting, nothing waiting
+        s.cpuUtil = 65; s.perfPct = 118; s.speedMHz = 4480; s.queue10 = 12; s.memUsed = 12ull << 30;
+        flow_cpu(&s, &f); wprintf(L"   gaming: %d %ls\n", f.score, f.why);
+        EXPECT(f.score == 100 && f.level == FLOW_SMOOTH && wcsstr(f.why, L"Busy, but keeping up"), "busy but smooth");
+        // idle and downclocked to save power is not throttling
+        s.cpuUtil = 5; s.perfPct = 40; s.speedMHz = 1520;
+        flow_cpu(&s, &f); EXPECT(f.score == 100 && wcsstr(f.why, L"Relaxed"), "idle downclock isn't a penalty");
+        // choking: queue piling up, held back, RAM full and paging
+        s.cpuUtil = 98; s.perfPct = 57; s.speedMHz = 2150; s.queue10 = 150; s.memUsed = (16ull << 30) * 96 / 100; s.hardFaults = 1800;
+        flow_cpu(&s, &f); wprintf(L"   choking: %d %ls\n", f.score, f.why);
+        EXPECT(f.level == FLOW_CHOKING && f.score < 30, "choking");
+        EXPECT(wcsstr(f.why, L"Held back to 2.15 GHz") == f.why && wcsstr(f.why, L"15 threads waiting"), "top two reasons, biggest first, capitalised");
+        // drivers hogging a bit: still smooth, but says why
+        s.cpuUtil = 30; s.perfPct = 100; s.queue10 = 0; s.memUsed = 8ull << 30; s.hardFaults = 0; s.dpc = 15;
+        flow_cpu(&s, &f); wprintf(L"   dpc: %d %ls\n", f.score, f.why);
+        EXPECT(f.level == FLOW_SMOOTH && wcsstr(f.why, L"Mostly fine: drivers using 15%"), "small issue mentioned");
+
+        SiGpu g; memset(&g, 0, sizeof(g));
+        g.memTotal = 8ull << 30; g.memUsed = 6ull << 30; g.tempC = 70; g.tempWarnC = -1; g.clkMHz = 1900; g.clkMaxMHz = 1950; g.util = 96;
+        flow_gpu(&g, &f); EXPECT(f.score == 100 && wcsstr(f.why, L"Maxed at full clock"), "maxed GPU is normal");
+        g.tempC = 90;
+        flow_gpu(&g, &f); wprintf(L"   hot: %d %ls\n", f.score, f.why);
+        EXPECT(f.level == FLOW_STRAINED && wcsstr(f.why, L"Hot (90"), "hot GPU");
+        g.tempC = 80; g.tempWarnC = 80;
+        flow_gpu(&g, &f); EXPECT(f.score < 100, "uses the driver's own warning temp");
+        g.tempC = -1; g.memUsed = (8ull << 30) * 97 / 100; g.clkMHz = 1100; g.util = 80;
+        flow_gpu(&g, &f); wprintf(L"   vram+clock: %d %ls\n", f.score, f.why);
+        EXPECT(wcsstr(f.why, L"VRAM 96% full") && wcsstr(f.why, L"clock held at 1100 MHz"), "full VRAM + low clock");
+        g.integrated = 1; g.clkMHz = -1; g.clkMaxMHz = -1; g.util = 2;
+        flow_gpu(&g, &f); EXPECT(f.score == 100 && wcsstr(f.why, L"Idle"), "integrated: shared memory never counts as full VRAM");
     }
 
     wprintf(L"\n%d failure(s)\n", fails);

@@ -103,6 +103,7 @@ static void c_exe(wchar_t *args) {
 
 static void c_clear(wchar_t *args)    { ui_clear(); }
 static void c_display(wchar_t *args) { cmd_display(args); }
+static void c_sysinfo(wchar_t *args) { cmd_sysinfo(args); }
 
 static void c_github(wchar_t *args) {
     const wchar_t *url = L"https://github.com/" GH_USER L"/" GH_REPO;
@@ -134,6 +135,7 @@ static const Command COMMANDS[] = {
     { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net },
     { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb },
     { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off]", 1,         c_display },
+    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo },
     { L"GitHub",       L"open Loomy's GitHub page",           L"github",   L"gh",              0, CORE, 0,                                 0,         c_github },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
@@ -269,6 +271,7 @@ static void complete_args(wchar_t **words, int n, const wchar_t *partial) {
     if (c->fn == c_web && n == 1) { complete_add(L"many", partial); web_complete(partial); }
     else if (c->fn == c_webconfig) webconfig_complete(words, n, partial);
     else if (c->fn == c_display && n == 1) display_complete(partial);
+    else if (c->fn == c_sysinfo) sysinfo_complete(words, n, partial);
     else if (c->fn == c_mode) {
         if (n == 1) for (int i = 0; i < 4; i++) complete_add(MODE_SUBS[i], partial);
         else if (n == 2) {

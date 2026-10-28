@@ -2,6 +2,12 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.13
+- New `sysinfo` (`si`): live CPU, GPU, memory, disk, network and top apps. Bare `sysinfo` opens a picker; `si general`, `si cpu` and `si gpu [n]` go straight to a view. Loomy grows to about 1.5x for it (less if your screen is smaller) and goes back to normal size when you close it.
+- Every GPU Windows lists gets its own card and view, so a laptop with integrated + dedicated graphics shows both (dedicated first).
+- New **Flow** score per CPU and GPU: high usage alone doesn't lower it; waiting threads, heat or power limits, full RAM or VRAM, paging and driver time do, and it says which.
+- Sensors are only read while sysinfo is open, once a second. Nothing runs while it's closed.
+
 ## v2.12
 - New `github` (`gh`) in core mode: opens Loomy's GitHub page.
 - New `dp off` and a "Screens off" row in the `display` picker: puts the screens to standby like their power button, so the layout doesn't change. Any key or mouse move wakes them.

@@ -10,7 +10,7 @@ typedef void *HANDLE, *HWND, *HDC, *HFONT, *HINSTANCE, *HGDIOBJ, *HICON, *HBRUSH
 typedef unsigned int DWORD, UINT, COLORREF;
 typedef int BOOL, LONG;
 typedef uintptr_t WPARAM; typedef intptr_t LPARAM, INT_PTR, LRESULT;
-typedef unsigned short WORD; typedef short SHORT;
+typedef unsigned short WORD; typedef short SHORT; typedef unsigned long long ULONGLONG;
 typedef const wchar_t *LPCWSTR;
 typedef struct { LONG left, top, right, bottom; } RECT;
 typedef struct { LONG cx, cy; } SIZE;
@@ -36,6 +36,8 @@ typedef struct { DWORD dwFileAttributes; wchar_t cFileName[260]; } WIN32_FIND_DA
 #define GetFileExInfoStandard 0
 #define FILE_ATTRIBUTE_DIRECTORY 16
 #define FILE_ATTRIBUTE_SYSTEM 4
+#define VK_SHIFT 0x10
+SHORT GetKeyState(int);
 enum { VK_UP=1, VK_DOWN, VK_HOME, VK_END, VK_PRIOR, VK_NEXT, VK_RETURN, VK_ESCAPE, VK_LEFT, VK_RIGHT, VK_TAB, VK_BACK };
 #define DT_SINGLELINE 1
 #define DT_NOPREFIX 2
