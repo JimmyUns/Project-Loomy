@@ -1,12 +1,19 @@
-// settings.c - the config screen (type: config)
-// Up/Down picks a row, Enter changes it, Esc goes back. Everything saves instantly.
+// settings.c - the config screen (type: /config, or /config general|custom)
+// Two sections, Tab switches. Up/Down picks a row, Enter (or Left/Right) changes it,
+// Esc goes back. Everything saves instantly.
 #include "loomy.h"
 
-enum { ROW_HOTKEY, ROW_NAME, ROW_ACCENT, ROW_STARTUP, ROW_POSITION, NROWS };
+enum { ROW_HOTKEY, ROW_NAME, ROW_STARTUP, ROW_POSITION,                     // General
+       ROW_ACCENT, ROW_ANIM, ROW_DOTS, ROW_LINES, ROW_SELECT, ROW_TEXT, ROW_FADE,   // Customization
+       NROWS };
 enum { EDIT_NONE, EDIT_NAME, EDIT_ACCENT };
 
-static int  g_active, g_sel, g_editing, g_capturing;
-static RECT g_rows[NROWS];
+#define NSECTIONS 2
+static const wchar_t *SEC_NAME[NSECTIONS] = { L"General", L"Customization" };
+static const int SEC_FIRST[NSECTIONS + 1] = { ROW_HOTKEY, ROW_ACCENT, NROWS };
+
+static int  g_active, g_sec, g_sel, g_editing, g_capturing;   // g_sel is a ROW_ value
+static RECT g_rows[NROWS], g_tabs[NSECTIONS];
 static wchar_t g_msg[160];
 static int  g_msgKind;
 
@@ -110,7 +117,25 @@ static void activate(int row) {
         cfg_save();
         msg(OUT_OK, g_cfg.rememberPos ? L"I'll come back where you last hid me. /resetwindow re-centers."
                                       : L"I'll always open in the middle of the screen.");
+    } else if (row == ROW_ANIM) {
+        g_cfg.anim = (g_cfg.anim + 1) % 3;          // auto -> on -> off -> auto
+        cfg_save();
+        anim_config_changed();
+    } else if (row >= ROW_DOTS && row <= ROW_FADE) {
+        int *v = row == ROW_DOTS ? &g_cfg.animDots : row == ROW_LINES ? &g_cfg.animLines :
+                 row == ROW_SELECT ? &g_cfg.animSelect : row == ROW_TEXT ? &g_cfg.animText : &g_cfg.fadeIn;
+        *v = !*v;
+        cfg_save();
+        anim_config_changed();
+        if (row == ROW_FADE && *v) msg(OUT_DIM, L"You'll see it the next time Loomy opens.");
     }
+    ui_redraw();
+}
+
+static void set_section(int sec) {
+    g_sec = (sec + NSECTIONS) % NSECTIONS;
+    g_sel = SEC_FIRST[g_sec];
+    g_msg[0] = 0;
     ui_redraw();
 }
 
@@ -137,9 +162,10 @@ static void commit_edit(void) {
 int settings_active(void) { return g_active; }
 int settings_wants_input(void) { return g_active && g_editing; }
 
-void settings_open(void) {
+void settings_open(int section) {
     browser_close();
-    g_active = 1; g_sel = 0; g_editing = EDIT_NONE; g_capturing = 0; g_msg[0] = 0;
+    g_active = 1; g_editing = EDIT_NONE; g_capturing = 0;
+    set_section(section);
     ui_set_input(L"");
     ui_redraw();
 }
@@ -189,9 +215,11 @@ int settings_key(WPARAM vk) {
         return 0;   // normal typing goes to the input box
     }
 
+    int first = SEC_FIRST[g_sec], n = SEC_FIRST[g_sec + 1] - first;
     switch (vk) {
-    case VK_UP:     g_sel = (g_sel + NROWS - 1) % NROWS; g_msg[0] = 0; ui_redraw(); return 1;
-    case VK_DOWN:   g_sel = (g_sel + 1) % NROWS;         g_msg[0] = 0; ui_redraw(); return 1;
+    case VK_TAB:    set_section(g_sec + (GetKeyState(VK_SHIFT) < 0 ? -1 : 1)); return 1;
+    case VK_UP:     g_sel = first + (g_sel - first + n - 1) % n; g_msg[0] = 0; ui_redraw(); return 1;
+    case VK_DOWN:   g_sel = first + (g_sel - first + 1) % n;     g_msg[0] = 0; ui_redraw(); return 1;
     case VK_RETURN: case VK_SPACE: activate(g_sel); return 1;
     case VK_LEFT: case VK_RIGHT: {
         int d = vk == VK_RIGHT ? 1 : -1;
@@ -202,7 +230,13 @@ int settings_key(WPARAM vk) {
             set_accent(PRESETS[i]);
             g_msg[0] = 0;
             ui_redraw();
-        } else if (g_sel == ROW_STARTUP || g_sel == ROW_POSITION) activate(g_sel);
+        } else if (g_sel == ROW_ANIM) {
+            g_cfg.anim = (g_cfg.anim + (d > 0 ? 1 : 2)) % 3;
+            cfg_save();
+            anim_config_changed();
+            ui_redraw();
+        } else if (g_sel == ROW_STARTUP || g_sel == ROW_POSITION || (g_sel >= ROW_DOTS && g_sel <= ROW_FADE))
+            activate(g_sel);
         return 1;
     }
     case VK_ESCAPE: settings_close(); return 1;
@@ -219,29 +253,51 @@ int settings_char(WPARAM ch) {
 void settings_click(int x, int y) {
     if (g_capturing || g_editing) return;
     POINT pt = { x, y };
-    for (int i = 0; i < NROWS; i++)
+    for (int s = 0; s < NSECTIONS; s++)
+        if (PtInRect(&g_tabs[s], pt)) { set_section(s); return; }
+    for (int i = SEC_FIRST[g_sec]; i < SEC_FIRST[g_sec + 1]; i++)
         if (PtInRect(&g_rows[i], pt)) { g_sel = i; activate(i); return; }
 }
 
 // ---------------------------------------------------------------- drawing
+static void onoff(HDC dc, int x, int y, int on, int dim) {
+    ui_text(dc, x, y, on ? L"on" : L"off", dim ? C_DIM : on ? C_OK : C_DIM);
+}
+
 void settings_paint(HDC dc, RECT a) {
-    static const wchar_t *labels[NROWS] = { L"Hotkey", L"Your name", L"Accent color", L"Start with Windows", L"Remember position" };
-    int rowH = g_lineH + S(16);
+    static const wchar_t *labels[NROWS] = {
+        L"Hotkey", L"Your name", L"Start with Windows", L"Remember position",
+        L"Accent color", L"Animations", L"Dot wave", L"Line glow", L"List glide", L"Text fade-in", L"Fade in on open" };
+    static const wchar_t *about[NROWS] = {
+        0, 0, 0, L"open where I was last hidden",
+        0, 0, L"a slow wave drifts through the dots", L"a glow sweeps the lines when I open",
+        L"the highlight slides between rows", L"new lines fade in", L"I fade in instead of popping up" };
+    int rowH = g_lineH + S(14);
     int y = a.top;
     int valueX = a.left + S(240);
 
+    // section tabs
     SelectObject(dc, g_font);
-    ui_text(dc, a.left, y, L"Settings", g_accent);
-    y += g_lineH + S(14);
+    int x = a.left;
+    for (int s = 0; s < NSECTIONS; s++) {
+        int w = ui_text(dc, x, y, SEC_NAME[s], s == g_sec ? g_accent : C_DIM);
+        RECT t = { x - S(6), y - S(4), x + w + S(6), y + g_lineH + S(6) };
+        g_tabs[s] = t;
+        if (s == g_sec) ui_fill(dc, x, y + g_lineH + S(3), x + w, y + g_lineH + S(5), g_accent);
+        x += w + S(28);
+    }
+    y += g_lineH + S(16);
 
-    for (int i = 0; i < NROWS; i++) {
+    int animsOff = g_cfg.anim == ANIM_OFF;
+    for (int i = SEC_FIRST[g_sec]; i < SEC_FIRST[g_sec + 1]; i++) {
         RECT r = { a.left, y, a.right, y + rowH };
         g_rows[i] = r;
         int sel = i == g_sel;
-        if (sel) ui_fill(dc, r.left, r.top, r.right, r.bottom, ui_mix(g_accent, C_BG, 13));
+        if (sel) ui_sel_row(dc, r.left, r.top, r.right, r.bottom);
         int ty = y + (rowH - g_lineH) / 2;
+        int sub = i >= ROW_DOTS && i <= ROW_FADE;
         if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
-        ui_text(dc, a.left + S(28), ty, labels[i], sel ? C_BRIGHT : C_TEXT);
+        ui_text(dc, a.left + (sub ? S(44) : S(28)), ty, labels[i], sel ? C_BRIGHT : sub && animsOff ? C_DIM : C_TEXT);
 
         wchar_t v[96];
         switch (i) {
@@ -265,28 +321,35 @@ void settings_paint(HDC dc, RECT a) {
             }
             break;
         }
-        case ROW_STARTUP:
-            if (startup_get()) ui_text(dc, valueX, ty, L"on", C_OK);
-            else ui_text(dc, valueX, ty, L"off", C_DIM);
-            break;
-        case ROW_POSITION:
-            if (g_cfg.rememberPos) ui_text(dc, valueX, ty, L"on", C_OK);
-            else ui_text(dc, valueX, ty, L"off", C_DIM);
-            if (sel) ui_text(dc, valueX + S(50), ty, L"open where I was last hidden", C_DIM);
+        case ROW_STARTUP:  onoff(dc, valueX, ty, startup_get(), 0); break;
+        case ROW_POSITION: onoff(dc, valueX, ty, g_cfg.rememberPos, 0); break;
+        case ROW_ANIM: {
+            const wchar_t *m = g_cfg.anim == ANIM_OFF ? L"off" : g_cfg.anim == ANIM_ON ? L"on" : L"auto";
+            int w = ui_text(dc, valueX, ty, m, g_cfg.anim == ANIM_OFF ? C_DIM : C_OK);
+            if (sel) ui_text(dc, valueX + w + S(14), ty,
+                             g_cfg.anim == ANIM_AUTO ? L"skipped when the PC is busy" :
+                             g_cfg.anim == ANIM_ON   ? L"always" : L"none at all", C_DIM);
             break;
         }
-        y += rowH + S(4);
+        case ROW_DOTS:   onoff(dc, valueX, ty, g_cfg.animDots, animsOff); break;
+        case ROW_LINES:  onoff(dc, valueX, ty, g_cfg.animLines, animsOff); break;
+        case ROW_SELECT: onoff(dc, valueX, ty, g_cfg.animSelect, animsOff); break;
+        case ROW_TEXT:   onoff(dc, valueX, ty, g_cfg.animText, animsOff); break;
+        case ROW_FADE:   onoff(dc, valueX, ty, g_cfg.fadeIn, animsOff); break;
+        }
+        if (sel && about[i]) ui_text(dc, valueX + S(50), ty, about[i], C_DIM);
+        y += rowH + S(2);
     }
 
     if (g_msg[0]) {
         COLORREF c = g_msgKind == OUT_ERR ? C_ERR : g_msgKind == OUT_OK ? C_OK : C_DIM;
-        ui_text(dc, a.left, y + S(10), g_msg, c);
+        ui_text(dc, a.left, y + S(8), g_msg, c);
     }
 
     SelectObject(dc, g_fontSmall);
     const wchar_t *hint = g_capturing ? L"Esc to cancel" :
                           g_editing   ? L"Enter to save    Esc to cancel" :
-                                        L"\x2191\x2193 choose    Enter change    Esc back";
+                                        L"Tab section    \x2191\x2193 choose    Enter change    Esc back";
     ui_text(dc, a.left, a.bottom - S(16), hint, C_DIM);
     SelectObject(dc, g_font);
 }

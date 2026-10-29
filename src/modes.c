@@ -197,7 +197,7 @@ void mode_paint(HDC dc, RECT a) {
 
     for (int i = 0; i < g_nlist; i++) {
         int m = g_list[i], sel = i == g_sel;
-        if (sel) ui_fill(dc, a.left, y, a.right, y + rowH, ui_mix(g_accent, C_BG, 13));
+        if (sel) ui_sel_row(dc, a.left, y, a.right, y + rowH);
         int ty = y + (rowH - g_lineH) / 2;
         if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
         ui_text(dc, a.left + S(28), ty, NAMES[m], sel ? C_BRIGHT : C_TEXT);

@@ -3,7 +3,7 @@
 #include "../src/loomy.h"
 extern wchar_t g_out[4000][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
-extern int g_topo, g_screens, g_setcalls, g_screensOff;
+extern int g_topo, g_screens, g_setcalls, g_screensOff, g_settingsSec;
 extern int g_timer, g_big, g_sysOpen, g_sysSamples, g_fonts, g_fakeGpus, g_shift;
 extern int g_hidden, g_restarts, g_resets, g_refocus; extern wchar_t g_restartNote[600];
 static int fails;
@@ -249,6 +249,30 @@ int main(void) {
     g_cfg.rememberPos = 1; cfg_save(); g_cfg.rememberPos = 0; cfg_load();
     EXPECT(g_cfg.rememberPos == 1, "remember_position saved + loaded");
     g_cfg.rememberPos = 0; cfg_save();
+    // animation settings: defaults, save/load, hand-edited values
+    wprintf(L"\n== animation settings ==\n");
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "hotkey = ctrl+alt+space\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.anim == ANIM_AUTO && g_cfg.animDots && g_cfg.animLines && g_cfg.animSelect && g_cfg.animText && !g_cfg.fadeIn,
+                        "anim defaults: auto, all effects on, fade-in off");
+    g_cfg.anim = ANIM_OFF; g_cfg.animDots = 0; g_cfg.animText = 0; g_cfg.fadeIn = 1; cfg_save();
+    g_cfg.anim = ANIM_ON; g_cfg.animDots = 1; g_cfg.animText = 1; g_cfg.fadeIn = 0; cfg_load();
+    EXPECT(g_cfg.anim == ANIM_OFF && !g_cfg.animDots && g_cfg.animLines && !g_cfg.animText && g_cfg.fadeIn, "anim settings saved + loaded");
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "animations = ON\nanim_lines = no\nanim_select = 0\nfade_in = yes\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.anim == ANIM_ON && !g_cfg.animLines && !g_cfg.animSelect && g_cfg.fadeIn && g_cfg.animDots, "hand-edited anim values");
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "animations = sometimes\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.anim == ANIM_AUTO, "unknown animations value falls back to auto");
+    cfg_load(); g_cfg.anim = ANIM_AUTO; cfg_save();
+    // /config sections
+    run(L"/config");            EXPECT(g_settingsSec == 0, "/config opens General");
+    run(L"/config custom");     EXPECT(g_settingsSec == 1, "/config custom");
+    g_settingsSec = -1;
+    run(L"/config Customization"); EXPECT(g_settingsSec == 1, "/config customization, any case");
+    run(L"/config general");    EXPECT(g_settingsSec == 0, "/config general");
+    g_settingsSec = -1;
+    run(L"/config colors");     EXPECT(g_settingsSec == -1 && saw(L"No settings section called 'colors'") && saw(L"Usage: /config [general|custom]"), "unknown section");
+    run(L"/config custom now"); EXPECT(g_settingsSec == -1 && saw(L"Usage: /config [general|custom]"), "config strict args");
+    tab(L"/config c", L"/config custom ");
+    tab(L"/config g", L"/config general ");
     mode_open(); mode_key(VK_DOWN); mode_key(VK_RETURN);
     EXPECT(mode_current() == 1 && !mode_active(), "mode panel: Down+Enter switches to work");
     run(L"/m hide home");

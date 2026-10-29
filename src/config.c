@@ -17,7 +17,15 @@ static void set_defaults(void) {
     g_cfg.modeMain = 0;
     g_cfg.modeHidden = 0;
     g_cfg.rememberPos = 0;
+    g_cfg.anim = ANIM_AUTO;
+    g_cfg.animDots = g_cfg.animLines = g_cfg.animSelect = g_cfg.animText = 1;
+    g_cfg.fadeIn = 0;
 }
+
+static int is_on(const wchar_t *v) {
+    return s_ieq(v, L"on") || s_ieq(v, L"1") || s_ieq(v, L"true") || s_ieq(v, L"yes");
+}
+static const wchar_t *onoff(int v) { return v ? L"on" : L"off"; }
 
 // never let every mode be hidden, and never let main be a hidden one
 static void fix_modes(void) {
@@ -54,8 +62,14 @@ static void parse(wchar_t *text) {
             else if (s_ieq(k, L"name")) s_cpy(g_cfg.name, v, 64);
             else if (s_ieq(k, L"accent") && s_hex(v, &hex))
                 g_cfg.accent = RGB((hex >> 16) & 255, (hex >> 8) & 255, hex & 255);
-            else if (s_ieq(k, L"remember_position"))
-                g_cfg.rememberPos = s_ieq(v, L"on") || s_ieq(v, L"1") || s_ieq(v, L"true") || s_ieq(v, L"yes");
+            else if (s_ieq(k, L"remember_position")) g_cfg.rememberPos = is_on(v);
+            else if (s_ieq(k, L"animations"))
+                g_cfg.anim = s_ieq(v, L"off") ? ANIM_OFF : s_ieq(v, L"on") ? ANIM_ON : ANIM_AUTO;
+            else if (s_ieq(k, L"anim_dots"))   g_cfg.animDots = is_on(v);
+            else if (s_ieq(k, L"anim_lines"))  g_cfg.animLines = is_on(v);
+            else if (s_ieq(k, L"anim_select")) g_cfg.animSelect = is_on(v);
+            else if (s_ieq(k, L"anim_text"))   g_cfg.animText = is_on(v);
+            else if (s_ieq(k, L"fade_in"))     g_cfg.fadeIn = is_on(v);
             else if (s_ieq(k, L"mode_main")) {
                 int m = mode_find(v);
                 if (m >= 0) g_cfg.modeMain = m;
@@ -82,15 +96,21 @@ void cfg_save(void) {
             if (hidden[0]) s_cat(hidden, L", ", 64);
             s_cat(hidden, mode_name(i), 64);
         }
-    wchar_t text[640];
-    wsprintfW(text,
+    wchar_t text[1024];
+    int n0 = wsprintfW(text,
         L"# Loomy settings. Easiest way to change them: type /config or /mode in Loomy.\r\n"
         L"hotkey = %s\r\nname = %s\r\naccent = #%02X%02X%02X\r\n"
         L"remember_position = %s\r\nmode_main = %s\r\nmode_hidden = %s\r\n",
         g_cfg.hotkey, g_cfg.name,
         GetRValue(g_cfg.accent), GetGValue(g_cfg.accent), GetBValue(g_cfg.accent),
-        g_cfg.rememberPos ? L"on" : L"off", mode_name(g_cfg.modeMain), hidden);
-    char utf8[1024];
+        onoff(g_cfg.rememberPos), mode_name(g_cfg.modeMain), hidden);
+    wsprintfW(text + n0,
+        L"animations = %s\r\nanim_dots = %s\r\nanim_lines = %s\r\nanim_select = %s\r\n"
+        L"anim_text = %s\r\nfade_in = %s\r\n",
+        g_cfg.anim == ANIM_OFF ? L"off" : g_cfg.anim == ANIM_ON ? L"on" : L"auto",
+        onoff(g_cfg.animDots), onoff(g_cfg.animLines), onoff(g_cfg.animSelect),
+        onoff(g_cfg.animText), onoff(g_cfg.fadeIn));
+    char utf8[2048];
     int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), 0, 0) - 1;
     HANDLE f = CreateFileW(g_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     if (f == INVALID_HANDLE_VALUE) return;

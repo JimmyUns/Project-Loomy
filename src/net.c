@@ -584,7 +584,7 @@ void net_paint(HDC dc, RECT a) {
         int sel = i == g_sel;
         int warn = i == g_confirm;
         if (warn)      ui_fill(dc, a.left, y, a.right, y + rowH, ui_mix(C_ERR, C_BG, 16));
-        else if (sel)  ui_fill(dc, a.left, y, a.right, y + rowH, ui_mix(g_accent, C_BG, 13));
+        else if (sel)  ui_sel_row(dc, a.left, y, a.right, y + rowH);
         int ty = y + (rowH - g_lineH) / 2;
         if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", warn ? C_ERR : g_accent);
         ui_text(dc, a.left + S(28), ty, ap->name, sel ? C_BRIGHT : C_TEXT);

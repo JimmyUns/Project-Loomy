@@ -75,6 +75,8 @@ COLORREF g_accent; HFONT g_font, g_fontSmall; int g_lineH = 16;
 wchar_t g_out[4000][1100]; int g_nout;
 int S(int px) { return px; }
 void ui_fill(HDC dc, int l, int t, int r, int b, COLORREF c) {}
+void ui_sel_row(HDC dc, int l, int t, int r, int b) {}
+void anim_config_changed(void) {}
 int ui_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c) { return wcslen(t) * 8; }
 COLORREF ui_mix(COLORREF a, COLORREF b, int p) { return 0; }
 void ui_redraw(void) {}
@@ -96,7 +98,7 @@ int g_refocus; void ui_refocus_soon(void) { g_refocus++; }
 static const char *KIND[] = { "TXT", "DIM", "ACC", "OK ", "ERR", ">  " };
 void out(int kind, const wchar_t *t) { swprintf(g_out[g_nout++ % 4000], 1100, L"%s %ls", KIND[kind], t); }
 void outf(int kind, const wchar_t *f, ...) { wchar_t b[1100]; va_list ap; va_start(ap, f); wvsprintfW(b, f, ap); va_end(ap); out(kind, b); }
-int settings_active(void){return 0;} void settings_open(void){} void settings_close(void){}
+int settings_active(void){return 0;} int g_settingsSec = -1; void settings_open(int s){ g_settingsSec = s; } void settings_close(void){}
 void net_open(void){} void browser_open(const wchar_t *r){} void changelog_open(const wchar_t *a){ outf(OUT_TEXT, L"[changelog_open '%s']", a); }
 void cmd_update(wchar_t *a){} void cmd_version(wchar_t *a){ out(OUT_TEXT, L"[version ran]"); } void cmd_versionhistory(wchar_t *a){}
 

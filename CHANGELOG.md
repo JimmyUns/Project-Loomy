@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.14
+- Loomy comes alive a little, all optional: a slow wave drifts through the halftone dots, a glow sweeps along the purple lines when Loomy opens, the list highlight glides between rows, and new output lines fade in. A window fade-in on open is there too, off by default.
+- **Animations: auto / on / off.** Auto skips them when your PC is busy as Loomy opens (CPU over 80 %, RAM over 90 %, or battery saver). Nothing runs while Loomy is hidden, and the dot wave only repaints its own thin strip.
+- `/config` now has sections: **General** (hotkey, name, start with Windows, remember position) and **Customization** (accent color and every animation). Tab switches; `/config custom` opens Customization directly.
+
 ## v2.13b
 - When a list or panel is open (web, display, sysinfo, the mode picker, `lp`, `net`, `/verc`...), the input bar hides, since you can't type there anyway. It comes back when you close the panel, and shows while you're editing your name or accent color in `/config`.
 - Switching modes (and `/reload`) brings Loomy back in front with the input focused, instead of opening behind your other windows so your typing went to the app underneath.

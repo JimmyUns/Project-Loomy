@@ -586,7 +586,7 @@ void web_paint(HDC dc, RECT a) {
     for (int r = g_top; r < g_n && r < g_top + g_vis; r++) {
         Site *s = &g_s[g_order[r]];
         int sel = r == g_sel;
-        if (sel) ui_fill(dc, a.left, y, a.right, y + rowH, ui_mix(g_accent, C_BG, 13));
+        if (sel) ui_sel_row(dc, a.left, y, a.right, y + rowH);
         int ty = y + (rowH - g_lineH) / 2;
         if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
 

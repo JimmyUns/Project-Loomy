@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.14", L"2026-10-29", {
+        L"Optional animations: dot wave, line glow, list glide, text fade-in.",
+        L"Window fade-in on open too (off by default).",
+        L"Animations auto / on / off: auto skips them when the PC is busy.",
+        L"/config has sections now: General and Customization (Tab switches).",
+        L"/config custom opens Customization directly.",
+        0 } },
     { L"2.13b", L"2026-10-28", {
         L"The input bar hides while a list or panel is open (you can\x2019t type there).",
         L"Switching modes or /reload keeps Loomy in front with the input focused.",
@@ -223,7 +230,7 @@ void changelog_paint(HDC dc, RECT a) {
     for (int i = g_top; i < NRELEASES && i < g_top + g_vis; i++) {
         const Release *r = &RELEASES[i];
         int sel = i == g_sel;
-        if (sel) ui_fill(dc, a.left, y, a.right, y + rowH, ui_mix(g_accent, C_BG, 13));
+        if (sel) ui_sel_row(dc, a.left, y, a.right, y + rowH);
         int ty = y + (rowH - g_lineH) / 2;
         if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
 

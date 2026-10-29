@@ -42,7 +42,7 @@ int S(int px) { return MulDiv(px, g_dpi, 96); }
 // ---------------------------------------------------------------- output buffer
 #define MAX_LINES 300
 #define LINE_LEN  300
-typedef struct { int kind; wchar_t text[LINE_LEN]; } Line;
+typedef struct { int kind; ULONGLONG born; wchar_t text[LINE_LEN]; } Line;   // born: for the fade-in
 static Line g_lines[MAX_LINES];
 static int  g_first, g_count, g_scroll;
 
@@ -56,6 +56,7 @@ static void push_line(int kind, const wchar_t *t, int len) {
     for (int i = 0; i < len; i++) l->text[i] = t[i];
     l->text[len] = 0;
     l->kind = kind;
+    l->born = GetTickCount64();
 }
 
 void out(int kind, const wchar_t *text) {
@@ -108,13 +109,24 @@ static HFONT make_font(int px, int weight) {
     return 0;
 }
 
+static COLORREF border_color(void) { return ui_mix(g_accent, C_BG, 55); }
+static COLORREF glow_color(void)   { return ui_mix(RGB(0xFF, 0xFF, 0xFF), g_accent, 35); }
+
 void ui_apply_colors(void) {
     g_accent = g_cfg.accent;
     g_accentDim = ui_mix(g_accent, C_BG, 45);
     if (g_wnd) {
-        COLORREF border = ui_mix(g_accent, C_BG, 55);
+        COLORREF border = border_color();
         g_dwmBorder = SUCCEEDED(DwmSetWindowAttribute(g_wnd, 34 /*BORDER_COLOR*/, &border, sizeof(border)));
     }
+}
+
+// Windows 11 draws the border itself (one color), so the line glow there is a brightness pulse.
+// Windows 10's border is drawn by paint(), which sweeps the glow along it instead.
+void ui_glow_border(int k) {
+    if (!g_wnd || !g_dwmBorder) return;
+    COLORREF c = ui_mix(glow_color(), border_color(), k * 100 / 1024);
+    DwmSetWindowAttribute(g_wnd, 34 /*BORDER_COLOR*/, &c, sizeof(c));
 }
 
 // ---------------------------------------------------------------- hotkey
@@ -273,6 +285,7 @@ static void show(void) {
     if (g_cfg.rememberPos && g_havePos && pos_ok(g_posX, g_posY)) { x = g_posX; y = g_posY; }
     else centered(&x, &y);
 
+    if (!IsWindowVisible(g_wnd)) anim_show(g_wnd);   // before showing: the fade-in starts see-through
     SetWindowPos(g_wnd, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW);
     SetForegroundWindow(g_wnd);
     SetFocus(g_edit);
@@ -296,6 +309,7 @@ void ui_hide(void) {
     display_close();
     g_fresh = 1;
     KillTimer(g_wnd, TIMER_CLOCK);
+    anim_hide();
     ShowWindow(g_wnd, SW_HIDE);
 }
 
@@ -343,7 +357,7 @@ static void tray_menu(void) {
     int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_wnd, 0);
     DestroyMenu(m);
     if (id == MENU_OPEN) show();
-    else if (id == MENU_SETTINGS) { show(); sysinfo_close(); settings_open(); }
+    else if (id == MENU_SETTINGS) { show(); sysinfo_close(); settings_open(0); }
     else if (id == MENU_RELOAD) ui_restart();
     else if (id == MENU_SHUTDOWN) ui_quit();
 }
@@ -398,16 +412,51 @@ int ui_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c) {
     return sz.cx;
 }
 
-// halftone dots that fade out, like the dither in the old Loomy logo
+// halftone dots that fade out, like the dither in the old Loomy logo.
+// With the dot wave on, a slow crest drifts through: dots it passes grow a little and brighten.
+#define HALFTONE_Y   S(46)
+#define HALFTONE_TOP S(44)
+#define HALFTONE_BOT S(74)
 static void halftone(HDC dc, int y, int w) {
-    int step = S(6), rows = 4, fadeEnd = w * 3 / 4;
+    int step = S(6), rows = 4, fadeEnd = w * 3 / 4, wavelen = S(260);
+    int waving = anim_dots_on();
     for (int r = 0; r < rows; r++) {
         int off = (r & 1) ? step / 2 : 0;
         int rowEnd = fadeEnd - r * fadeEnd / 6;          // each row fades out a bit sooner
         for (int x = off; x < rowEnd; x += step) {
             int size = (S(4) * (rowEnd - x) + rowEnd - 1) / rowEnd;
-            ui_fill(dc, x, y + r * step, x + size, y + r * step + size, g_accentDim);
+            COLORREF c = g_accentDim;
+            if (waving) {
+                int k = anim_wave(x + r * S(14), wavelen);          // rows lag a bit: the crest leans
+                size = size * (820 + 380 * k / 1024) / 1024;        // ~80 % .. ~117 %
+                if (size < 1) size = 1;
+                c = ui_mix(g_accent, g_accentDim, 45 * k / 1024);
+            }
+            ui_fill(dc, x, y + r * step, x + size, y + r * step + size, c);
         }
+    }
+}
+
+void ui_invalidate_strip(void) {
+    if (!g_wnd) return;
+    RECT rc; GetClientRect(g_wnd, &rc);
+    RECT s = { 0, HALFTONE_TOP, rc.right, HALFTONE_BOT };
+    InvalidateRect(g_wnd, &s, FALSE);
+}
+
+// the line glow: a soft bright band sweeps left to right along a 1-px line
+static void glow_line(HDC dc, int y, int x0, int x1, COLORREF base, int g) {
+    int span = x1 - x0, half = span / 6;
+    int head = x0 - half + (span + 2 * half) * g / 1024;
+    int fade = g > 800 ? (1024 - g) * 1024 / 224 : 1024;             // dims out at the end
+    COLORREF hi = glow_color();
+    for (int i = -8; i < 8; i++) {
+        int a = head + i * half / 8, b = a + half / 8 + 1;
+        if (b <= x0 || a >= x1) continue;
+        if (a < x0) a = x0;
+        if (b > x1) b = x1;
+        int k = (8 - (i < 0 ? -i - 1 : i)) * 1024 / 8 * fade / 1024;  // peak in the middle
+        ui_fill(dc, a, y, b, y + 1, ui_mix(hi, base, k * 100 / 1024));
     }
 }
 
@@ -416,6 +465,27 @@ static void paint(HWND w) {
     HDC wdc = BeginPaint(w, &ps);
     RECT rc; GetClientRect(w, &rc);
     int W = rc.right, H = rc.bottom;
+
+    // dot-wave frame: only the strip changed, so redraw just that band (the cheap path)
+    if (ps.rcPaint.top >= HALFTONE_TOP && ps.rcPaint.bottom <= HALFTONE_BOT) {
+        int bh = HALFTONE_BOT - HALFTONE_TOP;
+        HDC sdc = CreateCompatibleDC(wdc);
+        HBITMAP sb = CreateCompatibleBitmap(wdc, W, bh);
+        HGDIOBJ so = SelectObject(sdc, sb);
+        SetViewportOrgEx(sdc, 0, -HALFTONE_TOP, 0);
+        ui_fill(sdc, 0, HALFTONE_TOP, W, HALFTONE_BOT, C_BG);
+        halftone(sdc, HALFTONE_Y, W);
+        if (!g_dwmBorder) {
+            COLORREF b = border_color();
+            ui_fill(sdc, 0, HALFTONE_TOP, 1, HALFTONE_BOT, b);
+            ui_fill(sdc, W - 1, HALFTONE_TOP, W, HALFTONE_BOT, b);
+        }
+        SetViewportOrgEx(sdc, 0, 0, 0);
+        BitBlt(wdc, 0, HALFTONE_TOP, W, bh, sdc, 0, 0, SRCCOPY);
+        SelectObject(sdc, so); DeleteObject(sb); DeleteDC(sdc);
+        EndPaint(w, &ps);
+        return;
+    }
 
     HDC dc = CreateCompatibleDC(wdc);
     HBITMAP bmp = CreateCompatibleBitmap(wdc, W, H);
@@ -441,7 +511,7 @@ static void paint(HWND w) {
     SIZE sz; GetTextExtentPoint32W(dc, right, s_len(right), &sz);
     ui_text(dc, W - px - sz.cx, S(17), right, g_hotkeyOk ? C_DIM : C_ERR);
 
-    halftone(dc, S(46), W);
+    halftone(dc, HALFTONE_Y, W);
 
     // output lines, newest at the bottom
     if (input_shown() != g_inputShown) layout();   // a panel opened/closed: show or hide the input bar
@@ -449,6 +519,9 @@ static void paint(HWND w) {
     RECT area = { px, S(84), W - px, inputTop - S(12) };
     SelectObject(dc, g_font);
     IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
+    int screen = settings_active() ? 1 : browser_active() ? 2 : net_active() ? 3 : changelog_active() ? 4 :
+                 mode_active() ? 5 : web_active() ? 6 : display_active() ? 7 : sysinfo_active() ? 8 : 0;
+    anim_paint_begin(dc, screen);          // list glide: the highlight goes under the rows
     if (settings_active()) settings_paint(dc, area);
     else if (browser_active()) browser_paint(dc, area);
     else if (net_active()) net_paint(dc, area);
@@ -457,6 +530,7 @@ static void paint(HWND w) {
     else if (web_active()) web_paint(dc, area);
     else if (display_active()) display_paint(dc, area);
     else if (sysinfo_active()) sysinfo_paint(dc, area);
+    anim_paint_end();
     int y = screen_active() ? area.top : area.bottom;
     int indent = S(20);
     for (int k = g_scroll; k < g_count && y > area.top; k++) {
@@ -472,10 +546,11 @@ static void paint(HWND w) {
         COLORREF c = l->kind == OUT_DIM ? C_DIM : l->kind == OUT_ACCENT ? g_accent :
                      l->kind == OUT_OK ? C_OK : l->kind == OUT_ERR ? C_ERR :
                      echo ? C_BRIGHT : C_TEXT;
+        c = anim_text(c, l->born);
         SetTextColor(dc, c);
         DrawTextW(dc, l->text, -1, &r, fmt);
         if (echo) {
-            ui_text(dc, area.left, y, L"\x203A", g_accent);
+            ui_text(dc, area.left, y, L"\x203A", anim_text(g_accent, l->born));
             y -= S(12);   // breathing room between command blocks
         }
     }
@@ -492,15 +567,19 @@ static void paint(HWND w) {
     if (g_inputShown) {
         ui_fill(dc, 0, inputTop, W, H, C_INPUTBG);
         ui_fill(dc, 0, inputTop, W, inputTop + 1, C_RULE);
+        int g = anim_glow();
+        if (g >= 0) glow_line(dc, inputTop, 0, W, C_RULE, g);
         SelectObject(dc, g_font);
         ui_text(dc, px, inputTop + (S(52) - g_lineH) / 2, L"\x203A", g_accent);
     }
 
     // fallback border for Windows 10 (Windows 11 draws a rounded one for us)
     if (!g_dwmBorder) {
-        COLORREF b = ui_mix(g_accent, C_BG, 55);
+        COLORREF b = border_color();
         ui_fill(dc, 0, 0, W, 1, b); ui_fill(dc, 0, H - 1, W, H, b);
         ui_fill(dc, 0, 0, 1, H, b); ui_fill(dc, W - 1, 0, W, H, b);
+        int g = anim_glow();
+        if (g >= 0) { glow_line(dc, 0, 0, W, b, g); glow_line(dc, H - 1, 0, W, b, g); }
     }
 
     BitBlt(wdc, 0, 0, W, H, dc, 0, 0, SRCCOPY);
@@ -687,6 +766,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
             KillTimer(w, TIMER_SCREENS);
             SendMessageW(w, WM_SYSCOMMAND, SC_MONITORPOWER, 2);   // 2 = off (standby)
         }
+        else if (wp == TIMER_ANIM) anim_tick();
         else if (wp == TIMER_NET) { net_tick(); sysinfo_tick(); }
         else if (wp == TIMER_REFOCUS) {
             if (IsWindowVisible(w)) { SetForegroundWindow(w); SetFocus(g_edit); }
