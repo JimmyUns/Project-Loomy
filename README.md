@@ -2,7 +2,7 @@
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
-Run `loomy.exe`. Press **Ctrl + Alt + Space** (changeable in `/config`) to show/hide it. **Esc** hides it too.
+Run `loomy.exe`. Press **Ctrl + Alt + Space** (changeable in `/config`) to show/hide it. **Esc** hides it too, and so does **double-clicking the clock** in the top right (handy when only your mouse hand is free).
 
 Type **help** to see every command. Commands that change Loomy itself (settings, update, reload, shutdown, hide, clear) start with a **/** — like `/config` or `/update`. Commands that just do a task or print are plain — like `lp`, `net`, `help`.
 

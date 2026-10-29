@@ -25,6 +25,7 @@ static HFONT     g_fontTitle;
 int              g_lineH;
 static int       g_dpi = 96;
 static int       g_hotkeyOk, g_dwmBorder, g_fresh;
+static RECT      g_clockRect;              // double-click the clock = hide (for when your hands are busy)
 static UINT      g_taskbarMsg;
 static int       g_havePos, g_posX, g_posY;   // where it was last hidden (memory only: a reload forgets it)
 static int       g_refocusLeft;
@@ -510,6 +511,8 @@ static void paint(HWND w) {
     else            wsprintfW(right, L"hotkey taken \x00B7 %02d:%02d", t.wHour, t.wMinute);
     SIZE sz; GetTextExtentPoint32W(dc, right, s_len(right), &sz);
     ui_text(dc, W - px - sz.cx, S(17), right, g_hotkeyOk ? C_DIM : C_ERR);
+    RECT ck = { W - px - sz.cx - S(8), S(8), W - px + S(8), S(17) + sz.cy + S(8) };   // a forgiving target
+    g_clockRect = ck;
 
     halftone(dc, HALFTONE_Y, W);
 
@@ -716,6 +719,12 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         SetBkColor((HDC)wp, C_INPUTBG);
         return (LRESULT)g_brInput;
 
+    case WM_NCLBUTTONDBLCLK: {   // the header is a drag handle, so its double-clicks arrive here
+        POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+        ScreenToClient(w, &pt);
+        if (wp == HTCAPTION && PtInRect(&g_clockRect, pt)) { ui_hide(); return 0; }
+        break;
+    }
     case WM_NCHITTEST: {   // drag the window by its header
         POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
         ScreenToClient(w, &pt);

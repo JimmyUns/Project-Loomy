@@ -5,6 +5,7 @@ All notable changes to Loomy, newest first.
 ## v2.14
 - Loomy comes alive a little, all optional: a slow wave drifts through the halftone dots, a glow sweeps along the purple lines when Loomy opens, the list highlight glides between rows, and new output lines fade in. A window fade-in on open is there too, off by default, with a **Fade speed** slider (100–800 ms).
 - **Animations: auto / on / off.** Auto skips them when your PC is busy as Loomy opens (CPU over 80 %, RAM over 90 %, or battery saver). Nothing runs while Loomy is hidden, and the dot wave only repaints its own thin strip.
+- Double-click the clock in the top right to hide Loomy, for when only your mouse hand is free.
 - `/config` now has sections: **General** (hotkey, name, start with Windows, remember position) and **Customization** (accent color and every animation). Tab switches; `/config custom` opens Customization directly.
 
 ## v2.13b

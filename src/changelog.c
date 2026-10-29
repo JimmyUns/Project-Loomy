@@ -18,7 +18,7 @@ static const Release RELEASES[] = {
         L"Window fade-in on open (off by default), speed set with a slider.",
         L"Animations auto / on / off: auto skips them when the PC is busy.",
         L"/config has sections now: General and Customization (Tab switches).",
-        L"/config custom opens Customization directly.",
+        L"Double-click the clock (top right) to hide Loomy.",
         0 } },
     { L"2.13b", L"2026-10-28", {
         L"The input bar hides while a list or panel is open (you can\x2019t type there).",
