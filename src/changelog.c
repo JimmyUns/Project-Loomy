@@ -13,6 +13,11 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.15", L"2026-10-29", {
+        L"Fade in on open is slower and actually visible now.",
+        L"New Fade speed slider in /config Customization (100\u2013800 ms).",
+        L"Double-click the clock (top right) to hide Loomy.",
+        0 } },
     { L"2.14", L"2026-10-29", {
         L"Optional animations: dot wave, line glow, list glide, text fade-in.",
         L"Window fade-in on open too (off by default).",

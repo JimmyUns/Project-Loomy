@@ -1,8 +1,8 @@
-# Loomy 2.14
+# Loomy 2.15
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
-Run `loomy.exe`. Press **Ctrl + Alt + Space** (changeable in `/config`) to show/hide it. **Esc** hides it too.
+Run `loomy.exe`. Press **Ctrl + Alt + Space** (changeable in `/config`) to show/hide it. **Esc** hides it too, and so does **double-clicking the clock** in the top right (handy when only your mouse hand is free).
 
 Type **help** to see every command. Commands that change Loomy itself (settings, update, reload, shutdown, hide, clear) start with a **/** — like `/config` or `/update`. Commands that just do a task or print are plain — like `lp`, `net`, `help`.
 
@@ -12,7 +12,7 @@ Loomy has three modes, **home**, **work** and **core** — the current one shows
 
 `/config` has two sections, **General** and **Customization** (Tab switches; `/config custom` jumps straight there). Turn on **Remember position** under General to have Loomy reappear where you last hid it. `/resetwindow` puts it back in the middle.
 
-Customization also holds the accent color and the animations: a dot wave in the halftone strip, a glow along the lines when Loomy opens, a gliding list highlight, and fading-in text (all on), plus a window fade-in (off). **Animations** is `auto` by default: if your PC is busy when Loomy opens (CPU, nearly full RAM, or battery saver), it skips them that time. Set it to `on` or `off` to decide yourself. They only run while Loomy is on screen.
+Customization also holds the accent color and the animations: a dot wave in the halftone strip, a glow along the lines when Loomy opens, a gliding list highlight, and fading-in text (all on), plus a window fade-in (off) with a **Fade speed** slider (← → to adjust, or click the bar). **Animations** is `auto` by default: if your PC is busy when Loomy opens (CPU, nearly full RAM, or battery saver), it skips them that time. Set it to `on` or `off` to decide yourself. They only run while Loomy is on screen.
 
 If you type a command wrong (extra or missing words), Loomy replies with its usage: `<this>` is required, `[this]` is optional.
 
