@@ -17,7 +17,7 @@
 #define GLOW_MS    750
 #define GLIDE_MS   110
 #define TEXT_MS    180
-#define FADE_MS    140
+#define FADE_MS    300     // long enough to actually see it
 #define BUSY_CPU   80
 #define BUSY_RAM   90
 
@@ -37,6 +37,14 @@ static int ease(ULONGLONG start, int dur) {
     if (t >= (ULONGLONG)dur) return 1024;
     int i = 1024 - (int)(t * 1024 / dur);
     return 1024 - (int)((long long)i * i / 1024 * i / 1024);
+}
+
+// 0..1024, slow start and slow end (smoothstep): reads as a fade, not a blink
+static int smooth(ULONGLONG start, int dur) {
+    ULONGLONG t = now_ms() - start;
+    if (t >= (ULONGLONG)dur) return 1024;
+    int x = (int)(t * 1024 / dur);
+    return (int)((long long)x * x / 1024 * (3072 - 2 * x) / 1024);
 }
 
 static ULONGLONG ft(FILETIME f) { return ((ULONGLONG)f.dwHighDateTime << 32) | f.dwLowDateTime; }
@@ -91,7 +99,7 @@ void anim_show(HWND w) {
         SetWindowLongW(w, GWL_EXSTYLE, GetWindowLongW(w, GWL_EXSTYLE) | WS_EX_LAYERED);
         SetLayeredWindowAttributes(w, 0, 0, LWA_ALPHA);
         g_layered = 1;
-        g_fade0 = now_ms();
+        g_fade0 = 0;                            // the clock starts on the first tick, after the first paint
     }
     if (g_cfg.anim == ANIM_ON) start_effects();
     else { g_pending = 1; cpu_snap(&g_idle0, &g_total0); }
@@ -148,7 +156,8 @@ void anim_tick(void) {
     int busy = g_pending;
 
     if (g_layered) {
-        int a = ease(g_fade0, FADE_MS);
+        if (!g_fade0) g_fade0 = t;              // timers come after WM_PAINT, so the window has its content now
+        int a = smooth(g_fade0, FADE_MS);
         SetLayeredWindowAttributes(g_w, 0, (BYTE)(a * 255 / 1024), LWA_ALPHA);
         if (a >= 1024) end_fade(); else busy = 1;
     }
