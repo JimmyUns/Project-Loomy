@@ -15,7 +15,7 @@ typedef struct {
 static const Release RELEASES[] = {
     { L"2.14", L"2026-10-29", {
         L"Optional animations: dot wave, line glow, list glide, text fade-in.",
-        L"Window fade-in on open too (off by default).",
+        L"Window fade-in on open (off by default), speed set with a slider.",
         L"Animations auto / on / off: auto skips them when the PC is busy.",
         L"/config has sections now: General and Customization (Tab switches).",
         L"/config custom opens Customization directly.",

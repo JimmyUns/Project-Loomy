@@ -261,6 +261,17 @@ int main(void) {
     cfg_load();  EXPECT(g_cfg.anim == ANIM_ON && !g_cfg.animLines && !g_cfg.animSelect && g_cfg.fadeIn && g_cfg.animDots, "hand-edited anim values");
     { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "animations = sometimes\n"); fclose(f); }
     cfg_load();  EXPECT(g_cfg.anim == ANIM_AUTO, "unknown animations value falls back to auto");
+    // fade speed: default, save/load, clamped, junk ignored
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "hotkey = ctrl+alt+space\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.fadeMs == FADE_DEF, "fade_ms default 300");
+    g_cfg.fadeMs = 550; cfg_save(); g_cfg.fadeMs = 0; cfg_load();
+    EXPECT(g_cfg.fadeMs == 550, "fade_ms saved + loaded");
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "fade_ms = 20\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.fadeMs == FADE_MIN, "fade_ms too small -> 100");
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "fade_ms = 99999999\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.fadeMs == FADE_MAX, "fade_ms too big -> 800");
+    { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "fade_ms = fast\n"); fclose(f); }
+    cfg_load();  EXPECT(g_cfg.fadeMs == FADE_DEF, "fade_ms junk ignored");
     cfg_load(); g_cfg.anim = ANIM_AUTO; cfg_save();
     // /config sections
     run(L"/config");            EXPECT(g_settingsSec == 0, "/config opens General");

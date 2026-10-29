@@ -271,8 +271,13 @@ typedef struct {
     int      anim;          // ANIM_OFF / ANIM_AUTO (skip when the PC is busy) / ANIM_ON
     int      animDots, animLines, animSelect, animText;   // each effect on/off
     int      fadeIn;        // fade the window in on open (off by default)
+    int      fadeMs;        // how long that fade takes
 } Config;
 enum { ANIM_OFF, ANIM_AUTO, ANIM_ON };
+#define FADE_MIN  100
+#define FADE_MAX  800
+#define FADE_STEP 50
+#define FADE_DEF  300
 extern Config g_cfg;
 
 void cfg_load(void);

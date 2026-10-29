@@ -17,7 +17,6 @@
 #define GLOW_MS    750
 #define GLIDE_MS   110
 #define TEXT_MS    180
-#define FADE_MS    300     // long enough to actually see it
 #define BUSY_CPU   80
 #define BUSY_RAM   90
 
@@ -157,7 +156,7 @@ void anim_tick(void) {
 
     if (g_layered) {
         if (!g_fade0) g_fade0 = t;              // timers come after WM_PAINT, so the window has its content now
-        int a = smooth(g_fade0, FADE_MS);
+        int a = smooth(g_fade0, g_cfg.fadeMs);    // length set in /config (Fade speed)
         SetLayeredWindowAttributes(g_w, 0, (BYTE)(a * 255 / 1024), LWA_ALPHA);
         if (a >= 1024) end_fade(); else busy = 1;
     }

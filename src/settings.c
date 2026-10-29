@@ -4,7 +4,7 @@
 #include "loomy.h"
 
 enum { ROW_HOTKEY, ROW_NAME, ROW_STARTUP, ROW_POSITION,                     // General
-       ROW_ACCENT, ROW_ANIM, ROW_DOTS, ROW_LINES, ROW_SELECT, ROW_TEXT, ROW_FADE,   // Customization
+       ROW_ACCENT, ROW_ANIM, ROW_DOTS, ROW_LINES, ROW_SELECT, ROW_TEXT, ROW_FADE, ROW_FADESPD,   // Customization
        NROWS };
 enum { EDIT_NONE, EDIT_NAME, EDIT_ACCENT };
 
@@ -13,7 +13,7 @@ static const wchar_t *SEC_NAME[NSECTIONS] = { L"General", L"Customization" };
 static const int SEC_FIRST[NSECTIONS + 1] = { ROW_HOTKEY, ROW_ACCENT, NROWS };
 
 static int  g_active, g_sec, g_sel, g_editing, g_capturing;   // g_sel is a ROW_ value
-static RECT g_rows[NROWS], g_tabs[NSECTIONS];
+static RECT g_rows[NROWS], g_tabs[NSECTIONS], g_slider;
 static wchar_t g_msg[160];
 static int  g_msgKind;
 
@@ -128,7 +128,19 @@ static void activate(int row) {
         cfg_save();
         anim_config_changed();
         if (row == ROW_FADE && *v) msg(OUT_DIM, L"You'll see it the next time Loomy opens.");
+    } else if (row == ROW_FADESPD) {
+        msg(OUT_DIM, L"Use \x2190 \x2192 (or click the bar) to change it.");
     }
+    ui_redraw();
+}
+
+static void set_fade_ms(int ms) {
+    ms = (ms + FADE_STEP / 2) / FADE_STEP * FADE_STEP;
+    if (ms < FADE_MIN) ms = FADE_MIN;
+    if (ms > FADE_MAX) ms = FADE_MAX;
+    if (ms == g_cfg.fadeMs) return;
+    g_cfg.fadeMs = ms;
+    cfg_save();
     ui_redraw();
 }
 
@@ -235,6 +247,8 @@ int settings_key(WPARAM vk) {
             cfg_save();
             anim_config_changed();
             ui_redraw();
+        } else if (g_sel == ROW_FADESPD) {
+            set_fade_ms(g_cfg.fadeMs + d * FADE_STEP);
         } else if (g_sel == ROW_STARTUP || g_sel == ROW_POSITION || (g_sel >= ROW_DOTS && g_sel <= ROW_FADE))
             activate(g_sel);
         return 1;
@@ -255,6 +269,12 @@ void settings_click(int x, int y) {
     POINT pt = { x, y };
     for (int s = 0; s < NSECTIONS; s++)
         if (PtInRect(&g_tabs[s], pt)) { set_section(s); return; }
+    if (g_sec == 1 && PtInRect(&g_slider, pt)) {          // click on the fade-speed bar
+        g_sel = ROW_FADESPD;
+        set_fade_ms(FADE_MIN + (x - g_slider.left) * (FADE_MAX - FADE_MIN) / (g_slider.right - g_slider.left));
+        ui_redraw();
+        return;
+    }
     for (int i = SEC_FIRST[g_sec]; i < SEC_FIRST[g_sec + 1]; i++)
         if (PtInRect(&g_rows[i], pt)) { g_sel = i; activate(i); return; }
 }
@@ -267,11 +287,12 @@ static void onoff(HDC dc, int x, int y, int on, int dim) {
 void settings_paint(HDC dc, RECT a) {
     static const wchar_t *labels[NROWS] = {
         L"Hotkey", L"Your name", L"Start with Windows", L"Remember position",
-        L"Accent color", L"Animations", L"Dot wave", L"Line glow", L"List glide", L"Text fade-in", L"Fade in on open" };
+        L"Accent color", L"Animations", L"Dot wave", L"Line glow", L"List glide", L"Text fade-in", L"Fade in on open",
+        L"Fade speed" };
     static const wchar_t *about[NROWS] = {
         0, 0, 0, L"open where I was last hidden",
         0, 0, L"a slow wave drifts through the dots", L"a glow sweeps the lines when I open",
-        L"the highlight slides between rows", L"new lines fade in", L"I fade in instead of popping up" };
+        L"the highlight slides between rows", L"new lines fade in", L"I fade in instead of popping up", 0 };
     int rowH = g_lineH + S(14);
     int y = a.top;
     int valueX = a.left + S(240);
@@ -295,9 +316,11 @@ void settings_paint(HDC dc, RECT a) {
         int sel = i == g_sel;
         if (sel) ui_sel_row(dc, r.left, r.top, r.right, r.bottom);
         int ty = y + (rowH - g_lineH) / 2;
-        int sub = i >= ROW_DOTS && i <= ROW_FADE;
+        int sub = i >= ROW_DOTS && i <= ROW_FADESPD;
         if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
-        ui_text(dc, a.left + (sub ? S(44) : S(28)), ty, labels[i], sel ? C_BRIGHT : sub && animsOff ? C_DIM : C_TEXT);
+        int off = (sub && animsOff) || (i == ROW_FADESPD && !g_cfg.fadeIn);
+        ui_text(dc, a.left + (i == ROW_FADESPD ? S(60) : sub ? S(44) : S(28)), ty, labels[i],
+                sel ? C_BRIGHT : off ? C_DIM : C_TEXT);
 
         wchar_t v[96];
         switch (i) {
@@ -336,6 +359,20 @@ void settings_paint(HDC dc, RECT a) {
         case ROW_SELECT: onoff(dc, valueX, ty, g_cfg.animSelect, animsOff); break;
         case ROW_TEXT:   onoff(dc, valueX, ty, g_cfg.animText, animsOff); break;
         case ROW_FADE:   onoff(dc, valueX, ty, g_cfg.fadeIn, animsOff); break;
+        case ROW_FADESPD: {                      // a little slider: track, fill, knob, value
+            int tw = S(150), th = S(4), tx = valueX, my = ty + g_lineH / 2;
+            int fill = (g_cfg.fadeMs - FADE_MIN) * tw / (FADE_MAX - FADE_MIN);
+            COLORREF on = off ? C_DIM : g_accent;
+            ui_fill(dc, tx, my - th / 2, tx + tw, my + th / 2 + 1, ui_mix(C_DIM, C_BG, 35));
+            ui_fill(dc, tx, my - th / 2, tx + fill, my + th / 2 + 1, on);
+            ui_fill(dc, tx + fill - S(4), my - S(6), tx + fill + S(4), my + S(6), off ? C_DIM : C_BRIGHT);
+            RECT sr = { tx - S(6), y, tx + tw + S(6), y + rowH };
+            g_slider = sr;
+            wsprintfW(v, L"%d ms", g_cfg.fadeMs);
+            int w = ui_text(dc, tx + tw + S(16), ty, v, off ? C_DIM : C_BRIGHT);
+            if (sel) ui_text(dc, tx + tw + S(30) + w, ty, L"\x2190 faster  \x2192 slower", C_DIM);
+            break;
+        }
         }
         if (sel && about[i]) ui_text(dc, valueX + S(50), ty, about[i], C_DIM);
         y += rowH + S(2);

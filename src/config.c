@@ -20,6 +20,7 @@ static void set_defaults(void) {
     g_cfg.anim = ANIM_AUTO;
     g_cfg.animDots = g_cfg.animLines = g_cfg.animSelect = g_cfg.animText = 1;
     g_cfg.fadeIn = 0;
+    g_cfg.fadeMs = FADE_DEF;
 }
 
 static int is_on(const wchar_t *v) {
@@ -70,6 +71,14 @@ static void parse(wchar_t *text) {
             else if (s_ieq(k, L"anim_select")) g_cfg.animSelect = is_on(v);
             else if (s_ieq(k, L"anim_text"))   g_cfg.animText = is_on(v);
             else if (s_ieq(k, L"fade_in"))     g_cfg.fadeIn = is_on(v);
+            else if (s_ieq(k, L"fade_ms")) {
+                int n = 0, ok = *v != 0;
+                for (wchar_t *p = v; *p; p++) {
+                    if (*p < L'0' || *p > L'9') { ok = 0; break; }
+                    if (n < 100000) n = n * 10 + (*p - L'0');      // huge numbers just clamp below
+                }
+                if (ok) g_cfg.fadeMs = n < FADE_MIN ? FADE_MIN : n > FADE_MAX ? FADE_MAX : n;
+            }
             else if (s_ieq(k, L"mode_main")) {
                 int m = mode_find(v);
                 if (m >= 0) g_cfg.modeMain = m;
@@ -106,10 +115,10 @@ void cfg_save(void) {
         onoff(g_cfg.rememberPos), mode_name(g_cfg.modeMain), hidden);
     wsprintfW(text + n0,
         L"animations = %s\r\nanim_dots = %s\r\nanim_lines = %s\r\nanim_select = %s\r\n"
-        L"anim_text = %s\r\nfade_in = %s\r\n",
+        L"anim_text = %s\r\nfade_in = %s\r\nfade_ms = %d\r\n",
         g_cfg.anim == ANIM_OFF ? L"off" : g_cfg.anim == ANIM_ON ? L"on" : L"auto",
         onoff(g_cfg.animDots), onoff(g_cfg.animLines), onoff(g_cfg.animSelect),
-        onoff(g_cfg.animText), onoff(g_cfg.fadeIn));
+        onoff(g_cfg.animText), onoff(g_cfg.fadeIn), g_cfg.fadeMs);
     char utf8[2048];
     int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), 0, 0) - 1;
     HANDLE f = CreateFileW(g_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);

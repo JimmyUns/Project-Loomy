@@ -154,7 +154,10 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
     `ui_sel_row` records the target. **New panels must use `ui_sel_row` for the selection.**
   - Text fade: `Line.born` (tick at push); lines from before Loomy opened don't fade.
   - Fade-in: `WS_EX_LAYERED` + alpha ramp, removed when done.
-  - Config keys: `animations = auto|on|off`, `anim_dots`, `anim_lines`, `anim_select`, `anim_text`, `fade_in`.
+  - Fade-in length is `fade_ms` (slider row "Fade speed" in Customization, 100–800 ms, step 50, default 300,
+    clamped on load). It's a smoothstep curve whose clock starts on the first timer tick (after the first paint).
+    The first version (140 ms ease-out) read as "nothing happens".
+  - Config keys: `animations = auto|on|off`, `anim_dots`, `anim_lines`, `anim_select`, `anim_text`, `fade_in`, `fade_ms`.
     `settings.c`: sections via `SEC_FIRST[]`, `settings_open(section)`, `/config [general|custom]`.
 - **v2.13b is released** (PR #11): input bar hides while a panel is open (`input_shown()`; edit box parked off-screen,
   keeps focus; `paint()` re-runs `layout()` on change, so new panels get it free), and mode switch / `/reload` keep
