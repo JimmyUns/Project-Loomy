@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.14 in progress)
+# Loomy — Handover (v2.15)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -140,7 +140,10 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.14 is on `claude/v2.14`, draft PR** (animations + `/config` sections). Not run on Windows. Ask him to check: the
+- **v2.15 is PR (claude/v2.15), ready:** fade-in fix, Fade speed slider, double-click clock to hide. These were
+  meant for 2.14, but he merged PR #12 and tagged `v2.14` after its first commit, so they shipped as 2.15.
+  **Lesson:** a draft PR can still be merged; if he says something "looks good" mid-version, check whether he merged.
+- **v2.14 is released** (PR #12, tag `v2.14`): animations + `/config` sections. Not run on Windows. Ask him to check: the
   dot wave looks calm (not busy), the line glow on open (Win 10: sweep along top/bottom border and the input rule;
   Win 11: border brightness pulse), list glide in `/m`, `display`, `web`, `lp`, `/config`; text fade; fade-in when turned
   on; the Customization section fits; and CPU while Loomy sits open with the dot wave (Task Manager).

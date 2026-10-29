@@ -13,12 +13,17 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.15", L"2026-10-29", {
+        L"Fade in on open is slower and actually visible now.",
+        L"New Fade speed slider in /config Customization (100\u2013800 ms).",
+        L"Double-click the clock (top right) to hide Loomy.",
+        0 } },
     { L"2.14", L"2026-10-29", {
         L"Optional animations: dot wave, line glow, list glide, text fade-in.",
-        L"Window fade-in on open (off by default), speed set with a slider.",
+        L"Window fade-in on open too (off by default).",
         L"Animations auto / on / off: auto skips them when the PC is busy.",
         L"/config has sections now: General and Customization (Tab switches).",
-        L"Double-click the clock (top right) to hide Loomy.",
+        L"/config custom opens Customization directly.",
         0 } },
     { L"2.13b", L"2026-10-28", {
         L"The input bar hides while a list or panel is open (you can\x2019t type there).",
