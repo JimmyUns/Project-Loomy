@@ -1,4 +1,4 @@
-# Loomy 2.13b
+# Loomy 2.14
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -10,7 +10,9 @@ In `lp` and `config`: ↑↓ choose, Enter picks, Esc goes back. In `lp`, → go
 
 Loomy has three modes, **home**, **work** and **core** — the current one shows in the header. Type `/m` to pick one (switching reloads Loomy fresh). **core** is for Loomy itself: `/update`, `/version`, `/vh`, `/verc` and `github` only exist there (anywhere else they're unknown commands). Saved websites (`web`, `/webconfig`) are kept separately per mode; `web many` keeps the list open so you can open several.
 
-Turn on **Remember position** in `/config` to have Loomy reappear where you last hid it. `/resetwindow` puts it back in the middle.
+`/config` has two sections, **General** and **Customization** (Tab switches; `/config custom` jumps straight there). Turn on **Remember position** under General to have Loomy reappear where you last hid it. `/resetwindow` puts it back in the middle.
+
+Customization also holds the accent color and the animations: a dot wave in the halftone strip, a glow along the lines when Loomy opens, a gliding list highlight, and fading-in text (all on), plus a window fade-in (off). **Animations** is `auto` by default: if your PC is busy when Loomy opens (CPU, nearly full RAM, or battery saver), it skips them that time. Set it to `on` or `off` to decide yourself. They only run while Loomy is on screen.
 
 If you type a command wrong (extra or missing words), Loomy replies with its usage: `<this>` is required, `[this]` is optional.
 

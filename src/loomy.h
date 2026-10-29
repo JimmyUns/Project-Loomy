@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.13b"
+#define LOOMY_VERSION L"2.14"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -39,7 +39,25 @@ int      ui_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c);   // retur
 COLORREF ui_mix(COLORREF a, COLORREF b, int pctA);
 void     ui_redraw(void);
 void     ui_flush(void);
-void     ui_screens_off_soon(void);                   // screens to standby in ~0.5 s                              // paint right now (before a slow call)
+void     ui_screens_off_soon(void);                   // screens to standby in ~0.5 s
+void     ui_glow_border(int k);                       // Windows 11 border glow, 0..1024
+void     ui_invalidate_strip(void);                   // repaint just the halftone strip
+void     ui_sel_row(HDC dc, int l, int t, int r, int b);   // panels: draw the selected row's highlight
+
+// ---------- anim.c (optional UI animations, /config > Customization) ----------
+#define TIMER_ANIM 5
+void     anim_show(HWND w);
+void     anim_hide(void);
+void     anim_tick(void);
+void     anim_kick(void);
+void     anim_config_changed(void);
+int      anim_dots_on(void);
+int      anim_wave(int x, int wavelen);               // 0..1024 at the crest, -1 = off
+int      anim_glow(void);                             // line glow progress 0..1024, -1 = none
+COLORREF anim_text(COLORREF c, ULONGLONG born);
+int      anim_glide_active(void);
+void     anim_paint_begin(HDC dc, int screen);
+void     anim_paint_end(void);                              // paint right now (before a slow call)
 void     ui_apply_colors(void);
 void     ui_set_input(const wchar_t *t);
 void     ui_get_input(wchar_t *buf, int cap);
@@ -123,7 +141,7 @@ int release_check(const char *json, const char *owner, char *tag, int tagCap, wc
 // ---------- settings.c (the config screen) ----------
 int  settings_active(void);
 int  settings_wants_input(void);                     // typing a name/color into the input box
-void settings_open(void);
+void settings_open(int section);                      // 0 = General, 1 = Customization
 void settings_close(void);
 void settings_paint(HDC dc, RECT area);
 int  settings_key(WPARAM vk);                         // 1 = handled
@@ -250,7 +268,11 @@ typedef struct {
     int      modeMain;      // the mode Loomy starts in
     unsigned modeHidden;    // bit per mode: 1 = hidden from the /mode list
     int      rememberPos;   // 1 = show up where it was last hidden
+    int      anim;          // ANIM_OFF / ANIM_AUTO (skip when the PC is busy) / ANIM_ON
+    int      animDots, animLines, animSelect, animText;   // each effect on/off
+    int      fadeIn;        // fade the window in on open (off by default)
 } Config;
+enum { ANIM_OFF, ANIM_AUTO, ANIM_ON };
 extern Config g_cfg;
 
 void cfg_load(void);

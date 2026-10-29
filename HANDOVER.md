@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.13b in progress)
+# Loomy — Handover (v2.14 in progress)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -85,6 +85,7 @@ reload/position, `ui_flush`) · `commands.c` (command table, strict args, Tab) �
 - **Panels** (anything bigger than a line): a module with `_active/_open/_close/_paint/_key/_char/_click/_wheel`,
   wired into every dispatch spot in `ui.c` (screen_active, ui_hide, paint, edit_proc, click, dblclick, wheel).
   `display.c` is the cleanest small example (mirrors the mode picker).
+  Draw the selected row with `ui_sel_row()` (list glide), not a fill of your own.
 - **Network** runs on the UI thread. `https_get` sets WinHTTP timeouts (5 s DNS/connect/send, 10 s per read).
   Call `ui_flush()` (not `ui_redraw()`) before any slow call so the "Checking..." line actually shows.
 - **New version:** bump `LOOMY_VERSION` **and the `# Loomy X.Y` title in `README.md`** (he checks it to confirm a merge worked), and add the entry to **both** `CHANGELOG.md` and `changelog.c` `RELEASES[]`
@@ -139,15 +140,26 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.13b is on `claude/v2.13b`, draft PR** (fix build, no new features):
-  - Input bar hides while a panel is open: `input_shown()` in `ui.c` = no panel, or settings is editing name/accent
-    (`settings_wants_input()`). Hidden = the edit box is parked off-screen (it keeps focus, so panel keys still route
-    through `edit_proc`), the bar isn't painted, and the panel area grows down. `paint()` re-runs `layout()` when it
-    changes, so every panel open/close is covered with no per-panel wiring. **New panels get this for free.**
-  - Mode switch / `/reload` focus: `ui_restart_to` calls `AllowSetForegroundWindow(ASFW_ANY)` before `cleanup()`
-    (while Loomy is still the foreground app), so the new copy's `SetForegroundWindow` isn't blocked by Windows'
-    focus-stealing rule. Not covered: the `/update` relaunch (started from a .bat, not from Loomy).
-  - Neither can be tested off Windows. Ask him to check both.
+- **v2.14 is on `claude/v2.14`, draft PR** (animations + `/config` sections). Not run on Windows. Ask him to check: the
+  dot wave looks calm (not busy), the line glow on open (Win 10: sweep along top/bottom border and the input rule;
+  Win 11: border brightness pulse), list glide in `/m`, `display`, `web`, `lp`, `/config`; text fade; fade-in when turned
+  on; the Customization section fits; and CPU while Loomy sits open with the dot wave (Task Manager).
+  - `anim.c`: one timer (`TIMER_ANIM`): 16 ms while a one-shot runs, 33 ms for the dot wave alone, killed when hidden.
+    `anim_show()` (before `ShowWindow`) gates it: `animations = auto` skips everything if RAM >= 90 % or battery saver,
+    else opens plain and samples CPU over the first 50 ms (`GetSystemTimes`), starting effects only if < 80 %.
+  - Dot wave frames invalidate just the strip (`ui_invalidate_strip`); `paint()` has a fast path that redraws only
+    that band when the update region is inside it.
+  - **List glide:** panels draw their selected row with `ui_sel_row()` (never their own fill). `paint()` calls
+    `anim_paint_begin(dc, screen)` before the panel, which paints the highlight at its gliding spot *under* the rows;
+    `ui_sel_row` records the target. **New panels must use `ui_sel_row` for the selection.**
+  - Text fade: `Line.born` (tick at push); lines from before Loomy opened don't fade.
+  - Fade-in: `WS_EX_LAYERED` + alpha ramp, removed when done.
+  - Config keys: `animations = auto|on|off`, `anim_dots`, `anim_lines`, `anim_select`, `anim_text`, `fade_in`.
+    `settings.c`: sections via `SEC_FIRST[]`, `settings_open(section)`, `/config [general|custom]`.
+- **v2.13b is released** (PR #11): input bar hides while a panel is open (`input_shown()`; edit box parked off-screen,
+  keeps focus; `paint()` re-runs `layout()` on change, so new panels get it free), and mode switch / `/reload` keep
+  focus (`AllowSetForegroundWindow(ASFW_ANY)` before `cleanup()` in `ui_restart_to`; `/update` relaunch not covered).
+  Ask whether both work on his PC.
 - **v2.13 (sysinfo) is released** (PR #10, tag `v2.13`). Never confirmed on Windows. Ask him to check: the numbers vs
   Task Manager (CPU %, speed, GPU %, VRAM), that **both** laptop GPUs show up with the right names (and discrete first),
   whether temp/clock show or say n/a, that opening sysinfo **doesn't keep the NVIDIA GPU awake on battery**

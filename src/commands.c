@@ -59,7 +59,14 @@ static void open_folder(const wchar_t *path) {
 
 static void c_help(wchar_t *args);
 
-static void c_config(wchar_t *args) { settings_open(); }
+static void c_config(wchar_t *args) {
+    wchar_t *w[2];
+    int n = s_words(args, w, 2);
+    if (n == 0 || s_ieq(w[0], L"general")) { settings_open(0); return; }
+    if (s_ieq(w[0], L"custom") || s_ieq(w[0], L"customization")) { settings_open(1); return; }
+    outf(OUT_ERR, L"No settings section called '%s'.", w[0]);
+    cmd_usage(L"[general|custom]");
+}
 static void c_net(wchar_t *args)    { net_open(); }
 static void c_update(wchar_t *args)  { cmd_update(args); }
 static void c_version(wchar_t *args) { cmd_version(args); }
@@ -140,7 +147,7 @@ static const Command COMMANDS[] = {
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig },
-    { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, 0,                                  0,         c_config },
+    { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, L"[general|custom]",                1,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
     { L"Reload",       L"restart Loomy fresh",                L"reload",   0,                  1, ALL, 0,                                  0,         c_reload },
@@ -271,6 +278,7 @@ static void complete_args(wchar_t **words, int n, const wchar_t *partial) {
     if (c->fn == c_web && n == 1) { complete_add(L"many", partial); web_complete(partial); }
     else if (c->fn == c_webconfig) webconfig_complete(words, n, partial);
     else if (c->fn == c_display && n == 1) display_complete(partial);
+    else if (c->fn == c_config && n == 1) { complete_add(L"general", partial); complete_add(L"custom", partial); }
     else if (c->fn == c_sysinfo) sysinfo_complete(words, n, partial);
     else if (c->fn == c_mode) {
         if (n == 1) for (int i = 0; i < 4; i++) complete_add(MODE_SUBS[i], partial);
