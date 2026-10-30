@@ -240,3 +240,23 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
   (44 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
   android-35): `kotlinc -cp android.jar *.kt`.
+
+## 12. QUEUED: his feedback after testing 2.18 (Oct 30, not started; he's out of usage until ~4am)
+Build these next on `claude/v2.18` (still a draft; not ended):
+1. App settings section: toggle the notification on/off.
+2. App setting "keep listening": after Talk, stay listening (run "show", keep listening) until he stops the mic
+   from the notification or the app. Needs a microphone foreground service (green dot stays on).
+3. App setting: the bottom Talk card from the notification is optional, so with 2 he can use Loomy hands-free
+   while using the phone normally, no UI popping up.
+4. When a command opens a panel on the PC (e.g. `si`), the reply lists the choices (views/tabs/rows) so the app
+   can show them; he can't memorise them.
+5. "input <key>" from the phone: `input back`, `input next`, `input next tab` (= Tab), etc. Sends that key to
+   Loomy's open panel only (not system-wide keystrokes).
+6. Running a new command closes the open panel first (si open + "help" -> back to the main screen, then help).
+7. Policy change (he decided): **any plain (non-/) command is allowed from the phone by default** (help was
+   blocked and annoyed him). **Slash commands need a separate security step before they're allowed** — that's a
+   LATER build, not 2.18. Until then slash stays refused.
+8. Chaining: "system info AND input next tab" runs both in order.
+9. Net speed: a toggle that turns the notification into a net-speed indicator (raw up/down, B/KB/MB per second,
+   no "Loomy" title), like the status-bar speed apps. Assumed: the phone's own traffic (TrafficStats, no INTERNET
+   permission needed), the number drawn into the status-bar icon. Confirm phone vs PC speed with him.
