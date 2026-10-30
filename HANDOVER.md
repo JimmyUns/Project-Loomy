@@ -153,8 +153,8 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
 
 ## 6. Open items
 - **IN PROGRESS: the Pocket Loomy Android app** on `claude/v2.18` (draft PR #16), in `pocket/` — status in
-  `POCKET-HANDOVER.md` §11. First cut written; waiting on him to add `.github/workflows/pocket.yml` (text in §11's
-  chat history / ask), then fix whatever CI reports. App (Kotlin + the same `pocket.c` via the
+  `POCKET-HANDOVER.md` §11. First cut written; he added `.github/workflows/pocket.yml` on the branch (pull before pushing)
+  and the first dev build passed. Next: his first real test on the phone. App (Kotlin + the same `pocket.c` via the
   NDK). The APK goes on the same `vX.Y` release as `loomy.exe` (an APK-only release would look like the latest
   release to `/update`). The sandbox can't build it; that needs a workflow change only he can make.
 - **v2.17 is released** (PR #15, tag `v2.17`, exe 206,848 B built by Actions first try). He tested on Windows: Loomy

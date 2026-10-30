@@ -211,7 +211,9 @@ back as the reply ("Done." if nothing). Slash commands get "Slash commands only 
 - **Workflow** `.github/workflows/pocket.yml` (he adds it; the bot can't touch workflows): builds the dev APK on
   pushes to `claude/**` touching `pocket/`, `src/pocket.*` or `src/monocypher*` (artifact "pocket-loomy-dev"), and
   on `v*` tags builds the signed APK and uploads `pocket-loomy.apk` to that release. Actions are pinned by SHA.
-  The bot reads build logs through the API to fix compile errors.
+  The bot can see each run's step results through the API (`/actions/runs`, `/jobs`), but **not logs or
+  artifacts**: those redirect to `*.blob.core.windows.net`, which the sandbox can't reach. For error text, ask him
+  to paste it (or to allow that domain in the chat's network settings). First run (21:57, Oct 30): built fine in 2 min.
 - **Local checks** (sandbox can't build an APK): `tests/jni/run.sh` (JDK + kotlinc from the JetBrains GitHub
   release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
   (32 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
