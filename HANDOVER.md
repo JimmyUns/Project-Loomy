@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.15)
+# Loomy — Handover (v2.16 planned: /pkg)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -140,9 +140,31 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.15 is PR (claude/v2.15), ready:** fade-in fix, Fade speed slider, double-click clock to hide. These were
+- **NEXT: v2.16 = `/pkg` feature toggles (decided Oct 2026, not started).** He wants VS Code-style "extensions" to pick
+  features per PC. **Decision: everything stays built into the exe; `/pkg` turns features on/off per PC. No downloads.**
+  Why: it gives him the per-device feature set; real downloadable packages (DLLs) would only save ~50 KB now, add
+  security/release work, and may be blocked on his work laptop (unsigned DLLs from user folders). RAM: off features'
+  code is never paged in, so they cost ~nothing. New features still ship via normal releases + `/update` (fine at
+  this size). **Revisit DLL packages only if** Loomy gets MBs big (voice/AI), features update much faster than the
+  core, or other people write features. The refactor below is the same groundwork either way.
+  Plan:
+  - **Feature registry:** each optional feature is a unit (id, name, about) owning its commands and panel. Commands
+    get a feature field; `find_command` skips commands of off features (like it skips other modes' commands), so
+    they're unknown, not in `help`, no Tab.
+  - **Panel registry:** replace the if-chains in `ui.c` (screen_active, ui_hide, paint, edit_proc, click, dblclick,
+    wheel, the glide `screen` id) with a table of panel function pointers. Same behavior; tests must prove it.
+  - **`/pkg`:** bare = toggle list (like `/config`, `ui_sel_row`); `/pkg add|remove <name>`; Tab completes.
+    Saved per PC in `loomy.cfg` as the *off* list (e.g. `features_off = sysinfo, net`), so new features arrive on.
+  - **Core can't be turned off:** console, `help`, modes, `/config`, `/update`/version commands, `/pkg`, hide/reload.
+    Candidates to toggle: `sysinfo`, `net`, `display`, `web`+`/webc`, `lp`, `rb`, `github`. Ask him to confirm the list.
+  - Cost: ~2–4 KB. Exe size unchanged otherwise.
+  - Ideas parked for later (he liked them, not decided): a quick **side panel** (small input-only window that slides
+    in at the top-left, runs simple commands, hands bigger ones to full Loomy; catch: exclusive-fullscreen games);
+    **data packages** (a file defining simple shortcuts like "jira opens this URL").
+- **v2.15 is released** (PR #13, tag `v2.15`): fade-in fix, Fade speed slider, double-click clock to hide. These were
   meant for 2.14, but he merged PR #12 and tagged `v2.14` after its first commit, so they shipped as 2.15.
   **Lesson:** a draft PR can still be merged; if he says something "looks good" mid-version, check whether he merged.
+  Never confirmed on Windows: the clock double-click.
 - **v2.14 is released** (PR #12, tag `v2.14`): animations + `/config` sections. Not run on Windows. Ask him to check: the
   dot wave looks calm (not busy), the line glow on open (Win 10: sweep along top/bottom border and the input rule;
   Win 11: border brightness pulse), list glide in `/m`, `display`, `web`, `lp`, `/config`; text fade; fade-in when turned
