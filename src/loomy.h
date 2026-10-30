@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.15"
+#define LOOMY_VERSION L"2.16"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -106,6 +106,24 @@ int  mode_char(WPARAM ch);
 void mode_click(int x, int y, int dbl);
 void mode_wheel(int notches);
 void mode_start(int m);                               // a reload told us which mode to start in
+
+// ---------- features.c (optional features, toggled per PC with /pkg) ----------
+enum { FEAT_CORE, FEAT_WEB, FEAT_LP, FEAT_NET, FEAT_RB, FEAT_DISPLAY, FEAT_SYSINFO, FEAT_GITHUB, NFEATURES };
+int  feature_on(int f);                 // FEAT_CORE is always on
+int  feature_find(const wchar_t *word); // "web" -> FEAT_WEB, -1 if none
+const wchar_t *feature_id(int f);
+int  features_off_count(void);
+void cmd_pkg(wchar_t *args);
+void pkg_complete(wchar_t **words, int n, const wchar_t *partial);
+int  cmd_is_core(const wchar_t *word);  // commands.c: a core command's name/alias (with or without /)
+int  pkg_active(void);
+void pkg_open(void);
+void pkg_close(void);
+void pkg_paint(HDC dc, RECT area);
+int  pkg_key(WPARAM vk);
+int  pkg_char(WPARAM ch);
+void pkg_click(int x, int y, int dbl);
+void pkg_wheel(int notches);
 
 // ---------- display.c (switch screen layout, like Win+P) ----------
 void cmd_display(wchar_t *args);
@@ -272,6 +290,7 @@ typedef struct {
     int      animDots, animLines, animSelect, animText;   // each effect on/off
     int      fadeIn;        // fade the window in on open (off by default)
     int      fadeMs;        // how long that fade takes
+    unsigned featuresOff;   // bit per feature turned off on this PC (/pkg)
 } Config;
 enum { ANIM_OFF, ANIM_AUTO, ANIM_ON };
 #define FADE_MIN  100

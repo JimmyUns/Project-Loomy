@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.16 planned: /pkg)
+# Loomy — Handover (v2.16)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -96,7 +96,7 @@ reload/position, `ui_flush`) · `commands.c` (command table, strict args, Tab) �
 
 ## 5. Current features
 Plain: `help` · `lp [folder]` · `web [alias|many]` · `display`/`dp [extend|second|pc|duplicate|off]` · `net` · `rb` · `exe`.
-Slash (all modes): `/mode` `/m` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
+Slash (all modes): `/mode` `/m` · `/pkg [add|remove <feature>]` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
 Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
 Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
@@ -140,24 +140,27 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **NEXT: v2.16 = `/pkg` feature toggles (decided Oct 2026, not started).** He wants VS Code-style "extensions" to pick
+- **v2.16 = `/pkg` feature toggles, on `claude/v2.16` (PR #14).** He wanted VS Code-style "extensions" to pick
   features per PC. **Decision: everything stays built into the exe; `/pkg` turns features on/off per PC. No downloads.**
   Why: it gives him the per-device feature set; real downloadable packages (DLLs) would only save ~50 KB now, add
   security/release work, and may be blocked on his work laptop (unsigned DLLs from user folders). RAM: off features'
   code is never paged in, so they cost ~nothing. New features still ship via normal releases + `/update` (fine at
   this size). **Revisit DLL packages only if** Loomy gets MBs big (voice/AI), features update much faster than the
-  core, or other people write features. The refactor below is the same groundwork either way.
-  Plan:
-  - **Feature registry:** each optional feature is a unit (id, name, about) owning its commands and panel. Commands
-    get a feature field; `find_command` skips commands of off features (like it skips other modes' commands), so
-    they're unknown, not in `help`, no Tab.
-  - **Panel registry:** replace the if-chains in `ui.c` (screen_active, ui_hide, paint, edit_proc, click, dblclick,
-    wheel, the glide `screen` id) with a table of panel function pointers. Same behavior; tests must prove it.
-  - **`/pkg`:** bare = toggle list (like `/config`, `ui_sel_row`); `/pkg add|remove <name>`; Tab completes.
-    Saved per PC in `loomy.cfg` as the *off* list (e.g. `features_off = sysinfo, net`), so new features arrive on.
-  - **Core can't be turned off:** console, `help`, modes, `/config`, `/update`/version commands, `/pkg`, hide/reload.
-    Candidates to toggle: `sysinfo`, `net`, `display`, `web`+`/webc`, `lp`, `rb`, `github`. Ask him to confirm the list.
-  - Cost: ~2–4 KB. Exe size unchanged otherwise.
+  core, or other people write features.
+  How it's built:
+  - `features.c`: `FEAT_CORE` + `FEAT_WEB, LP, NET, RB, DISPLAY, SYSINFO, GITHUB` (ids, names, abouts), `feature_on()`,
+    `/pkg` (bare = toggle list panel; `add|remove <feature>`; Tab), core words get "part of Loomy's core".
+  - `Command` has a last field `feature`; rows that leave it out are core. `in_mode()` also checks `feature_on()`, so
+    off commands are unknown, not in `help`, no Tab (same path as the mode lock). `help` adds "N features are off".
+  - Saved as the OFF list: `features_off = net, sysinfo` (bitmask `g_cfg.featuresOff`; unknown names ignored), so
+    new features arrive switched on. Turning `web` off keeps the saved-site files.
+  - The pkg panel is wired into `ui.c` like the others (screen id 9). **Not done on purpose:** the planned panel-registry
+    refactor of `ui.c`'s if-chains. Toggles don't need it, and it's a big untested change to `ui.c`; do it only
+    when real DLL packages happen.
+  - To make a new command optional: add a `FEAT_` id in `loomy.h` + its strings in `features.c`, and put it last in the
+    command's row.
+  - Tests: ~45 new checks (remove/add, unknown when off, help, Tab, core refusal, usage, mode lock + feature, the
+    toggle list keys, config parse/save).
   - Ideas parked for later (he liked them, not decided): a quick **side panel** (small input-only window that slides
     in at the top-left, runs simple commands, hands bigger ones to full Loomy; catch: exclusive-fullscreen games);
     **data packages** (a file defining simple shortcuts like "jira opens this URL").

@@ -1,4 +1,4 @@
-# Loomy 2.15
+# Loomy 2.16
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -22,6 +22,8 @@ Every time Loomy hides, it comes back with a clean screen.
 
 `sysinfo` (or `si`) shows what your PC is doing right now. Pick a view, or type `si general`, `si cpu` or `si gpu 2`, and Loomy grows to about 1.5x to show live graphs: CPU load, speed and per-thread bars; every GPU (laptops with two get both) with its load, engines, VRAM, temperature and clock; memory, disk, network and the top apps. Each CPU and GPU also gets a **Flow** score: it ignores plain busyness and only drops for things you'd feel, like threads stuck waiting, clocks held back by heat or power, RAM full and paging, drivers hogging the CPU, a hot GPU or full VRAM. Tab or the arrow keys switch views, Backspace goes back to the list, Esc closes. It only reads sensors while it's open.
 
+**Pick your features per PC with `/pkg`.** Like extensions, but nothing gets downloaded: every feature ships inside Loomy, and `/pkg` turns them on or off on this PC. Type `/pkg` for a list (Enter, Space or a click toggles), or `/pkg remove sysinfo` / `/pkg add sysinfo`. An off feature's commands disappear (not in `help`, no Tab) and its code never runs. Optional features: `web` (with `/webconfig`), `lp`, `net`, `rb`, `display`, `sysinfo`, `github`. Everything else is Loomy's core and always on. Your choice is saved in `loomy.cfg` on that PC only.
+
 Keys: **Tab** completes (commands, folder names after `lp`, site aliases, modes), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
 
 Settings and your folders live in `%APPDATA%\Loomy`.
@@ -31,7 +33,7 @@ Windows: install [w64devkit](https://github.com/skeeto/w64devkit), put its `bin`
 Linux: install `mingw-w64`, run `./build.sh`.
 
 ## Add a command
-Open `src/commands.c`, write a function, add one row to `COMMANDS` (name, what it does, bare word, alias, sys flag, modes, usage, max args, function — sys 1 means it needs the `/`). `help`, Tab completion and the usage replies pick it up on their own.
+Open `src/commands.c`, write a function, add one row to `COMMANDS` (name, what it does, bare word, alias, sys flag, modes, usage, max args, function — sys 1 means it needs the `/`). `help`, Tab completion and the usage replies pick it up on their own. If it's optional, add a feature to the `FEAT_` list in `loomy.h` and `src/features.c`, and put that feature last in its row; leave it out and the command is core.
 
 ## Versions and updates
 Tags look like `v2.10`. A letter means a fix build of the same version with no new features: `v2.9` → `v2.9b` → `v2.9c`. `LOOMY_VERSION` in `src/loomy.h` must match the tag exactly (minus the `v`).

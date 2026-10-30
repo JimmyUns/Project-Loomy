@@ -187,7 +187,7 @@ void ui_flush(void) { if (g_wnd) { InvalidateRect(g_wnd, 0, FALSE); UpdateWindow
 
 static int screen_active(void) {
     return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active() ||
-           display_active() || sysinfo_active();
+           display_active() || sysinfo_active() || pkg_active();
 }
 static void reset_history_pos(void);
 
@@ -308,6 +308,7 @@ void ui_hide(void) {
     mode_close();
     web_close();
     display_close();
+    pkg_close();
     g_fresh = 1;
     KillTimer(g_wnd, TIMER_CLOCK);
     anim_hide();
@@ -523,7 +524,7 @@ static void paint(HWND w) {
     SelectObject(dc, g_font);
     IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
     int screen = settings_active() ? 1 : browser_active() ? 2 : net_active() ? 3 : changelog_active() ? 4 :
-                 mode_active() ? 5 : web_active() ? 6 : display_active() ? 7 : sysinfo_active() ? 8 : 0;
+                 mode_active() ? 5 : web_active() ? 6 : display_active() ? 7 : sysinfo_active() ? 8 : pkg_active() ? 9 : 0;
     anim_paint_begin(dc, screen);          // list glide: the highlight goes under the rows
     if (settings_active()) settings_paint(dc, area);
     else if (browser_active()) browser_paint(dc, area);
@@ -532,6 +533,7 @@ static void paint(HWND w) {
     else if (mode_active()) mode_paint(dc, area);
     else if (web_active()) web_paint(dc, area);
     else if (display_active()) display_paint(dc, area);
+    else if (pkg_active()) pkg_paint(dc, area);
     else if (sysinfo_active()) sysinfo_paint(dc, area);
     anim_paint_end();
     int y = screen_active() ? area.top : area.bottom;
@@ -663,6 +665,9 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (display_active()) {
         if (m == WM_KEYDOWN && display_key(wp)) return 0;
         if (m == WM_CHAR && display_char(wp)) return 0;
+    } else if (pkg_active()) {
+        if (m == WM_KEYDOWN && pkg_key(wp)) return 0;
+        if (m == WM_CHAR && pkg_char(wp)) return 0;
     } else if (sysinfo_active()) {
         if (m == WM_KEYDOWN && sysinfo_key(wp)) return 0;
         if (m == WM_CHAR && sysinfo_char(wp)) return 0;
@@ -739,6 +744,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         else if (mode_active()) mode_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (display_active()) display_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
+        else if (pkg_active()) pkg_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (sysinfo_active()) sysinfo_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         SetFocus(g_edit);
         return 0;
@@ -759,6 +765,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         if (mode_active()) { mode_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (web_active()) { web_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (display_active()) { display_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (pkg_active()) { pkg_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (sysinfo_active()) { sysinfo_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         int d = (short)HIWORD(wp) / WHEEL_DELTA * 3;
         g_scroll += d;

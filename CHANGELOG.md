@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.16
+- **`/pkg`: pick your features per PC**, like extensions but nothing is downloaded. `/pkg` opens a list to switch features on and off; `/pkg add <feature>` and `/pkg remove <feature>` work too, with Tab completion.
+- Optional features: Websites (`web` + `/webconfig`), Loomy's Path (`lp`), Network (`net`), Recycle Bin (`rb`), Display (`display`), System Info (`sysinfo`), GitHub (`github`). An off feature's commands act like they don't exist and its code never runs. Saved sites are kept when Websites is off.
+- The core (help, modes, `/config`, updates, `/pkg` itself, hide, reload...) is always on. `help` tells you when some features are off.
+
 ## v2.15
 - The window fade-in on open is slower and smoother, so you can actually see it (it used to be over in ~30 ms).
 - New **Fade speed** slider under it in `/config` → Customization: 100–800 ms, ← → or click the bar.
