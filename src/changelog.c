@@ -19,7 +19,7 @@ static const Release RELEASES[] = {
         L"While on, the phone checks in every 5 min (/phone shows last seen).",
         L"Every phone attempt shows in Loomy, even refused or misheard ones.",
         L"Forget on the phone makes Loomy forget it too.",
-        L"Saying \x201cslash packages\x201d becomes /pkg (still PC-only).",
+        L"Saying \u201cslash packages\u201d becomes /pkg (still PC-only).",
         0 } },
     { L"2.17", L"2026-10-30", {
         L"Pocket Loomy (PC side): commands from your Android phone over Bluetooth.",
