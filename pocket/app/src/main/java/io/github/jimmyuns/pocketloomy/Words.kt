@@ -26,14 +26,37 @@ object Words {
         return if (out.length == 8) out.toString() else null
     }
 
-    private val WAKE = listOf("loomy", "loomie", "lumi", "lumie", "looney", "lumy", "loomi")
+    private val WAKE = setOf("loomy", "loomie", "lumi", "lumie", "looney", "lumy", "loomi", "lumee")
+    private val SLASH = setOf("slash", "slesh", "slush", "flash")   // recognizers hear "slash" a few ways
 
-    /** "Loomy, display extend." -> "display extend"; "Loomy run web gmail" -> "web gmail" */
+    // how people say a command -> what Loomy calls it (first words only)
+    private val SPOKEN = listOf(
+        listOf("recycle", "bin") to "rb",
+        listOf("recycling", "bin") to "rb",
+        listOf("system", "info") to "si",
+        listOf("sys", "info") to "si",
+        listOf("system", "information") to "si",
+        listOf("web", "config") to "webconfig",
+        listOf("packages") to "pkg",
+        listOf("package") to "pkg",
+        listOf("d", "p") to "dp",
+        listOf("dee", "pee") to "dp",
+        listOf("reset", "window") to "resetwindow",
+    )
+
+    /** "Loomy, display extend." -> "display extend"; "slash packages" -> "/pkg"; "recycle bin" -> "rb" */
     fun command(heard: String): String {
-        var words = heard.trim().trimEnd('.', '!', '?', ',').lowercase()
-            .split(Regex("\\s+")).map { it.trim(',', '.') }.filter { it.isNotEmpty() }
+        var words = heard.trim().lowercase()
+            .split(Regex("\\s+")).map { it.trim(',', '.', '!', '?') }.filter { it.isNotEmpty() }
         if (words.isNotEmpty() && words[0] in WAKE) words = words.drop(1)
         if (words.size > 1 && words[0] == "run") words = words.drop(1)
-        return words.joinToString(" ")
+        var slash = false
+        if (words.isNotEmpty() && words[0] in SLASH) { slash = true; words = words.drop(1) }
+        else if (words.isNotEmpty() && words[0].startsWith("/") && words[0].length > 1) { slash = true; words = listOf(words[0].substring(1)) + words.drop(1) }
+        for ((said, cmd) in SPOKEN) {
+            if (words.size >= said.size && words.subList(0, said.size) == said) { words = listOf(cmd) + words.drop(said.size); break }
+        }
+        val text = words.joinToString(" ")
+        return if (slash && text.isNotEmpty()) "/$text" else text
     }
 }

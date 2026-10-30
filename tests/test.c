@@ -599,7 +599,7 @@ int main(void) {
         a = ask("/shutdown");       EXPECT(!strcmp(a, "Slash commands only work on the PC."), "no slash commands");
         a = ask("/pkg remove phone"); EXPECT(strstr(a, "Slash") && feature_on(FEAT_PHONE), "can't turn itself off");
         a = ask("/banana");         EXPECT(strstr(a, "don't know"), "unknown slash");
-        a = ask("banana split");    EXPECT(!strcmp(a, "I don't know 'banana'."), "unknown");
+        a = ask("banana split");    EXPECT(!strcmp(a, "I don't know 'banana'.") && saw(L"banana split") && saw(L"I don't know 'banana'"), "unknown: answered AND shown on the PC");
         a = ask("gh");              EXPECT(strstr(a, "don't know"), "core-mode command doesn't exist in home");
         a = ask("rb now");          EXPECT(strstr(a, "Usage: rb"), "strict args still apply");
         int sh = g_shows; a = ask("open"); EXPECT(!strcmp(a, "Opening Loomy.") && g_shows == sh + 1, "open shows Loomy");
@@ -612,6 +612,10 @@ int main(void) {
         a = ask("web");             EXPECT(strstr(a, "don't know"), "a /pkg-off feature is off for the phone too");
         run(L"/pkg add web");
         { ph_nev = 0; pk_send_ping(&ph); pump(); EXPECT(ph_saw(PK_EV_PONG), "ping, pong"); }
+        { last_out = g_nout; pk_send_note(&ph, (const uint8_t *)"lumi displaay", 13); pump();
+          EXPECT(saw(L"didn't catch a command (heard \"lumi displaay\")"), "a missed command shows on the PC");
+          last_out = g_nout; pk_send_note(&ph, (const uint8_t *)"", 0); pump();
+          EXPECT(saw(L"From your phone: didn't catch that."), "a miss with nothing heard too"); }
         EXPECT(!g_cfg.phoneLocked && g_balloons == 0, "all that was fine: no lockout");
 
         // second phone while busy
@@ -690,6 +694,12 @@ int main(void) {
         EXPECT(phone_pair(code), "pair again");
         phone_key(VK_ESCAPE);
 
+        // the phone forgets: the PC follows right away
+        EXPECT(phone_connect(), "connected before the phone forgets");
+        { last_out = g_nout; pk_send_forget(&ph); pump();
+          EXPECT(saw(L"\"Pixel 8\" unpaired from the phone, so Loomy forgot it too.") && !g_btListening, "phone's Forget reaches the PC");
+          FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); EXPECT(!f, "trust file gone"); if (f) fclose(f); }
+        run(L"/phone"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again after"); phone_key(VK_ESCAPE);
         // forget
         run(L"/phone forget");      EXPECT(saw(L"Forgot \"Pixel 8\"") && !g_btListening, "/phone forget");
         run(L"/phone forget");      EXPECT(saw(L"No phone is trusted"), "nothing to forget");

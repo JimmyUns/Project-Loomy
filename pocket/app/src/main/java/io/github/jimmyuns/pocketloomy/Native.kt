@@ -14,6 +14,8 @@ object Native {
     const val EV_PING = 6
     const val EV_PONG = 7
     const val EV_FAIL = 8
+    const val EV_NOTE = 9
+    const val EV_FORGET = 10
 
     const val F_FRAMESIZE = 1
     const val F_UNEXPECTED = 2
@@ -44,4 +46,8 @@ object Native {
     @JvmStatic external fun peerKey(h: Long): ByteArray
     @JvmStatic external fun sendCmd(h: Long, text: ByteArray): Boolean
     @JvmStatic external fun sendPing(h: Long): Boolean
+    /** a failed attempt (what was heard, may be empty), so the PC can show it */
+    @JvmStatic external fun sendNote(h: Long, text: ByteArray): Boolean
+    /** "this phone forgot you": the PC drops the pairing too */
+    @JvmStatic external fun sendForget(h: Long): Boolean
 }

@@ -12,10 +12,13 @@ import java.util.concurrent.TimeUnit
 /** Something the person should read, already in plain words. */
 class PocketError(msg: String) : Exception(msg)
 
-// Talks to Loomy over Bluetooth on one background thread (blocking sockets are fine there). One
-// connection at a time. After a command it stays open for a minute (the PC hangs up after 90 s of
-// silence), so quick follow-ups skip the handshake.
-@SuppressLint("MissingPermission")   // MainActivity gets BLUETOOTH_CONNECT before anything reaches here
+enum class LinkState { IDLE, CONNECTING, CONNECTED }
+
+// Talks to Loomy over Bluetooth on one background thread (blocking sockets are fine there), so the
+// screen, the notification and the 5-minute ping never step on each other. One connection at a time.
+// After use it stays open for a minute (the PC hangs up after 90 s of silence), so quick follow-ups
+// skip the handshake.
+@SuppressLint("MissingPermission")   // callers check BLUETOOTH_CONNECT before anything reaches here
 class Link {
     private val worker = Executors.newSingleThreadScheduledExecutor()
     private val watchdog = Executors.newSingleThreadScheduledExecutor()
@@ -23,12 +26,54 @@ class Link {
     private var h = 0L
     private var idle: ScheduledFuture<*>? = null
 
+    /** called on the worker thread whenever the connection changes */
+    var onState: (LinkState) -> Unit = {}
+
     fun pair(device: BluetoothDevice, code: String, myName: ByteArray, done: (Result<Trust>) -> Unit) {
         worker.execute { done(runCatching { doPair(device, code, myName) }) }
     }
 
+    /** a command; the result is Loomy's answer */
     fun send(device: BluetoothDevice, trust: Trust, myName: ByteArray, text: String, done: (Result<String>) -> Unit) {
-        worker.execute { done(runCatching { doSend(device, trust, myName, text) }) }
+        worker.execute {
+            done(runCatching {
+                val bytes = text.toByteArray(Charsets.UTF_8)
+                if (bytes.isEmpty()) throw PocketError("Say a command.")
+                if (bytes.size > 400) throw PocketError("That command is too long.")
+                session(device, trust, myName) {
+                    Native.sendCmd(h, bytes)
+                    pumpUntil(Native.EV_REPLY, 15)
+                    String(Native.text(h), Charsets.UTF_8)
+                }
+            })
+        }
+    }
+
+    /** "still here": the PC shows it as last seen */
+    fun ping(device: BluetoothDevice, trust: Trust, myName: ByteArray, done: (Result<Unit>) -> Unit) {
+        worker.execute {
+            done(runCatching { session(device, trust, myName) { Native.sendPing(h); pumpUntil(Native.EV_PONG, 15) } })
+        }
+    }
+
+    /** a failed attempt, so the PC can show it too. Best effort: nobody waits for it. */
+    fun note(device: BluetoothDevice, trust: Trust, myName: ByteArray, heard: String) {
+        worker.execute {
+            runCatching {
+                var b = heard.toByteArray(Charsets.UTF_8)
+                if (b.size > 400) b = b.copyOf(400)
+                session(device, trust, myName) { Native.sendNote(h, b); flushOut() }
+            }
+        }
+    }
+
+    /** tell the PC this phone forgot it, then hang up */
+    fun forget(device: BluetoothDevice, trust: Trust, myName: ByteArray, done: (Result<Unit>) -> Unit) {
+        worker.execute {
+            done(runCatching {
+                try { session(device, trust, myName) { Native.sendForget(h); flushOut() } } finally { hangUp() }
+            })
+        }
     }
 
     fun close() { worker.execute { hangUp() } }
@@ -53,27 +98,23 @@ class Link {
         }
     }
 
-    // ------------------------------------------------------------------ commands
-    private fun doSend(device: BluetoothDevice, trust: Trust, name: ByteArray, text: String): String {
+    // ------------------------------------------------------------------ a trusted connection
+    // run `op` on a ready connection: reuse the kept one, or connect. A kept one can go stale
+    // (Loomy reloaded, the PC slept), so an I/O error on it gets one retry on a fresh connection.
+    private fun <T> session(device: BluetoothDevice, trust: Trust, name: ByteArray, op: () -> T): T {
         idle?.cancel(false)
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        if (bytes.isEmpty()) throw PocketError("Say a command.")
-        if (bytes.size > 400) throw PocketError("That command is too long.")
         for (attempt in 0..1) {
             val fresh = h == 0L || sock == null || !Native.ready(h)
             try {
                 if (fresh) connect(device, trust, name)
-                Native.sendCmd(h, bytes)
-                pumpUntil(Native.EV_REPLY, 15)
-                val reply = String(Native.text(h), Charsets.UTF_8)
+                val r = op()
                 idle = worker.schedule({ hangUp() }, 60, TimeUnit.SECONDS)
-                return reply
+                return r
             } catch (e: PocketError) {
                 hangUp()
                 throw e
             } catch (e: IOException) {
                 hangUp()
-                // a kept connection can go stale (Loomy reloaded, PC slept): one retry on a fresh one
                 if (fresh || attempt == 1) throw PocketError(unreachable(device))
             }
         }
@@ -86,10 +127,12 @@ class Link {
         Native.initPhone(h, null, trust.sk, trust.pk, trust.pcPk, name)
         open(device)
         pumpUntil(Native.EV_READY, 15)
+        onState(LinkState.CONNECTED)
     }
 
     // ------------------------------------------------------------------ plumbing
     private fun open(device: BluetoothDevice) {
+        onState(LinkState.CONNECTING)
         val s = device.createRfcommSocketToServiceRecord(SERVICE)
         val dog = watchdog.schedule({ quietClose(s) }, 15, TimeUnit.SECONDS)
         try { s.connect() } finally { dog.cancel(false) }
@@ -137,9 +180,11 @@ class Link {
     private fun hangUp() {
         idle?.cancel(false)
         idle = null
+        val had = sock != null
         sock?.let { quietClose(it) }
         sock = null
         if (h != 0L) { Native.destroy(h); h = 0L }
+        if (had) onState(LinkState.IDLE)
     }
 
     private fun quietClose(s: BluetoothSocket) { try { s.close() } catch (_: IOException) {} }
@@ -153,6 +198,7 @@ class Link {
         Native.F_CODE -> "Wrong code. Loomy used that one up: press N in /phone for a new one and try again."
         Native.F_NOTRUST -> "Loomy doesn't trust this phone (any more). Pair again."
         Native.F_AUTH -> "Loomy didn't recognise this phone. It may have been forgotten on the PC. Pair again."
+        Native.F_VERSION -> "Loomy on the PC and this app speak different versions. Update both to the same release."
         else -> "The connection failed a check (${Native.failText(f)}). Nothing was sent."
     }
 

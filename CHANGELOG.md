@@ -2,6 +2,14 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.18
+- **Pocket Loomy for Android** (first release of the app): pair by saying the code, then tap Talk (or type) to run Loomy commands from your phone. The screen follows what's happening: setup steps until paired, then the live transcript while it listens, what it sent, and Loomy's answer.
+- **On/off from your notifications and a "Loomy" quick-settings tile.** While on, the notification has a Talk button (a small card pops up, listens, shows the answer) and the phone checks in with the PC every 5 minutes, so `/phone` shows when it was last seen. It turns itself off after 15 minutes without reaching the PC.
+- **Every phone attempt shows in Loomy now**, including commands it refused and things the phone didn't catch ("didn't catch a command (heard ...)").
+- **Forget on the phone tells the PC**, which forgets the phone right away.
+- Saying "slash" works ("slash packages" becomes `/pkg`), and spoken names like "recycle bin" and "system info" map to `rb` and `si`. Slash commands still only run on the PC.
+- Protocol v2 (the phone and Loomy must both be 2.18+; an older one says to update instead of failing a check).
+
 ## v2.17
 - **Pocket Loomy, PC side**: an Android phone can send Loomy commands over Bluetooth. Opt-in: `/pkg add phone` (off by default, nothing listens until then).
 - `/phone` shows an 8-digit pairing code. Say it on the phone and it's trusted for 7 days. A code lives 2 minutes and is used up by its first try; N makes a new one. `/phone forget` (or F twice) drops the phone.

@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.17"
+#define LOOMY_VERSION L"2.18"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 

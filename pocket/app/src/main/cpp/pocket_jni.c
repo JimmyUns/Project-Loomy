@@ -96,3 +96,9 @@ jboolean FN(sendCmd)(JNIEnv *e, jclass k, jlong h, jbyteArray text) {
     return n > 0 && pk_send_cmd(C(h), t, n) ? JNI_TRUE : JNI_FALSE;
 }
 jboolean FN(sendPing)(JNIEnv *e, jclass k, jlong h) { return pk_send_ping(C(h)) ? JNI_TRUE : JNI_FALSE; }
+jboolean FN(sendNote)(JNIEnv *e, jclass k, jlong h, jbyteArray text) {
+    uint8_t t[PK_TEXTMAX];
+    int n = take(e, text, t, PK_TEXTMAX, 0);
+    return n >= 0 && pk_send_note(C(h), t, n) ? JNI_TRUE : JNI_FALSE;
+}
+jboolean FN(sendForget)(JNIEnv *e, jclass k, jlong h) { return pk_send_forget(C(h)) ? JNI_TRUE : JNI_FALSE; }

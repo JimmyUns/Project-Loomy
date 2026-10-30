@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -33,5 +37,37 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Talk from the notification: a small card over whatever you're doing -->
+        <activity
+            android:name=".TalkActivity"
+            android:exported="false"
+            android:theme="@style/Pocket.Talk"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:noHistory="true"
+            android:launchMode="singleTask" />
+
+        <!-- while it's on: the notification + a check-in with the PC every 5 minutes (no microphone) -->
+        <service
+            android:name=".PocketService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- the Loomy quick-settings tile: on / off -->
+        <service
+            android:name=".PocketTile"
+            android:exported="true"
+            android:icon="@drawable/ic_stat"
+            android:label="Loomy"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+
+        <!-- the notification's buttons -->
+        <receiver android:name=".Actions" android:exported="false" />
     </application>
 </manifest>

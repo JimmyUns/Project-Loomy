@@ -29,6 +29,14 @@ class Store(ctx: Context) {
         get() = prefs.getString("pc_label", null)
         set(v) { prefs.edit().putString("pc_label", v).apply() }
 
+    /** the On switch (notification, tile, app): a foreground service keeps checking in while it's on */
+    var on: Boolean
+        get() = prefs.getBoolean("on", false)
+        set(v) { prefs.edit().putBoolean("on", v).apply() }
+    var askedBattery: Boolean
+        get() = prefs.getBoolean("asked_battery", false)
+        set(v) { prefs.edit().putBoolean("asked_battery", v).apply() }
+
     fun trust(): Trust? {
         val sealed = prefs.getString("trust", null) ?: return null
         return try {

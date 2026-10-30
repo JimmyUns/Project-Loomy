@@ -324,14 +324,28 @@ void phone_out_tap(int kind, const wchar_t *text) {
     s_cat(g_cap, text, 600);
 }
 
+// every attempt from the phone shows in Loomy, run or not, so you can see what it heard
+static void heard(const wchar_t *t) { out(OUT_DIM, L"From your phone:"); out(OUT_ECHO, t); }
+
+static void refuse(const wchar_t *t, const wchar_t *msg) {
+    out(OUT_ERR, msg);
+    log_add(L"Phone: \"%s\" (%s)", t, msg);
+    reply(msg);
+}
+
 // what the phone may do: open/show and hide Loomy, and the plain commands marked .phone
 static void run_from_phone(void) {
     wchar_t line[PK_TEXTMAX + 1];
     int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)g_pk.text, g_pk.textlen, line, PK_TEXTMAX);
-    if (n <= 0) { reply(L"I couldn't read that."); return; }
+    int bad = n <= 0;
+    for (int i = 0; i < n && !bad; i++) if (line[i] < 0x20 || line[i] == 0x7F) bad = 1;
+    if (bad) {
+        out(OUT_ERR, L"From your phone: something unreadable (bad characters). Ignored.");
+        log_add(L"Phone sent something unreadable.");
+        reply(n <= 0 ? L"I couldn't read that." : L"That had control characters in it.");
+        return;
+    }
     line[n] = 0;
-    for (int i = 0; i < n; i++)
-        if (line[i] < 0x20 || line[i] == 0x7F) { reply(L"That had control characters in it."); return; }
     wchar_t *t = s_trim(line);
     if (!*t) { reply(L"Say a command."); return; }
 
@@ -340,14 +354,24 @@ static void run_from_phone(void) {
     while (t[k] && t[k] != L' ' && k < 47) { first[k] = t[k]; k++; }
     first[k] = 0;
     int alone = !t[k] || !*s_trim(t + k);
-    if (alone && (s_ieq(first, L"open") || s_ieq(first, L"show"))) { ui_show(); reply(L"Opening Loomy."); return; }
-    if (alone && s_ieq(first, L"hide")) { ui_hide(); reply(L"Hidden."); return; }
+    if (alone && (s_ieq(first, L"open") || s_ieq(first, L"show"))) {
+        heard(t); log_add(L"Phone: open"); ui_show(); reply(L"Opening Loomy."); return;
+    }
+    if (alone && s_ieq(first, L"hide")) {
+        heard(t); log_add(L"Phone: hide"); ui_hide(); reply(L"Hidden."); return;
+    }
     wchar_t msg[160];
     int ok = cmd_phone_ok(first);
-    if (first[0] == L'/' && ok) { reply(L"Slash commands only work on the PC."); return; }
-    if (ok == 0) { wsprintfW(msg, L"I don't know '%s'.", first); reply(msg); return; }
-    if (ok < 0)  { wsprintfW(msg, L"'%s' only works on the PC.", first); reply(msg); return; }
+    if (ok != 1) {
+        heard(t);
+        if (first[0] == L'/' && ok) s_cpy(msg, L"Slash commands only work on the PC.", 160);
+        else if (ok == 0) wsprintfW(msg, L"I don't know '%s'.", first);
+        else wsprintfW(msg, L"'%s' only works on the PC.", first);
+        refuse(t, msg);
+        return;
+    }
 
+    log_add(L"Phone: %s", t);
     out(OUT_DIM, L"From your phone:");
     g_cap[0] = 0;
     g_capturing = 1;
@@ -355,6 +379,32 @@ static void run_from_phone(void) {
     g_capturing = 0;
     reply(g_cap[0] ? g_cap : L"Done.");
     ui_show_if_panel();
+}
+
+// the phone heard something it couldn't turn into a command (or nothing at all)
+static void phone_note(void) {
+    wchar_t w[PK_TEXTMAX + 1];
+    int n = g_pk.textlen ? MultiByteToWideChar(CP_UTF8, 0, (const char *)g_pk.text, g_pk.textlen, w, PK_TEXTMAX) : 0;
+    if (n < 0) n = 0;
+    w[n] = 0;
+    for (int i = 0; i < n; i++) if (w[i] < 0x20 || w[i] == 0x7F) w[i] = L'?';
+    if (n) {
+        outf(OUT_ERR, L"From your phone: didn't catch a command (heard \"%s\").", w);
+        log_add(L"Phone didn't catch it (heard \"%s\")", w);
+    } else {
+        out(OUT_ERR, L"From your phone: didn't catch that.");
+        log_add(L"Phone didn't catch anything.");
+    }
+}
+
+// the phone pressed Forget: drop it here too, right away
+static void phone_forgot(void) {
+    wchar_t nm[64];
+    trust_name(nm, 64);
+    forget_trust();
+    log_add(L"\"%s\" unpaired itself.", nm);
+    outf(OUT_OK, L"\"%s\" unpaired from the phone, so Loomy forgot it too.", nm);
+    update_listener();
 }
 
 void phone_on_data(const unsigned char *p, int n) {
@@ -393,6 +443,15 @@ void phone_on_data(const unsigned char *p, int n) {
             flush();
             ui_redraw();
             break;
+        case PK_EV_NOTE:
+            g_lastSeen = g_lastSeenEver = now();
+            phone_note();
+            break;
+        case PK_EV_FORGET:
+            g_lastSeenEver = 0;
+            drop_conn();
+            phone_forgot();
+            return;
         case PK_EV_FAIL:
             engine_failed();
             return;

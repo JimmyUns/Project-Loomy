@@ -96,7 +96,7 @@ the real Bluetooth connection is still untested. **Step 3 (Android app) is in pr
 - Wake phrase details ("Loomy run …" vs just "Loomy …"), and whether tap-to-talk comes first.
 - APK signing/distribution (debug sideload vs release key in GitHub secrets).
 
-## 9. Wire protocol (v1, as built)
+## 9. Wire protocol (v2 since Loomy 2.18; v1 was 2.17)
 The Android app must match this byte for byte. The easiest way is to compile the same `src/pocket.c` +
 `src/monocypher.c` + `src/monocypher-ed25519.c` through the NDK and drive it from Kotlin via JNI (the engine has
 no OS calls and no allocation; the app only supplies `pk_random()`, e.g. from `getrandom()`). `pocket.h` explains
@@ -117,7 +117,7 @@ how to drive it. Constants below are in `pocket.c`.
   direction per connection and never sent (so replays, drops and reordering fail the tag).
 
 ### 9.3 HELLO (PC -> phone, plain), always first
-`01 | version (01) | flags | nb[16]`. Flags: bit0 = a pairing code is open, bit1 = a phone is trusted; other bits
+`01 | version (02) | flags | nb[16]`. A phone refuses any other version (F_VERSION, before sending anything). Flags: bit0 = a pairing code is open, bit1 = a phone is trusted; other bits
 must be 0 (phone refuses otherwise). Version + flags are bound into the keys below.
 
 ### 9.4 Pairing (CPace, draft-irtf-cfrg-cpace, CPACE-X25519-SHA512, phone = initiator A, PC = responder B)
@@ -151,12 +151,17 @@ must be 0 (phone refuses otherwise). Version + flags are bound into the keys bel
 ### 9.6 After the handshake (sealed)
 - `20 | text` command (phone -> PC, UTF-8, 1..400 bytes, no NULs); `21 | text` reply (PC -> phone, 0..400 bytes).
 - `22` ping (phone -> PC), `23` pong. The PC hangs up after 90 s of silence, so ping (or just reconnect).
+- v2: `24 | text` note (phone -> PC, 0..400 bytes): something the phone heard but couldn't turn into a command
+  (empty = heard nothing). The PC prints it ("didn't catch a command (heard ...)") and logs it. No reply.
+- v2: `25` forget (phone -> PC): the phone dropped the pairing. The PC forgets the phone at once (deletes
+  `phone.dat`, stops listening). Nothing may follow it (both engines go to DONE).
 
 ### 9.7 What the PC does with a command (phone.c)
 `open`/`show` and `hide` (alone) show/hide Loomy. Otherwise the first word must be a plain command marked
 `.phone = 1` in `commands.c` that exists right now (mode + `/pkg`): `web`, `rb`, `display`/`dp`, `sysinfo`/`si`.
 It runs through `cmd_run` (strict args apply), prints "From your phone:" in Loomy, and everything it prints goes
-back as the reply ("Done." if nothing). Slash commands get "Slash commands only work on the PC.", others
+back as the reply ("Done." if nothing). Refused and unknown commands are printed in Loomy too (2.18), with the
+reason, and logged in `/phone` Recent. Slash commands get "Slash commands only work on the PC.", others
 "'x' only works on the PC." / "I don't know 'x'." Control characters and bad UTF-8 are refused politely.
 
 ### 9.8 PC policy (phone.c)
@@ -203,7 +208,24 @@ back as the reply ("Done." if nothing). Slash commands get "Slash commands only 
   connect + handshake, keep it open 60 s for follow-ups, one retry on a stale kept connection.
 - `MainActivity.kt`: Choose PC (bonded devices), Pair (voice only: say 8 digits; `Words.code`), Talk (tap, speech,
   `Words.command` strips "Loomy"/"run"), typed commands, a log. `SpeechRecognizer` with prefer-offline.
-- Not yet: notification + quick-settings tile, always-listening (foreground service), auto-off, battery exemption.
+- 2.18 additions (his feedback after the first real test, which worked):
+  - `Words.command`: "slash X" (also "slesh/slush/flash") -> "/X"; spoken names -> commands (packages -> pkg,
+    recycle bin -> rb, system info -> si, web config -> webconfig, d p -> dp, reset window -> resetwindow).
+    Slash commands are still refused by the PC (§9.7); **he was asked which ones to allow** (pending).
+  - Misses go to the PC as notes (`Pocket.reportMiss`): recognizer no-match/timeout, or text that made no command.
+  - Forget: `Link.forget` sends `25` first; if the PC can't be reached the app says to `/phone forget` there.
+  - `Pocket` (app-wide state + On/Off), `Notes` (channel "pocket", low importance; OFF notification id 2 with
+    "Turn on", re-posted when swiped via its delete intent; ON notification id 1 = the service's, with "Talk" and
+    "Turn off"), `Actions` (the buttons' receiver), `PocketService` (foreground, type connectedDevice, no mic:
+    pings every 5 min, first one at once; 3 misses in a row = turns itself off), `PocketTile` (on/off tile, opens
+    the app when it can't turn on), `TalkActivity` (translucent card: listens at once, sends, shows the answer,
+    closes; tap card = again), `Ear` (SpeechRecognizer with partial results + mic level).
+  - `MainActivity` is drawn from state (`render()`): setup steps 1 (PC) / 2 (pair) until paired; then PC card with
+    the On switch, a Talk button that glows with the mic level while listening, the live transcript, the last
+    answer, typing, history; a status chip (not paired / listening / pairing / talking to Loomy / connecting /
+    connected / can't reach PC / on / off). Battery-optimization exemption asked once when first turned on.
+  - `Store.on` + `PocketService.running`; `Pocket.fixStaleOn` resets "on" if the process died without onDestroy.
+- Not yet: always-listening (wake word), auto-off after idle time.
 - **Signing:** dev builds (branches) use `pocket/dev.keystore` (committed on purpose, password `pocketdev`,
   applicationId suffix `.dev`, so dev and release install side by side). Release builds (tags only) use his key
   from GitHub secrets `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD` (alias `pocket`); without them the tag
@@ -216,5 +238,5 @@ back as the reply ("Done." if nothing). Slash commands get "Slash commands only 
   to paste it (or to allow that domain in the chat's network settings). First run (21:57, Oct 30): built fine in 2 min.
 - **Local checks** (sandbox can't build an APK): `tests/jni/run.sh` (JDK + kotlinc from the JetBrains GitHub
   release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
-  (32 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
+  (44 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
   android-35): `kotlinc -cp android.jar *.kt`.
