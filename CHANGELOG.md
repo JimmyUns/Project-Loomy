@@ -2,6 +2,13 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.17
+- **Pocket Loomy, PC side**: an Android phone can send Loomy commands over Bluetooth. Opt-in: `/pkg add phone` (off by default, nothing listens until then).
+- `/phone` shows an 8-digit pairing code. Say it on the phone and it's trusted for 7 days. A code lives 2 minutes and is used up by its first try; N makes a new one. `/phone forget` (or F twice) drops the phone.
+- From the phone: `open`, `hide`, `web`, `rb`, `display`/`dp`, `sysinfo`/`si`. Slash commands never run from the phone. Answers go back to it.
+- Security: CPace pairing on the code (no offline guessing), then fresh keys every connection and every message encrypted and checked. Any failed check, bad message or unknown phone shuts listening down, prints who tried and shows a tray note; Enter in `/phone` turns it back on.
+- Loomy only listens while a phone is trusted or a code is open, only for phones paired in Windows' Bluetooth settings, and costs nothing while it waits.
+
 ## v2.16
 - **`/pkg`: pick your features per PC**, like extensions but nothing is downloaded. `/pkg` opens a list to switch features on and off; `/pkg add <feature>` and `/pkg remove <feature>` work too, with Tab completion.
 - Optional features: Websites (`web` + `/webconfig`), Loomy's Path (`lp`), Network (`net`), Recycle Bin (`rb`), Display (`display`), System Info (`sysinfo`), GitHub (`github`). An off feature's commands act like they don't exist and its code never runs. Saved sites are kept when Websites is off.

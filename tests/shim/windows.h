@@ -87,3 +87,16 @@ typedef int DISPLAYCONFIG_TOPOLOGY_ID;
 LONG GetDisplayConfigBufferSizes(UINT32, UINT32*, UINT32*);
 LONG QueryDisplayConfig(UINT32, UINT32*, DISPLAYCONFIG_PATH_INFO*, UINT32*, DISPLAYCONFIG_MODE_INFO*, DISPLAYCONFIG_TOPOLOGY_ID*);
 LONG SetDisplayConfig(UINT32, void*, UINT32, void*, UINT32);
+// Pocket Loomy (phone.c)
+#define WM_APP 0x8000
+#define MB_ERR_INVALID_CHARS 8
+#define FW_BOLD 700
+#define DEFAULT_CHARSET 1
+#define OUT_TT_PRECIS 4
+#define CLIP_DEFAULT_PRECIS 0
+#define CLEARTYPE_QUALITY 5
+#define FIXED_PITCH 1
+#define FF_MODERN 0x30
+HFONT CreateFontW(int, int, int, int, int, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, const wchar_t*);
+BOOL DeleteObject(HGDIOBJ);
+BOOL DeleteFileW(const wchar_t*);

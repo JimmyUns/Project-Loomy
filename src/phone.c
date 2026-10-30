@@ -614,3 +614,11 @@ void phone_paint(HDC dc, RECT a) {
     ui_text(dc, a.right - sz.cx, a.bottom - S(16), hint, C_DIM);
     SelectObject(dc, g_font);
 }
+
+#ifdef LOOMY_TESTS
+int phone_code_for_tests(char *out) {       // the Linux test harness reads the open code
+    if (!g_codeLive) return 0;
+    memcpy(out, g_code, PK_CODELEN); out[PK_CODELEN] = 0;
+    return 1;
+}
+#endif
