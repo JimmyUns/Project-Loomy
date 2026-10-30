@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.16)
+# Loomy — Handover (after v2.16; next: Pocket Loomy)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -10,6 +10,8 @@ notes), otherwise from `main`. **Keep it current:** every version branch updates
 The repo is **public**: never put secrets or anything private in here.
 
 **Sister project: ELLA** (the online/server side) has its own `ELLA-HANDOVER.md`. Keep ELLA notes there, not here.
+**Pocket Loomy** (Android voice remote over Bluetooth, PC side = `/phone`) has its own `POCKET-HANDOVER.md`: the full
+agreed design and security rules. Read it before touching voice/phone work.
 
 ## 1. What Loomy is
 A summon-anywhere command console for Windows (hotkey → dark overlay → short commands), built by the user,
@@ -140,7 +142,13 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.16 = `/pkg` feature toggles, on `claude/v2.16` (PR #14).** He wanted VS Code-style "extensions" to pick
+- **NEXT: Pocket Loomy** (see `POCKET-HANDOVER.md`). Branch `claude/v2.17` holds only the docs so far (draft PR).
+  Voice on the PC itself was considered and dropped (always-on mic, +20–50 MB RAM, Windows' speech engine is
+  deprecated); the phone listens instead.
+- **GPU temperature (sysinfo) reads a stuck 101 °C on his laptop; he parked it ("forget it for now").** Unconfirmed
+  which GPU. Suspect: the Intel iGPU's driver reporting junk via D3DKMT; Task Manager never shows iGPU temps. Likely
+  fix: ignore temperature for integrated GPUs (also stops Flow wrongly flagging "hot"). Ask before changing.
+- **v2.16 is released** (PR #14, tag `v2.16`; he confirmed `/pkg` works on Windows): `/pkg` feature toggles. He wanted VS Code-style "extensions" to pick
   features per PC. **Decision: everything stays built into the exe; `/pkg` turns features on/off per PC. No downloads.**
   Why: it gives him the per-device feature set; real downloadable packages (DLLs) would only save ~50 KB now, add
   security/release work, and may be blocked on his work laptop (unsigned DLLs from user folders). RAM: off features'
