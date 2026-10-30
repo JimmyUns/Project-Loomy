@@ -412,6 +412,87 @@ int main(void) {
         flow_gpu(&g, &f); EXPECT(f.score == 100 && wcsstr(f.why, L"Idle"), "integrated: shared memory never counts as full VRAM");
     }
 
+    wprintf(L"\n== features (/pkg) ==\n");
+    {
+        run(L"/m switch home");
+        { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "hotkey = ctrl+alt+space\n"); fclose(f); }
+        cfg_load();
+        EXPECT(g_cfg.featuresOff == 0 && feature_on(FEAT_SYSINFO) && feature_on(FEAT_WEB), "everything on by default");
+        run(L"/pkg");               EXPECT(pkg_active(), "/pkg opens the toggle list");
+        pkg_key(VK_ESCAPE);         EXPECT(!pkg_active(), "Esc closes it");
+
+        run(L"/pkg remove sysinfo"); EXPECT(!feature_on(FEAT_SYSINFO) && saw(L"System Info is off on this PC") && saw(L"/pkg add sysinfo"), "remove sysinfo");
+        run(L"si");                 EXPECT(saw(L"don't know 'si'") && !sysinfo_active(), "si unknown when off");
+        run(L"sysinfo cpu");        EXPECT(saw(L"don't know 'sysinfo'"), "sysinfo unknown when off");
+        run(L"help");               EXPECT(!saw(L"System Info") && saw(L"1 feature is turned off on this PC"), "help hides it, says 1 is off");
+        tab(L"sys", L"sys");
+        run(L"/pkg remove sysinfo"); EXPECT(saw(L"System Info is already off"), "already off");
+        cfg_load();                 EXPECT(!feature_on(FEAT_SYSINFO), "off survives a reload (saved per PC)");
+
+        run(L"/pkg remove web");    EXPECT(!feature_on(FEAT_WEB) && saw(L"Your saved sites are kept"), "remove web");
+        run(L"web");                EXPECT(saw(L"don't know 'web'"), "web unknown");
+        run(L"/webc info x");       EXPECT(saw(L"don't know '/webc'"), "its /webconfig goes with it");
+        run(L"help");               EXPECT(saw(L"2 features are turned off"), "help counts 2");
+
+        run(L"/pkg add sysinfo");   EXPECT(feature_on(FEAT_SYSINFO) && saw(L"System Info is on"), "add sysinfo back");
+        run(L"si");                 EXPECT(sysinfo_active(), "si works again");
+        sysinfo_close();
+        run(L"/pkg add sysinfo");   EXPECT(saw(L"already on"), "already on");
+        run(L"/pkg add web");       EXPECT(feature_on(FEAT_WEB), "web back");
+        run(L"help");               EXPECT(!saw(L"turned off"), "help: nothing off, no note");
+
+        run(L"/pkg remove help");   EXPECT(saw(L"help is part of Loomy's core"), "core: help");
+        run(L"/pkg remove /config"); EXPECT(saw(L"/config is part of Loomy's core"), "core: /config");
+        run(L"/pkg remove pkg");    EXPECT(saw(L"part of Loomy's core"), "core: pkg itself");
+        run(L"/pkg remove update"); EXPECT(saw(L"part of Loomy's core"), "core: update");
+        run(L"/pkg remove banana"); EXPECT(saw(L"No feature called 'banana'") && saw(L"Features: web, lp, net, rb, display, sysinfo, github"), "unknown feature");
+        run(L"/pkg remove");        EXPECT(saw(L"Usage: /pkg [add|remove <feature>]"), "remove needs a name");
+        run(L"/pkg toggle web");    EXPECT(saw(L"Usage: /pkg [add|remove <feature>]"), "bad subcommand");
+        run(L"/pkg add web now");   EXPECT(saw(L"Usage: /pkg"), "strict args");
+        run(L"pkg");                EXPECT(saw(L"/pkg") && !pkg_active(), "pkg needs its slash");
+
+        // github lives in core mode: off means gone there too
+        run(L"/pkg remove github");
+        run(L"/m switch core");
+        run(L"gh");                 EXPECT(saw(L"don't know 'gh'") && g_nopened == 0, "github off in core");
+        run(L"/ver");               EXPECT(saw(L"[version ran]"), "core commands unaffected");
+        run(L"/pkg add github");
+        run(L"gh");                 EXPECT(g_nopened == 1, "github back");
+        run(L"/m switch home");
+
+        tab(L"/pk", L"/pkg ");
+        tab(L"/pkg r", L"/pkg remove ");
+        tab(L"/pkg remove sys", L"/pkg remove sysinfo ");
+        tab(L"/pkg add sys", L"/pkg add sys");                 // already on: nothing to add
+        run(L"/pkg remove net");
+        tab(L"/pkg add n", L"/pkg add net ");
+        tab(L"/pkg remove n", L"/pkg remove n");               // already off: nothing to remove
+        run(L"/pkg add net");
+
+        // the toggle list
+        pkg_open();
+        pkg_key(VK_DOWN); pkg_key(VK_DOWN);                    // web, lp, net
+        pkg_key(VK_RETURN);         EXPECT(!feature_on(FEAT_NET), "Enter toggles net off");
+        pkg_key(VK_SPACE);          EXPECT(feature_on(FEAT_NET), "Space toggles it back");
+        pkg_key(VK_RIGHT);          EXPECT(!feature_on(FEAT_NET), "Right toggles too");
+        pkg_key(VK_LEFT);           EXPECT(feature_on(FEAT_NET), "Left toggles too");
+        pkg_key(VK_END); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_GITHUB), "End = last row = github");
+        pkg_key(VK_RETURN);
+        pkg_key(VK_HOME); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_WEB), "Home/Up stay on web");
+        pkg_key(VK_RETURN);
+        pkg_char(L'x');             EXPECT(pkg_active(), "typing is swallowed");
+        pkg_key(VK_ESCAPE);         EXPECT(!pkg_active() && g_cfg.featuresOff == 0, "all back on, closed");
+
+        // config file: hand-edited, saved
+        { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "features_off = Net, banana, sysinfo\n"); fclose(f); }
+        cfg_load();                 EXPECT(!feature_on(FEAT_NET) && !feature_on(FEAT_SYSINFO) && feature_on(FEAT_WEB), "hand-edited, unknown names ignored");
+        cfg_save();
+        { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "r"); char buf[4096] = {0}; fread(buf, 1, sizeof buf - 1, f); fclose(f);
+          EXPECT(strstr(buf, "features_off = net, sysinfo\r\n") != 0, "saved as features_off = net, sysinfo"); }
+        g_cfg.featuresOff = 0; cfg_save(); cfg_load();
+        EXPECT(g_cfg.featuresOff == 0, "empty list saves and loads");
+    }
+
     wprintf(L"\n%d failure(s)\n", fails);
     return fails != 0;
 }

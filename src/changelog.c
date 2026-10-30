@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.16", L"2026-10-30", {
+        L"New /pkg: turn features on or off per PC (nothing is downloaded).",
+        L"/pkg add <feature> and /pkg remove <feature> work too, with Tab.",
+        L"Optional: web, lp, net, rb, display, sysinfo, github.",
+        L"Off features vanish from help and Tab, and their code never runs.",
+        L"The core (help, modes, /config, updates, /pkg...) is always on.",
+        0 } },
     { L"2.15", L"2026-10-29", {
         L"Fade in on open is slower and actually visible now.",
         L"New Fade speed slider in /config Customization (100\u2013800 ms).",

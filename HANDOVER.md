@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.15)
+# Loomy — Handover (v2.16)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -96,7 +96,7 @@ reload/position, `ui_flush`) · `commands.c` (command table, strict args, Tab) �
 
 ## 5. Current features
 Plain: `help` · `lp [folder]` · `web [alias|many]` · `display`/`dp [extend|second|pc|duplicate|off]` · `net` · `rb` · `exe`.
-Slash (all modes): `/mode` `/m` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
+Slash (all modes): `/mode` `/m` · `/pkg [add|remove <feature>]` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
 Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
 Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
@@ -140,9 +140,34 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.15 is PR (claude/v2.15), ready:** fade-in fix, Fade speed slider, double-click clock to hide. These were
+- **v2.16 = `/pkg` feature toggles, on `claude/v2.16` (PR #14).** He wanted VS Code-style "extensions" to pick
+  features per PC. **Decision: everything stays built into the exe; `/pkg` turns features on/off per PC. No downloads.**
+  Why: it gives him the per-device feature set; real downloadable packages (DLLs) would only save ~50 KB now, add
+  security/release work, and may be blocked on his work laptop (unsigned DLLs from user folders). RAM: off features'
+  code is never paged in, so they cost ~nothing. New features still ship via normal releases + `/update` (fine at
+  this size). **Revisit DLL packages only if** Loomy gets MBs big (voice/AI), features update much faster than the
+  core, or other people write features.
+  How it's built:
+  - `features.c`: `FEAT_CORE` + `FEAT_WEB, LP, NET, RB, DISPLAY, SYSINFO, GITHUB` (ids, names, abouts), `feature_on()`,
+    `/pkg` (bare = toggle list panel; `add|remove <feature>`; Tab), core words get "part of Loomy's core".
+  - `Command` has a last field `feature`; rows that leave it out are core. `in_mode()` also checks `feature_on()`, so
+    off commands are unknown, not in `help`, no Tab (same path as the mode lock). `help` adds "N features are off".
+  - Saved as the OFF list: `features_off = net, sysinfo` (bitmask `g_cfg.featuresOff`; unknown names ignored), so
+    new features arrive switched on. Turning `web` off keeps the saved-site files.
+  - The pkg panel is wired into `ui.c` like the others (screen id 9). **Not done on purpose:** the planned panel-registry
+    refactor of `ui.c`'s if-chains. Toggles don't need it, and it's a big untested change to `ui.c`; do it only
+    when real DLL packages happen.
+  - To make a new command optional: add a `FEAT_` id in `loomy.h` + its strings in `features.c`, and put it last in the
+    command's row.
+  - Tests: ~45 new checks (remove/add, unknown when off, help, Tab, core refusal, usage, mode lock + feature, the
+    toggle list keys, config parse/save).
+  - Ideas parked for later (he liked them, not decided): a quick **side panel** (small input-only window that slides
+    in at the top-left, runs simple commands, hands bigger ones to full Loomy; catch: exclusive-fullscreen games);
+    **data packages** (a file defining simple shortcuts like "jira opens this URL").
+- **v2.15 is released** (PR #13, tag `v2.15`): fade-in fix, Fade speed slider, double-click clock to hide. These were
   meant for 2.14, but he merged PR #12 and tagged `v2.14` after its first commit, so they shipped as 2.15.
   **Lesson:** a draft PR can still be merged; if he says something "looks good" mid-version, check whether he merged.
+  Never confirmed on Windows: the clock double-click.
 - **v2.14 is released** (PR #12, tag `v2.14`): animations + `/config` sections. Not run on Windows. Ask him to check: the
   dot wave looks calm (not busy), the line glow on open (Win 10: sweep along top/bottom border and the input rule;
   Win 11: border brightness pulse), list glide in `/m`, `display`, `web`, `lp`, `/config`; text fade; fade-in when turned

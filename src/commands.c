@@ -18,6 +18,7 @@ typedef struct {
     const wchar_t *usage;   // the shape of its arguments, e.g. L"[version]"; 0 = takes none
     int            maxargs; // most words allowed after it; ARGS_TEXT / ARGS_SELF below
     CmdFn fn;
+    int            feature; // FEAT_CORE (left out = core) or the /pkg feature it belongs to
 } Command;
 
 #define ARGS_TEXT -1   // free text, any number of words (lp folder names can have spaces)
@@ -58,6 +59,8 @@ static void open_folder(const wchar_t *path) {
 // ---------------------------------------------------------------- commands
 
 static void c_help(wchar_t *args);
+
+static void c_pkg(wchar_t *args) { cmd_pkg(args); }
 
 static void c_config(wchar_t *args) {
     wchar_t *w[2];
@@ -137,16 +140,17 @@ static void c_shutdown(wchar_t *args) { ui_quit(); }
 static const Command COMMANDS[] = {
 //    name            about                                   type        alias               sys modes usage                              maxargs    fn
     { L"Help",         L"show this list",                     L"help",     0,                  0, ALL, 0,                                  0,         c_help },
-    { L"Loomy's Path", L"browse your folders",                L"lp",       0,                  0, ALL, L"[folder name]",                   ARGS_TEXT, c_lp },
-    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web },
-    { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net },
-    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb },
-    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off]", 1,         c_display },
-    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo },
-    { L"GitHub",       L"open Loomy's GitHub page",           L"github",   L"gh",              0, CORE, 0,                                 0,         c_github },
+    { L"Loomy's Path", L"browse your folders",                L"lp",       0,                  0, ALL, L"[folder name]",                   ARGS_TEXT, c_lp, FEAT_LP },
+    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web, FEAT_WEB },
+    { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net, FEAT_NET },
+    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb, FEAT_RB },
+    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off]", 1,         c_display, FEAT_DISPLAY },
+    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo, FEAT_SYSINFO },
+    { L"GitHub",       L"open Loomy's GitHub page",           L"github",   L"gh",              0, CORE, 0,                                 0,         c_github, FEAT_GITHUB },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
-    { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig },
+    { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig, FEAT_WEB },
+    { L"Packages",     L"turn features on/off on this PC",    L"pkg",      0,                  1, ALL, L"[add|remove <feature>]",          ARGS_SELF, c_pkg },
     { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, L"[general|custom]",                1,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
@@ -166,7 +170,17 @@ static void pad_to(wchar_t *s, int width, int cap) {
     s[n] = 0;
 }
 
-static int in_mode(const Command *c) { return (c->modes >> mode_current()) & 1; }
+// a command exists right now if it lives in this mode and its feature is on (/pkg)
+int cmd_is_core(const wchar_t *word) {
+    if (word[0] == L'/') word++;
+    for (int i = 0; i < NCOMMANDS; i++) {
+        const Command *c = &COMMANDS[i];
+        if (c->feature == FEAT_CORE && (s_ieq(c->type, word) || (c->alias && s_ieq(c->alias, word)))) return 1;
+    }
+    return 0;
+}
+
+static int in_mode(const Command *c) { return ((c->modes >> mode_current()) & 1) && feature_on(c->feature); }
 
 // what help shows in the Type column: "/mode /m" (the alias only if it's shorter)
 static void help_form(const Command *c, wchar_t *out, int cap) {
@@ -192,6 +206,8 @@ static void c_help(wchar_t *args) {
         out(OUT_TEXT, row);
     }
     outf(OUT_DIM, L"Commands with / change Loomy itself. You're in %s mode.", mode_name(mode_current()));
+    int off = features_off_count();
+    if (off) outf(OUT_DIM, L"%d feature%s turned off on this PC. /pkg to manage.", off, off == 1 ? L" is" : L"s are");
 }
 
 // ---------------------------------------------------------------- running a line
@@ -278,6 +294,7 @@ static void complete_args(wchar_t **words, int n, const wchar_t *partial) {
     if (c->fn == c_web && n == 1) { complete_add(L"many", partial); web_complete(partial); }
     else if (c->fn == c_webconfig) webconfig_complete(words, n, partial);
     else if (c->fn == c_display && n == 1) display_complete(partial);
+    else if (c->fn == c_pkg) pkg_complete(words, n, partial);
     else if (c->fn == c_config && n == 1) { complete_add(L"general", partial); complete_add(L"custom", partial); }
     else if (c->fn == c_sysinfo) sysinfo_complete(words, n, partial);
     else if (c->fn == c_mode) {
