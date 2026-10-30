@@ -5,18 +5,24 @@
 //   /pkg add <feature>         turn one on
 //   /pkg remove <feature>      turn one off
 // Saved in loomy.cfg as the OFF list (features_off = ...), so new features arrive switched on.
+// Opt-in features (phone: it listens for Bluetooth connections) are the other way round: off
+// until you add them, saved as the ON list (features_on = phone).
 // The core (help, modes, /config, /update..., /pkg, hide...) can't be turned off.
 #include "loomy.h"
 
-static const wchar_t *ID[NFEATURES]    = { 0, L"web", L"lp", L"net", L"rb", L"display", L"sysinfo", L"github" };
+static const wchar_t *ID[NFEATURES]    = { 0, L"web", L"lp", L"net", L"rb", L"display", L"sysinfo", L"github", L"phone" };
 static const wchar_t *NAME[NFEATURES]  = { 0, L"Websites", L"Loomy's Path", L"Network", L"Recycle Bin",
-                                           L"Display", L"System Info", L"GitHub" };
+                                           L"Display", L"System Info", L"GitHub", L"Phone" };
 static const wchar_t *ABOUT[NFEATURES] = { 0, L"web + /webconfig, saved sites", L"lp, browse your folders",
                                            L"net, what's using the internet", L"rb, open the recycle bin",
                                            L"display / dp, screen layouts", L"sysinfo / si, live CPU and GPU",
-                                           L"github / gh (core mode)" };
+                                           L"github / gh (core mode)", L"/phone, Pocket Loomy remote" };
 
-int feature_on(int f) { return f <= FEAT_CORE || f >= NFEATURES || !(g_cfg.featuresOff & (1u << f)); }
+int feature_on(int f) {
+    if (f <= FEAT_CORE || f >= NFEATURES) return 1;
+    if (FEATURES_OPTIN & (1u << f)) return (g_cfg.featuresOn & (1u << f)) != 0;
+    return !(g_cfg.featuresOff & (1u << f));
+}
 const wchar_t *feature_id(int f) { return f > FEAT_CORE && f < NFEATURES ? ID[f] : L"core"; }
 
 int feature_find(const wchar_t *word) {
@@ -24,16 +30,22 @@ int feature_find(const wchar_t *word) {
     return -1;
 }
 
-int features_off_count(void) {
+int features_off_count(void) {           // opt-in features being off is normal, so they don't count
     int n = 0;
-    for (int f = FEAT_CORE + 1; f < NFEATURES; f++) if (!feature_on(f)) n++;
+    for (int f = FEAT_CORE + 1; f < NFEATURES; f++) if (!feature_on(f) && !(FEATURES_OPTIN & (1u << f))) n++;
     return n;
 }
 
 static void set_on(int f, int on) {
-    if (on) g_cfg.featuresOff &= ~(1u << f);
-    else    g_cfg.featuresOff |= 1u << f;
+    if (FEATURES_OPTIN & (1u << f)) {
+        if (on) g_cfg.featuresOn |= 1u << f;
+        else    g_cfg.featuresOn &= ~(1u << f);
+    } else {
+        if (on) g_cfg.featuresOff &= ~(1u << f);
+        else    g_cfg.featuresOff |= 1u << f;
+    }
     cfg_save();
+    if (f == FEAT_PHONE) phone_feature_changed();
 }
 
 // ---------------------------------------------------------------- the command
@@ -65,11 +77,14 @@ void cmd_pkg(wchar_t *args) {
         if (feature_on(f)) { outf(OUT_DIM, L"%s is already on.", NAME[f]); return; }
         set_on(f, 1);
         outf(OUT_OK, L"%s is on.", NAME[f]);
+        if (f == FEAT_PHONE) out(OUT_DIM, L"Type /phone to pair your phone.");
     } else {
         if (!feature_on(f)) { outf(OUT_DIM, L"%s is already off.", NAME[f]); return; }
         set_on(f, 0);
-        outf(OUT_OK, L"%s is off on this PC. /pkg add %s brings it back.", NAME[f], ID[f]);
+        if (FEATURES_OPTIN & (1u << f)) outf(OUT_OK, L"%s is off on this PC.", NAME[f]);
+        else outf(OUT_OK, L"%s is off on this PC. /pkg add %s brings it back.", NAME[f], ID[f]);
         if (f == FEAT_WEB) out(OUT_DIM, L"Your saved sites are kept.");
+        if (f == FEAT_PHONE) out(OUT_DIM, L"Bluetooth listening is off. Your paired phone is kept.");
     }
 }
 

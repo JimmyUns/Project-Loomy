@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.16"
+#define LOOMY_VERSION L"2.17"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -76,6 +76,11 @@ void ui_restart_to(int mode, const wchar_t *note);    // reload into a mode; not
 void ui_reset_window(void);                           // forget the remembered spot, re-center
 void ui_refocus_soon(void);                           // grab focus back after a browser steals it
 void ui_set_big(int on);                              // grow to ~1.5x for sysinfo (fits the screen), or back
+void ui_show(void);                                   // bring Loomy up (like the hotkey)
+void ui_show_if_panel(void);                          // a panel opened while hidden: show it
+void ui_balloon(const wchar_t *title, const wchar_t *msg);   // tray notification
+void ui_set_timer(int id, int ms);                    // 0 = stop it
+HWND ui_hwnd(void);
 
 // ---------- commands.c ----------
 void cmd_run(wchar_t *line);
@@ -88,6 +93,7 @@ const wchar_t *folders_dir(void);                     // %APPDATA%\Loomy\Folders
 const wchar_t *cmd_typed(void);                       // the command word as typed, e.g. "/m"
 void cmd_usage(const wchar_t *shape);                 // prints "Usage: <typed> <shape>"
 void complete_add(const wchar_t *candidate, const wchar_t *partial);   // for Tab completion
+int  cmd_phone_ok(const wchar_t *word);               // 1 = may run from the phone, -1 = PC only, 0 = unknown
 
 // ---------- modes.c (home / work / core, the /mode command + picker panel) ----------
 #define NMODES 3
@@ -108,7 +114,9 @@ void mode_wheel(int notches);
 void mode_start(int m);                               // a reload told us which mode to start in
 
 // ---------- features.c (optional features, toggled per PC with /pkg) ----------
-enum { FEAT_CORE, FEAT_WEB, FEAT_LP, FEAT_NET, FEAT_RB, FEAT_DISPLAY, FEAT_SYSINFO, FEAT_GITHUB, NFEATURES };
+// Most features come switched on; opt-in ones (phone) stay off until /pkg add turns them on.
+enum { FEAT_CORE, FEAT_WEB, FEAT_LP, FEAT_NET, FEAT_RB, FEAT_DISPLAY, FEAT_SYSINFO, FEAT_GITHUB, FEAT_PHONE, NFEATURES };
+#define FEATURES_OPTIN (1u << FEAT_PHONE)
 int  feature_on(int f);                 // FEAT_CORE is always on
 int  feature_find(const wchar_t *word); // "web" -> FEAT_WEB, -1 if none
 const wchar_t *feature_id(int f);
@@ -124,6 +132,42 @@ int  pkg_key(WPARAM vk);
 int  pkg_char(WPARAM ch);
 void pkg_click(int x, int y, int dbl);
 void pkg_wheel(int notches);
+
+// ---------- phone.c (Pocket Loomy, PC side: /phone, pairing, the trusted phone, lockout) ----------
+// The protocol itself is pocket.c (shared with the Android app); Bluetooth is phonebt.c.
+#define WM_PHONE    (WM_APP + 3)        // socket events from WSAAsyncSelect
+#define TIMER_PHONE 6                   // 1 s, only while a code is open or a phone is connected
+void cmd_phone(wchar_t *args);
+void phone_complete(const wchar_t *partial);
+void phone_startup(void);               // after the window exists: listen if a phone is trusted
+void phone_feature_changed(void);       // /pkg turned it on or off
+void phone_tick(void);
+void phone_out_tap(int kind, const wchar_t *text);   // out() calls this: replies for the phone
+int  phone_on_accept(const wchar_t *addr);           // phonebt.c: a phone connected; 0 = turn it away
+void phone_on_data(const unsigned char *p, int n);
+void phone_on_closed(void);
+int  phone_active(void);
+void phone_open(void);
+void phone_close(void);
+void phone_paint(HDC dc, RECT area);
+int  phone_key(WPARAM vk);
+int  phone_char(WPARAM ch);
+void phone_click(int x, int y, int dbl);
+void phone_wheel(int notches);
+
+// ---------- phonebt.c (Windows only: RFCOMM listener, SDP record, random, DPAPI, time) ----------
+int  bt_listen(wchar_t *err, int cap);  // 1 = listening (err says why not)
+void bt_unlisten(void);
+int  bt_listening(void);
+int  bt_send(const unsigned char *p, int n);   // to the connected phone; 0 = failed
+void bt_drop(void);                     // hang up on the connected phone
+void bt_event(WPARAM sock, LPARAM ev);  // WM_PHONE
+void bt_shutdown(void);                 // Loomy is closing: unregister and close everything
+int  os_random(void *p, int n);         // 1 = filled with secure random bytes
+int  os_protect(const unsigned char *in, int n, unsigned char *out, int cap, int unprotect);  // DPAPI, per user
+ULONGLONG os_now(void);                 // seconds, UTC
+void os_fmt_time(ULONGLONG secs, wchar_t *buf, int cap, int withDay);   // local "Thu 6 Nov, 14:03" / "14:03"
+int  os_pc_name(char *utf8, int cap);   // this computer's name
 
 // ---------- display.c (switch screen layout, like Win+P) ----------
 void cmd_display(wchar_t *args);
@@ -291,6 +335,8 @@ typedef struct {
     int      fadeIn;        // fade the window in on open (off by default)
     int      fadeMs;        // how long that fade takes
     unsigned featuresOff;   // bit per feature turned off on this PC (/pkg)
+    unsigned featuresOn;    // bit per opt-in feature turned on (phone)
+    int      phoneLocked;   // the phone listener shut itself down after a bad connection
 } Config;
 enum { ANIM_OFF, ANIM_AUTO, ANIM_ON };
 #define FADE_MIN  100

@@ -19,6 +19,7 @@ typedef struct {
     int            maxargs; // most words allowed after it; ARGS_TEXT / ARGS_SELF below
     CmdFn fn;
     int            feature; // FEAT_CORE (left out = core) or the /pkg feature it belongs to
+    int            phone;   // 1 = Pocket Loomy may run it from the phone (.phone = 1). Never a / command.
 } Command;
 
 #define ARGS_TEXT -1   // free text, any number of words (lp folder names can have spaces)
@@ -113,6 +114,7 @@ static void c_exe(wchar_t *args) {
 
 static void c_clear(wchar_t *args)    { ui_clear(); }
 static void c_display(wchar_t *args) { cmd_display(args); }
+static void c_phone(wchar_t *args)   { cmd_phone(args); }
 static void c_sysinfo(wchar_t *args) { cmd_sysinfo(args); }
 
 static void c_github(wchar_t *args) {
@@ -141,16 +143,17 @@ static const Command COMMANDS[] = {
 //    name            about                                   type        alias               sys modes usage                              maxargs    fn
     { L"Help",         L"show this list",                     L"help",     0,                  0, ALL, 0,                                  0,         c_help },
     { L"Loomy's Path", L"browse your folders",                L"lp",       0,                  0, ALL, L"[folder name]",                   ARGS_TEXT, c_lp, FEAT_LP },
-    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web, FEAT_WEB },
+    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web, FEAT_WEB, .phone = 1 },
     { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net, FEAT_NET },
-    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb, FEAT_RB },
-    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off]", 1,         c_display, FEAT_DISPLAY },
-    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo, FEAT_SYSINFO },
+    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb, FEAT_RB, .phone = 1 },
+    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off]", 1,         c_display, FEAT_DISPLAY, .phone = 1 },
+    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo, FEAT_SYSINFO, .phone = 1 },
     { L"GitHub",       L"open Loomy's GitHub page",           L"github",   L"gh",              0, CORE, 0,                                 0,         c_github, FEAT_GITHUB },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig, FEAT_WEB },
     { L"Packages",     L"turn features on/off on this PC",    L"pkg",      0,                  1, ALL, L"[add|remove <feature>]",          ARGS_SELF, c_pkg },
+    { L"Phone",        L"pair your phone (Pocket Loomy)",     L"phone",    0,                  1, ALL, L"[forget]",                        ARGS_SELF, c_phone, FEAT_PHONE },
     { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, L"[general|custom]",                1,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
@@ -236,6 +239,16 @@ static const Command *find_command(const wchar_t *word) {
     return 0;
 }
 
+// Pocket Loomy's allowlist: only plain commands marked .phone, and only if they exist right now
+// (mode + /pkg). Slash commands never run from the phone, so /shutdown, /update, /pkg, /config,
+// /phone, /reload and /webconfig are out by construction.
+int cmd_phone_ok(const wchar_t *word) {
+    if (word[0] == SYS_PREFIX) return find_command(word + 1) ? -1 : 0;
+    const Command *c = find_command(word);
+    if (!c) return 0;
+    return c->phone && !c->sys ? 1 : -1;
+}
+
 void cmd_run(wchar_t *line) {
     line = s_trim(line);
     if (!*line) return;
@@ -297,6 +310,7 @@ static void complete_args(wchar_t **words, int n, const wchar_t *partial) {
     else if (c->fn == c_pkg) pkg_complete(words, n, partial);
     else if (c->fn == c_config && n == 1) { complete_add(L"general", partial); complete_add(L"custom", partial); }
     else if (c->fn == c_sysinfo) sysinfo_complete(words, n, partial);
+    else if (c->fn == c_phone && n == 1) phone_complete(partial);
     else if (c->fn == c_mode) {
         if (n == 1) for (int i = 0; i < 4; i++) complete_add(MODE_SUBS[i], partial);
         else if (n == 2) {
