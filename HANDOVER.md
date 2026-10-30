@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.16)
+# Loomy — Handover (v2.17 in progress: Pocket Loomy PC side)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -10,10 +10,12 @@ notes), otherwise from `main`. **Keep it current:** every version branch updates
 The repo is **public**: never put secrets or anything private in here.
 
 **Sister project: ELLA** (the online/server side) has its own `ELLA-HANDOVER.md`. Keep ELLA notes there, not here.
+**Pocket Loomy** (Android voice remote over Bluetooth, PC side = `/phone`) has its own `POCKET-HANDOVER.md`: the full
+agreed design and security rules. Read it before touching voice/phone work.
 
 ## 1. What Loomy is
 A summon-anywhere command console for Windows (hotkey → dark overlay → short commands), built by the user,
-**Jimmy Younes**. It's one tiny C program with no runtime (~146 KB exe from 2.13; sysinfo added ~35 KB). Values: **as light as possible**, local-first,
+**Jimmy Younes**. It's one tiny C program with no runtime (~163 KB exe at 2.16; Pocket Loomy's PC side added ~43 KB in 2.17). Values: **as light as possible**, local-first,
 plum/purple theme with a halftone dot strip, accent themeable. Long-term: voice (SAPI) and optional AI, still light.
 He runs it on his personal PC and his work laptop (no admin there; never help get around workplace security).
 
@@ -56,10 +58,13 @@ If something's unclear, ask (one question). When he asks "what do you think, don
   Install the compiler in the sandbox: `apt-get install -y gcc-mingw-w64-x86-64` (run as root, no sudo).
 - **Never add `-fdata-sections`**: tested, the exe jumps to ~2 MB (mingw's linker writes the big zeroed static
   buffers into the file). `-flto` only saves ~3 KB; not worth the risk.
-- **`tests/run.sh`** builds the real `modes/web/display/commands/config/util/version.c` on Linux against a fake
+- **`tests/run.sh`** first builds `tests/pocket_test.c` (Pocket Loomy's protocol + crypto, with ASan/UBSan), then builds the real `modes/web/display/commands/config/util/version.c` on Linux against a fake
   `windows.h` (`tests/shim/`): ~140 checks covering strict args, modes + the core lock, web, display (fake screens),
   Tab, panel keys, version ordering, and the release check (against `tests/fixtures/release_v2.9b.json` plus tampered
-  copies), plus sysinfo (picker/keys/args with fake sensors) and the Flow score math.
+  copies), plus sysinfo (picker/keys/args with fake sensors), the Flow score math, and `phone.c` against a real
+  phone-role engine over a fake Bluetooth radio (see `POCKET-HANDOVER.md` §10). `phone.c` has one test hook,
+  `phone_code_for_tests()`, compiled only with `-DLOOMY_TESTS`. Output in `test.c` is `wprintf` only (a `printf`
+  on the same stream silently vanishes).
   **Run it after any change and extend it for new features.** Gotcha: on Linux a `\` in paths stays
   in the filename (files land as `/tmp/loomytest\x.txt`). `update.c` and `ui.c` aren't in the tests.
 - You **can't run the exe** (no Windows; Wine is unreliable for the real app). He's the real tester.
@@ -67,16 +72,22 @@ If something's unclear, ask (one question). When he asks "what do you think, don
   `apt-get install -y --no-install-recommends wine64`, build it with the mingw line at its top, then
   `WINEDEBUG=-all WINEPREFIX=/tmp/wp xvfb-run -a /usr/lib/wine/wine64 render.exe` and look at the images
   (Wine has no Bahnschrift/Cascadia, so fonts fall back, but sizes/overlaps are right). Only GDI, no real sensors.
+  `tests/render/render_phone.c` does the same for the `/phone` screen (build line in its header, no `-municode`).
+  If `apt-get install wine64` fails to fetch, run `apt-get update` first.
 
 ## 4. Source map (`src/`)
 `loomy.h` (version, colors, all decls — start here) · `ui.c` (window, paint, hotkey, tray, entry, panel router,
 reload/position, `ui_flush`) · `commands.c` (command table, strict args, Tab) · `modes.c` · `web.c` · `display.c` ·
 `version.c` (`ver_gt`, `release_check`) · `update.c` (WinHTTP, self-swap .bat) · `settings.c` (`/config`) ·
 `browser.c` (`lp`) · `net.c` · `changelog.c` (`/verc`, baked-in `RELEASES[]`) · `config.c` · `util.c` ·
-`sysinfo.c` (command, picker, keys, Flow score) · `sysdata.c` (all the Windows sensor reading) · `sysview.c` (the big view's drawing).
+`sysinfo.c` (command, picker, keys, Flow score) · `sysdata.c` (all the Windows sensor reading) · `sysview.c` (the big view's drawing) ·
+`phone.c` (`/phone`, codes, trust, lockout, running phone commands) · `phonebt.c` (Windows RFCOMM listener, SDP, random,
+DPAPI, clock) · `pocket.c/h` (the wire protocol, both roles, shared with the Android app) · `monocypher*.c/h` (vendored
+Monocypher 4.0.2, don't edit).
 
 **Conventions**
-- **Commands:** one row in `COMMANDS[]`: `{name, about, type, alias, sys, modes, usage, maxargs, fn}`.
+- **Commands:** one row in `COMMANDS[]`: `{name, about, type, alias, sys, modes, usage, maxargs, fn, feature}`,
+  plus `.phone = 1` (designated) if Pocket Loomy may run it; only plain (non-`/`) commands can be phone-safe.
   `sys=1` means it needs `/` (it changes Loomy); plain means a task or print. `usage` like `L"[alias | many]"`.
   `maxargs`: a number, `ARGS_TEXT` (free text), or `ARGS_SELF` (it parses its own subcommands and calls
   `cmd_usage(shape)`). Arg completion goes in `complete_args()`. `about` must fit help's column (≤35 chars).
@@ -100,6 +111,7 @@ Slash (all modes): `/mode` `/m` · `/pkg [add|remove <feature>]` · `/webconfig`
 Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
 Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
+Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
 
 - **Strict input:** extra/missing words print one `Usage: <typed> <shape>` line (`<>` required, `[]` optional).
 - **Modes** `home`/`work`/`core` (hardcoded; he doesn't want user-made modes). **core** = Loomy's own upkeep
@@ -140,7 +152,20 @@ Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.16 = `/pkg` feature toggles, on `claude/v2.16` (PR #14).** He wanted VS Code-style "extensions" to pick
+- **v2.17 (draft PR #15, not ended): Pocket Loomy PC side is built** — protocol, `/phone`, Bluetooth listener,
+  lockout, allowlist, tests, docs. Full details, the wire protocol and what to check on Windows are in
+  `POCKET-HANDOVER.md` (§9, §10). Opt-in feature `phone`: `features_on = phone` in `loomy.cfg` (opt-in features
+  are stored as an ON list, `FEATURES_OPTIN` in `loomy.h`; they don't count in help's "N features are off").
+  Also new in `loomy.cfg`: `phone_locked`. Nothing of it ran on Windows yet. Calls he hasn't confirmed: hang-ups
+  mid-handshake aren't a lockout; `SO_BTH_AUTHENTICATE` (needs Windows-level Bluetooth pairing first); the
+  phone-safe list. Next after he ends the version: the Android app (`pocket/`, Kotlin + the same `pocket.c` via NDK;
+  the APK build needs a workflow only he can add).
+  Voice on the PC itself was considered and dropped (always-on mic, +20–50 MB RAM, Windows' speech engine is
+  deprecated); the phone listens instead.
+- **GPU temperature (sysinfo) reads a stuck 101 °C on his laptop; he parked it ("forget it for now").** Unconfirmed
+  which GPU. Suspect: the Intel iGPU's driver reporting junk via D3DKMT; Task Manager never shows iGPU temps. Likely
+  fix: ignore temperature for integrated GPUs (also stops Flow wrongly flagging "hot"). Ask before changing.
+- **v2.16 is released** (PR #14, tag `v2.16`; he confirmed `/pkg` works on Windows): `/pkg` feature toggles. He wanted VS Code-style "extensions" to pick
   features per PC. **Decision: everything stays built into the exe; `/pkg` turns features on/off per PC. No downloads.**
   Why: it gives him the per-device feature set; real downloadable packages (DLLs) would only save ~50 KB now, add
   security/release work, and may be blocked on his work laptop (unsigned DLLs from user folders). RAM: off features'

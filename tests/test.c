@@ -1,6 +1,9 @@
+#define _GNU_SOURCE
 #include <windows.h>
 #include <locale.h>
 #include "../src/loomy.h"
+#include "../src/pocket.h"
+#include "../src/monocypher.h"
 extern wchar_t g_out[4000][1100]; extern int g_nout;
 extern wchar_t g_opened[64][512]; extern int g_nopened;
 extern int g_topo, g_screens, g_setcalls, g_screensOff, g_settingsSec;
@@ -32,6 +35,52 @@ static void tab(const wchar_t *line, const wchar_t *want) {
     if (want && wcscmp(buf, want)) { wprintf(L"!! FAIL: wanted '%ls'\n", want); fails++; }
 }
 static void cat(const char *p) { FILE *f = fopen(p, "r"); char l[2048]; if (!f) { wprintf(L"   (no file %s)\n", p); return; } while (fgets(l, 2048, f)) { for (char *c = l; *c; c++) if (*c == '\t') *c = '|'; wprintf(L"   | %s", l); } fclose(f); }
+
+// ---- Pocket Loomy: a real phone-role engine talking to phone.c through the fake radio
+extern int g_shows, g_balloons, g_phoneTimer, g_btOk, g_btListening, g_btDrops, g_btSendFail, g_rngFail;
+extern wchar_t g_balloonMsg[300]; extern unsigned char g_toPhone[8192]; extern int g_toPhoneN; extern ULONGLONG g_now;
+static PkConn ph; static int ph_ev[16], ph_nev;
+// move bytes both ways until nobody has anything left to say
+static void pump(void) {
+    for (int rounds = 0; rounds < 20; rounds++) {
+        int moved = 0;
+        if (g_toPhoneN) {
+            unsigned char b[8192]; int n = g_toPhoneN; memcpy(b, g_toPhone, n); g_toPhoneN = 0; moved = 1;
+            int off = 0;
+            while (off < n) { int used, e = pk_feed(&ph, b + off, n - off, &used); off += used; if (e && ph_nev < 16) ph_ev[ph_nev++] = e; if (e == PK_EV_FAIL) break; }
+        }
+        if (ph.outlen) { int n = ph.outlen; unsigned char b[1100]; memcpy(b, ph.out, n); ph.outlen = 0; moved = 1; phone_on_data(b, n); }
+        if (!moved) return;
+    }
+}
+static int ph_saw(int e) { for (int i = 0; i < ph_nev; i++) if (ph_ev[i] == e) return 1; return 0; }
+static uint8_t keep_sk[32], keep_pk[32], keep_pcpk[32];   // the phone's side of the pairing
+static int phone_pair(const char *code) {
+    ph_nev = 0;
+    pk_init_phone(&ph, (const uint8_t *)code, 0, 0, 0, 0, (const uint8_t *)"Pixel 8", 7);
+    if (!phone_on_accept(L"AA:BB:CC:DD:EE:01")) return 0;
+    pump();
+    if (ph_saw(PK_EV_PAIRED)) { memcpy(keep_sk, ph.my_sk, 32); memcpy(keep_pk, ph.my_pk, 32); memcpy(keep_pcpk, ph.peer_pk, 32); phone_on_closed(); return 1; }
+    return 0;
+}
+static int phone_connect(void) {
+    ph_nev = 0;
+    pk_init_phone(&ph, 0, 1, keep_sk, keep_pk, keep_pcpk, (const uint8_t *)"Pixel 8", 7);
+    if (!phone_on_accept(L"AA:BB:CC:DD:EE:01")) return 0;
+    pump();
+    return ph_saw(PK_EV_READY);
+}
+static const char *ask(const char *cmd) {      // say a command, return the PC's answer
+    static char ans[PK_TEXTMAX + 1];
+    ph_nev = 0; ans[0] = 0;
+    pk_send_cmd(&ph, (const uint8_t *)cmd, (int)strlen(cmd));
+    last_out = g_nout;
+    pump();
+    if (ph_saw(PK_EV_REPLY)) strcpy(ans, (char *)ph.text);
+    wprintf(L"   phone> %s\n   pc   < %s\n", cmd, ans);
+    return ans;
+}
+static void raw_to_pc(const unsigned char *b, int n) { last_out = g_nout; phone_on_data(b, n); }
 
 int main(void) {
     setlocale(LC_ALL, "C.UTF-8");
@@ -445,7 +494,7 @@ int main(void) {
         run(L"/pkg remove /config"); EXPECT(saw(L"/config is part of Loomy's core"), "core: /config");
         run(L"/pkg remove pkg");    EXPECT(saw(L"part of Loomy's core"), "core: pkg itself");
         run(L"/pkg remove update"); EXPECT(saw(L"part of Loomy's core"), "core: update");
-        run(L"/pkg remove banana"); EXPECT(saw(L"No feature called 'banana'") && saw(L"Features: web, lp, net, rb, display, sysinfo, github"), "unknown feature");
+        run(L"/pkg remove banana"); EXPECT(saw(L"No feature called 'banana'") && saw(L"Features: web, lp, net, rb, display, sysinfo, github, phone"), "unknown feature");
         run(L"/pkg remove");        EXPECT(saw(L"Usage: /pkg [add|remove <feature>]"), "remove needs a name");
         run(L"/pkg toggle web");    EXPECT(saw(L"Usage: /pkg [add|remove <feature>]"), "bad subcommand");
         run(L"/pkg add web now");   EXPECT(saw(L"Usage: /pkg"), "strict args");
@@ -476,7 +525,7 @@ int main(void) {
         pkg_key(VK_SPACE);          EXPECT(feature_on(FEAT_NET), "Space toggles it back");
         pkg_key(VK_RIGHT);          EXPECT(!feature_on(FEAT_NET), "Right toggles too");
         pkg_key(VK_LEFT);           EXPECT(feature_on(FEAT_NET), "Left toggles too");
-        pkg_key(VK_END); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_GITHUB), "End = last row = github");
+        pkg_key(VK_END); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_GITHUB), "End, Up = github");
         pkg_key(VK_RETURN);
         pkg_key(VK_HOME); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_WEB), "Home/Up stay on web");
         pkg_key(VK_RETURN);
@@ -491,6 +540,176 @@ int main(void) {
           EXPECT(strstr(buf, "features_off = net, sysinfo\r\n") != 0, "saved as features_off = net, sysinfo"); }
         g_cfg.featuresOff = 0; cfg_save(); cfg_load();
         EXPECT(g_cfg.featuresOff == 0, "empty list saves and loads");
+    }
+
+
+    wprintf(L"\n== Pocket Loomy (phone) ==\n");
+    {
+        { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "hotkey = ctrl+alt+space\n"); fclose(f); }
+        remove("/tmp/loomytest\\phone.dat");
+        cfg_load();
+        run(L"/m switch home");
+        EXPECT(!feature_on(FEAT_PHONE) && g_cfg.featuresOff == 0, "phone is opt-in: off on a fresh config");
+        phone_startup();            EXPECT(!g_btListening, "off: nothing listens");
+        run(L"/phone");             EXPECT(saw(L"don't know '/phone'") && !phone_active(), "off: /phone doesn't exist");
+        run(L"help");               EXPECT(!saw(L"turned off"), "an opt-in feature being off isn't nagged about");
+        run(L"/pkg add phone");     EXPECT(feature_on(FEAT_PHONE) && saw(L"Type /phone to pair"), "/pkg add phone");
+        EXPECT(!g_btListening, "on, but nothing to listen for yet (no phone, no code)");
+        { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "r"); char b[4096] = {0}; fread(b, 1, 4095, f); fclose(f);
+          EXPECT(strstr(b, "features_on = phone\r\n") && strstr(b, "features_off = \r\n"), "saved as features_on = phone"); }
+        cfg_load();                 EXPECT(feature_on(FEAT_PHONE), "survives a reload");
+        run(L"/phone now");         EXPECT(saw(L"Usage: /phone [forget]"), "strict args");
+        tab(L"/pho", L"/phone ");
+        tab(L"/phone f", L"/phone forget ");
+
+        // ---- pairing
+        run(L"/phone");             EXPECT(phone_active() && g_btListening && g_phoneTimer == 1000, "/phone: code open, listening, ticking");
+        PkConn spy; (void)spy;
+        extern int phone_code_for_tests(char *out);
+        char code[9] = {0}; EXPECT(phone_code_for_tests(code) && strlen(code) == 8 && strspn(code, "0123456789") == 8, "8-digit code");
+        wprintf(L"   code: %s\n", code);
+        char wrong[9]; strcpy(wrong, code); wrong[7] = wrong[7] == '9' ? '0' : wrong[7] + 1;
+        last_out = g_nout;
+        EXPECT(!phone_pair(wrong), "wrong code doesn't pair");
+        EXPECT(ph.fail == PK_F_CODE, "the phone sees it was the wrong code");
+        phone_on_closed();          // the phone gives up and hangs up
+        EXPECT(saw(L"hung up before finishing") && !phone_code_for_tests(code) && !g_cfg.phoneLocked, "code burned by the try, no lockout for a hang-up");
+        EXPECT(!g_btListening && !g_phoneTimer, "no code, no phone: listening stops, timer stops");
+        phone_char(L'n');           EXPECT(phone_code_for_tests(code) && g_btListening, "N makes a new code");
+        last_out = g_nout;
+        EXPECT(phone_pair(code), "right code pairs");
+        EXPECT(saw(L"Paired with \"Pixel 8\" (AA:BB:CC:DD:EE:01)"), "says who paired");
+        EXPECT(!phone_code_for_tests(code) && g_btListening, "code gone, still listening for the trusted phone");
+        EXPECT(!memcmp(ph.peer_name, "JIMMY-PC", 8), "phone got the PC's name");
+        { FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); unsigned char b[600]; int n = f ? (int)fread(b, 1, 600, f) : 0; if (f) fclose(f);
+          EXPECT(n > 100 && b[0] == 'D' && b[1] == 'P' && !memmem(b, n, keep_pk, 32), "trust file written through DPAPI, keys not in the clear"); }
+        phone_char(L'n');           EXPECT(!phone_code_for_tests(code), "no new codes while a phone is trusted");
+        phone_key(VK_ESCAPE);       EXPECT(!phone_active(), "Esc closes");
+
+        // ---- commands
+        phone_startup();            // as if Loomy restarted: trust comes back from the file
+        EXPECT(g_btListening && phone_connect(), "trusted phone connects after a restart");
+        EXPECT(g_phoneTimer == 1000, "ticks while connected");
+        g_nopened = 0;
+        const char *a = ask("rb");  EXPECT(strstr(a, "Opening the recycle bin") && g_nopened == 1, "rb runs and answers");
+        EXPECT(saw(L"From your phone:"), "Loomy shows it came from the phone");
+        a = ask("  RB  ");          EXPECT(strstr(a, "recycle bin"), "trimmed, any case");
+        a = ask("help");            EXPECT(!strcmp(a, "'help' only works on the PC."), "help isn't phone-safe");
+        a = ask("lp");              EXPECT(strstr(a, "only works on the PC"), "lp isn't phone-safe");
+        a = ask("/shutdown");       EXPECT(!strcmp(a, "Slash commands only work on the PC."), "no slash commands");
+        a = ask("/pkg remove phone"); EXPECT(strstr(a, "Slash") && feature_on(FEAT_PHONE), "can't turn itself off");
+        a = ask("/banana");         EXPECT(strstr(a, "don't know"), "unknown slash");
+        a = ask("banana split");    EXPECT(!strcmp(a, "I don't know 'banana'."), "unknown");
+        a = ask("gh");              EXPECT(strstr(a, "don't know"), "core-mode command doesn't exist in home");
+        a = ask("rb now");          EXPECT(strstr(a, "Usage: rb"), "strict args still apply");
+        int sh = g_shows; a = ask("open"); EXPECT(!strcmp(a, "Opening Loomy.") && g_shows == sh + 1, "open shows Loomy");
+        g_hidden = 0; a = ask("hide"); EXPECT(!strcmp(a, "Hidden.") && g_hidden, "hide");
+        a = ask("open sesame");     EXPECT(strstr(a, "don't know"), "open takes nothing");
+        a = ask("display extend");  EXPECT(a[0] && strcmp(a, "Done."), "display answers with what it did");
+        a = ask("rb\tx");           EXPECT(strstr(a, "control characters"), "control characters refused");
+        { unsigned char bad[] = { 0xC3, 0x28 }; ph_nev = 0; pk_send_cmd(&ph, bad, 2); pump(); EXPECT(ph_saw(PK_EV_REPLY) && strstr((char *)ph.text, "couldn't read"), "invalid UTF-8 refused"); }
+        run(L"/pkg remove web");
+        a = ask("web");             EXPECT(strstr(a, "don't know"), "a /pkg-off feature is off for the phone too");
+        run(L"/pkg add web");
+        { ph_nev = 0; pk_send_ping(&ph); pump(); EXPECT(ph_saw(PK_EV_PONG), "ping, pong"); }
+        EXPECT(!g_cfg.phoneLocked && g_balloons == 0, "all that was fine: no lockout");
+
+        // second phone while busy
+        EXPECT(!phone_on_accept(L"11:22:33:44:55:66"), "one phone at a time");
+        // idle hang-up
+        int drops = g_btDrops;
+        g_now += 91; phone_tick(); EXPECT(g_btDrops == drops + 1 && !g_phoneTimer, "silent for 90 s: hung up, timer off");
+        EXPECT(g_btListening && !g_cfg.phoneLocked, "still listening afterwards");
+
+        // ---- lockouts
+        EXPECT(phone_connect(), "reconnect");
+        { unsigned char junk[] = { 0x01, 0xFF };              // length 511 then nothing: fine so far
+          raw_to_pc(junk, 2); EXPECT(!g_cfg.phoneLocked, "a plausible length alone isn't an error"); }
+        { unsigned char rest[600]; memset(rest, 0x41, sizeof rest); raw_to_pc(rest, 511); }
+        EXPECT(g_cfg.phoneLocked && !g_btListening && g_balloons == 1, "a frame that fails its check: shut down + balloon");
+        EXPECT(saw(L"Phone listener shut down") && saw(L"AA:BB:CC:DD:EE:01") && saw(L"Nothing got in"), "says what happened and from where");
+        EXPECT(!phone_on_accept(L"AA:BB:CC:DD:EE:01"), "nothing gets in while shut down");
+        cfg_load();                 EXPECT(g_cfg.phoneLocked, "shut down survives a restart");
+        phone_startup();            EXPECT(!g_btListening, "and stays off after one");
+        run(L"/phone");             EXPECT(phone_active() && !g_btListening, "/phone shows it, doesn't reopen by itself");
+        phone_key(VK_RETURN);       EXPECT(!g_cfg.phoneLocked && g_btListening, "Enter turns listening back on");
+        phone_key(VK_ESCAPE);
+
+        EXPECT(phone_connect(), "back in");
+        { unsigned char big[2] = { 0x02, 0x01 }; raw_to_pc(big, 2); }
+        EXPECT(g_cfg.phoneLocked && saw(L"bad size"), "an oversized length shuts it down after 2 bytes");
+        g_cfg.phoneLocked = 0; phone_open(); phone_close();
+
+        // an unknown phone (other keys) trying to connect: it can't confirm, sends a made-up tag
+        {
+            uint8_t sk[32], pk[32]; os_random(sk, 32); crypto_x25519_public_key(pk, sk);
+            ph_nev = 0; last_out = g_nout;
+            pk_init_phone(&ph, 0, 1, sk, pk, keep_pcpk, (const uint8_t *)"Evil", 4);
+            phone_on_accept(L"66:66:66:66:66:66"); pump();
+            EXPECT(ph.fail == PK_F_AUTH, "the impostor can't verify the PC");
+            unsigned char fake[35] = { 0, 33, 0x07 }; os_random(fake + 3, 32);
+            raw_to_pc(fake, 35);
+            EXPECT(g_cfg.phoneLocked && saw(L"isn't the trusted one") && saw(L"\"Evil\"") && saw(L"66:66:66:66:66:66"), "impostor: shut down, claimed name + address printed");
+        }
+        g_cfg.phoneLocked = 0; cfg_save(); phone_open(); phone_close();
+
+        // random junk after connecting, many times: always a shutdown, never a command
+        {
+            int lock = 0, ran = 0;
+            for (int i = 0; i < 300; i++) {
+                g_nopened = 0; g_cfg.phoneLocked = 0;
+                phone_open(); phone_close();
+                phone_on_accept(L"77:77:77:77:77:77"); g_toPhoneN = 0;
+                unsigned char j[700]; int n = 3 + (int)(i * 7 % 690);
+                os_random(j, n); if (i % 2) { j[0] = 0; j[1] = (unsigned char)(n - 2 > 255 ? 255 : n - 2); }
+                raw_to_pc(j, n);
+                if (g_cfg.phoneLocked) lock++;
+                if (g_nopened) ran++;
+                if (!g_cfg.phoneLocked) phone_on_closed();
+            }
+            wprintf(L"   300 junk connections: %d shut it down, %d ran something\n", lock, ran);
+            EXPECT(ran == 0 && lock >= 290, "junk never runs anything, nearly always trips the shutdown");
+        }
+        g_cfg.phoneLocked = 0; cfg_save(); phone_open(); phone_close();
+
+        // handshake timeout: a phone that connects and says nothing
+        { int d = g_btDrops; phone_on_accept(L"88:88:88:88:88:88"); g_toPhoneN = 0;
+          g_now += 11; phone_tick(); EXPECT(g_btDrops == d + 1 && !g_cfg.phoneLocked, "slow handshake: cut, no shutdown"); }
+
+        // random numbers fail: nothing is sent
+        { g_rngFail = 1; g_toPhoneN = 0; EXPECT(!phone_on_accept(L"99:99:99:99:99:99") && g_toPhoneN == 0 && g_cfg.phoneLocked, "no secure random: nothing sent, shut down");
+          g_rngFail = 0; g_cfg.phoneLocked = 0; cfg_save(); phone_open(); phone_close(); }
+
+        // trust runs out after 7 days
+        EXPECT(phone_connect(), "still trusted");
+        phone_on_closed();
+        g_now += 7ull * 24 * 3600;
+        EXPECT(!phone_on_accept(L"AA:BB:CC:DD:EE:01") && !g_btListening && !g_cfg.phoneLocked, "after 7 days: turned away quietly, listening stops");
+        { FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); EXPECT(!f, "trust file deleted"); if (f) fclose(f); }
+        run(L"/phone");             EXPECT(phone_code_for_tests(code), "/phone offers a new code");
+        EXPECT(phone_pair(code), "pair again");
+        phone_key(VK_ESCAPE);
+
+        // forget
+        run(L"/phone forget");      EXPECT(saw(L"Forgot \"Pixel 8\"") && !g_btListening, "/phone forget");
+        run(L"/phone forget");      EXPECT(saw(L"No phone is trusted"), "nothing to forget");
+        run(L"/phone"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again"); phone_key(VK_ESCAPE);
+        run(L"/phone");             phone_char(L'f'); EXPECT(g_btListening, "F once only asks");
+        phone_char(L'f');           EXPECT(!g_btListening, "F twice forgets");
+        phone_key(VK_ESCAPE);
+
+        // /pkg remove phone drops everything
+        run(L"/phone"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again"); phone_key(VK_ESCAPE);
+        EXPECT(phone_connect(), "connected");
+        { int d = g_btDrops; run(L"/pkg remove phone"); EXPECT(!feature_on(FEAT_PHONE) && !g_btListening && g_btDrops == d + 1, "/pkg remove phone: hung up, not listening"); }
+        EXPECT(saw(L"paired phone is kept"), "says the pairing is kept");
+        run(L"/pkg add phone");     EXPECT(g_btListening, "back on: listens for the kept phone");
+
+        // no Bluetooth
+        run(L"/phone forget"); g_btOk = 0;
+        run(L"/phone");             EXPECT(!g_btListening, "no radio: not listening");
+        g_btOk = 1; phone_key(VK_ESCAPE);
+        run(L"/pkg remove phone");
     }
 
     wprintf(L"\n%d failure(s)\n", fails);

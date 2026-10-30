@@ -22,6 +22,8 @@ static void set_defaults(void) {
     g_cfg.fadeIn = 0;
     g_cfg.fadeMs = FADE_DEF;
     g_cfg.featuresOff = 0;
+    g_cfg.featuresOn = 0;
+    g_cfg.phoneLocked = 0;
 }
 
 static int is_on(const wchar_t *v) {
@@ -91,9 +93,20 @@ static void parse(wchar_t *text) {
                 int n = s_words(v, w, NFEATURES + 4);
                 for (int i = 0; i < n; i++) {
                     int f = feature_find(w[i]);
-                    if (f > FEAT_CORE) g_cfg.featuresOff |= 1u << f;
+                    if (f > FEAT_CORE && !(FEATURES_OPTIN & (1u << f))) g_cfg.featuresOff |= 1u << f;
                 }
             }
+            else if (s_ieq(k, L"features_on")) {         // opt-in features: "phone"
+                g_cfg.featuresOn = 0;
+                for (wchar_t *p = v; *p; p++) if (*p == L',') *p = L' ';
+                wchar_t *w[NFEATURES + 4];
+                int n = s_words(v, w, NFEATURES + 4);
+                for (int i = 0; i < n; i++) {
+                    int f = feature_find(w[i]);
+                    if (f > FEAT_CORE && (FEATURES_OPTIN & (1u << f))) g_cfg.featuresOn |= 1u << f;
+                }
+            }
+            else if (s_ieq(k, L"phone_locked")) g_cfg.phoneLocked = is_on(v);
             else if (s_ieq(k, L"mode_hidden")) {         // "work" or "home, work"
                 g_cfg.modeHidden = 0;
                 for (wchar_t *p = v; *p; p++) if (*p == L',') *p = L' ';
@@ -116,12 +129,15 @@ void cfg_save(void) {
             if (hidden[0]) s_cat(hidden, L", ", 64);
             s_cat(hidden, mode_name(i), 64);
         }
-    wchar_t off[160] = L"";
-    for (int f = FEAT_CORE + 1; f < NFEATURES; f++)
-        if (g_cfg.featuresOff & (1u << f)) {
-            if (off[0]) s_cat(off, L", ", 160);
-            s_cat(off, feature_id(f), 160);
-        }
+    wchar_t off[160] = L"", on[160] = L"";
+    for (int f = FEAT_CORE + 1; f < NFEATURES; f++) {
+        unsigned bit = 1u << f;
+        int optin = (FEATURES_OPTIN & bit) != 0;
+        wchar_t *list = optin ? on : off;
+        if (optin ? !(g_cfg.featuresOn & bit) : !(g_cfg.featuresOff & bit)) continue;
+        if (list[0]) s_cat(list, L", ", 160);
+        s_cat(list, feature_id(f), 160);
+    }
     wchar_t text[1200];
     int n0 = wsprintfW(text,
         L"# Loomy settings. Easiest way to change them: type /config or /mode in Loomy.\r\n"
@@ -132,10 +148,11 @@ void cfg_save(void) {
         onoff(g_cfg.rememberPos), mode_name(g_cfg.modeMain), hidden);
     wsprintfW(text + n0,
         L"animations = %s\r\nanim_dots = %s\r\nanim_lines = %s\r\nanim_select = %s\r\n"
-        L"anim_text = %s\r\nfade_in = %s\r\nfade_ms = %d\r\nfeatures_off = %s\r\n",
+        L"anim_text = %s\r\nfade_in = %s\r\nfade_ms = %d\r\nfeatures_off = %s\r\nfeatures_on = %s\r\n"
+        L"phone_locked = %s\r\n",
         g_cfg.anim == ANIM_OFF ? L"off" : g_cfg.anim == ANIM_ON ? L"on" : L"auto",
         onoff(g_cfg.animDots), onoff(g_cfg.animLines), onoff(g_cfg.animSelect),
-        onoff(g_cfg.animText), onoff(g_cfg.fadeIn), g_cfg.fadeMs, off);
+        onoff(g_cfg.animText), onoff(g_cfg.fadeIn), g_cfg.fadeMs, off, on, onoff(g_cfg.phoneLocked));
     char utf8[4096];
     int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), 0, 0) - 1;
     HANDLE f = CreateFileW(g_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);

@@ -61,6 +61,7 @@ static void push_line(int kind, const wchar_t *t, int len) {
 }
 
 void out(int kind, const wchar_t *text) {
+    phone_out_tap(kind, text);             // a command from the phone: its answer goes back too
     const wchar_t *start = text;
     for (const wchar_t *p = text;; p++) {
         if (*p == L'\n' || !*p) {
@@ -187,7 +188,7 @@ void ui_flush(void) { if (g_wnd) { InvalidateRect(g_wnd, 0, FALSE); UpdateWindow
 
 static int screen_active(void) {
     return settings_active() || browser_active() || net_active() || changelog_active() || mode_active() || web_active() ||
-           display_active() || sysinfo_active() || pkg_active();
+           display_active() || sysinfo_active() || pkg_active() || phone_active();
 }
 static void reset_history_pos(void);
 
@@ -309,10 +310,20 @@ void ui_hide(void) {
     web_close();
     display_close();
     pkg_close();
+    phone_close();
     g_fresh = 1;
     KillTimer(g_wnd, TIMER_CLOCK);
     anim_hide();
     ShowWindow(g_wnd, SW_HIDE);
+}
+
+void ui_show(void) { show(); }
+void ui_show_if_panel(void) { if (screen_active() && !IsWindowVisible(g_wnd)) show(); }
+HWND ui_hwnd(void) { return g_wnd; }
+void ui_set_timer(int id, int ms) {
+    if (!g_wnd) return;
+    if (ms > 0) SetTimer(g_wnd, id, ms, 0);
+    else KillTimer(g_wnd, id);
 }
 
 static void toggle(void) {
@@ -347,6 +358,8 @@ static void tray_balloon(const wchar_t *title, const wchar_t *msg) {
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
 }
 
+void ui_balloon(const wchar_t *title, const wchar_t *msg) { tray_balloon(title, msg); }
+
 static void tray_menu(void) {
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, MENU_OPEN, L"Open Loomy");
@@ -366,6 +379,7 @@ static void tray_menu(void) {
 
 // ---------------------------------------------------------------- shutdown / restart
 static void cleanup(void) {
+    bt_shutdown();                         // phone: unregister the Bluetooth service, close sockets
     UnregisterHotKey(g_wnd, HOTKEY_ID);
     Shell_NotifyIconW(NIM_DELETE, &g_nid);
     if (g_mutex) { CloseHandle(g_mutex); g_mutex = 0; }
@@ -524,7 +538,8 @@ static void paint(HWND w) {
     SelectObject(dc, g_font);
     IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
     int screen = settings_active() ? 1 : browser_active() ? 2 : net_active() ? 3 : changelog_active() ? 4 :
-                 mode_active() ? 5 : web_active() ? 6 : display_active() ? 7 : sysinfo_active() ? 8 : pkg_active() ? 9 : 0;
+                 mode_active() ? 5 : web_active() ? 6 : display_active() ? 7 : sysinfo_active() ? 8 : pkg_active() ? 9 :
+                 phone_active() ? 10 : 0;
     anim_paint_begin(dc, screen);          // list glide: the highlight goes under the rows
     if (settings_active()) settings_paint(dc, area);
     else if (browser_active()) browser_paint(dc, area);
@@ -534,6 +549,7 @@ static void paint(HWND w) {
     else if (web_active()) web_paint(dc, area);
     else if (display_active()) display_paint(dc, area);
     else if (pkg_active()) pkg_paint(dc, area);
+    else if (phone_active()) phone_paint(dc, area);
     else if (sysinfo_active()) sysinfo_paint(dc, area);
     anim_paint_end();
     int y = screen_active() ? area.top : area.bottom;
@@ -668,6 +684,9 @@ static LRESULT CALLBACK edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     } else if (pkg_active()) {
         if (m == WM_KEYDOWN && pkg_key(wp)) return 0;
         if (m == WM_CHAR && pkg_char(wp)) return 0;
+    } else if (phone_active()) {
+        if (m == WM_KEYDOWN && phone_key(wp)) return 0;
+        if (m == WM_CHAR && phone_char(wp)) return 0;
     } else if (sysinfo_active()) {
         if (m == WM_KEYDOWN && sysinfo_key(wp)) return 0;
         if (m == WM_CHAR && sysinfo_char(wp)) return 0;
@@ -745,6 +764,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         else if (web_active()) web_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (display_active()) display_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (pkg_active()) pkg_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
+        else if (phone_active()) phone_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         else if (sysinfo_active()) sysinfo_click((short)LOWORD(lp), (short)HIWORD(lp), 0);
         SetFocus(g_edit);
         return 0;
@@ -766,6 +786,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
         if (web_active()) { web_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (display_active()) { display_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (pkg_active()) { pkg_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
+        if (phone_active()) { phone_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         if (sysinfo_active()) { sysinfo_wheel((short)HIWORD(wp) / WHEEL_DELTA); return 0; }
         int d = (short)HIWORD(wp) / WHEEL_DELTA * 3;
         g_scroll += d;
@@ -777,12 +798,14 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
 
     case WM_HOTKEY: if (wp == HOTKEY_ID) toggle(); return 0;
     case WM_LOOMY_SHOW: show(); return 0;
+    case WM_PHONE: bt_event(wp, lp); return 0;
     case WM_TIMER:
         if (wp == TIMER_SCREENS) {
             KillTimer(w, TIMER_SCREENS);
             SendMessageW(w, WM_SYSCOMMAND, SC_MONITORPOWER, 2);   // 2 = off (standby)
         }
         else if (wp == TIMER_ANIM) anim_tick();
+        else if (wp == TIMER_PHONE) phone_tick();
         else if (wp == TIMER_NET) { net_tick(); sysinfo_tick(); }
         else if (wp == TIMER_REFOCUS) {
             if (IsWindowVisible(w)) { SetForegroundWindow(w); SetFocus(g_edit); }
@@ -899,6 +922,7 @@ void entry(void) {
     tray_add();
 
     cmd_greet();
+    phone_startup();                           // only does anything with /pkg add phone
     if (!g_hotkeyOk) {
         outf(OUT_ERR, L"Couldn't grab %s, another app is using it.", g_cfg.hotkey);
         out(OUT_DIM, L"Pick another in: /config");

@@ -1,4 +1,4 @@
-# Loomy 2.16
+# Loomy 2.17
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -22,7 +22,9 @@ Every time Loomy hides, it comes back with a clean screen.
 
 `sysinfo` (or `si`) shows what your PC is doing right now. Pick a view, or type `si general`, `si cpu` or `si gpu 2`, and Loomy grows to about 1.5x to show live graphs: CPU load, speed and per-thread bars; every GPU (laptops with two get both) with its load, engines, VRAM, temperature and clock; memory, disk, network and the top apps. Each CPU and GPU also gets a **Flow** score: it ignores plain busyness and only drops for things you'd feel, like threads stuck waiting, clocks held back by heat or power, RAM full and paging, drivers hogging the CPU, a hot GPU or full VRAM. Tab or the arrow keys switch views, Backspace goes back to the list, Esc closes. It only reads sensors while it's open.
 
-**Pick your features per PC with `/pkg`.** Like extensions, but nothing gets downloaded: every feature ships inside Loomy, and `/pkg` turns them on or off on this PC. Type `/pkg` for a list (Enter, Space or a click toggles), or `/pkg remove sysinfo` / `/pkg add sysinfo`. An off feature's commands disappear (not in `help`, no Tab) and its code never runs. Optional features: `web` (with `/webconfig`), `lp`, `net`, `rb`, `display`, `sysinfo`, `github`. Everything else is Loomy's core and always on. Your choice is saved in `loomy.cfg` on that PC only.
+**Pick your features per PC with `/pkg`.** Like extensions, but nothing gets downloaded: every feature ships inside Loomy, and `/pkg` turns them on or off on this PC. Type `/pkg` for a list (Enter, Space or a click toggles), or `/pkg remove sysinfo` / `/pkg add sysinfo`. An off feature's commands disappear (not in `help`, no Tab) and its code never runs. Optional features: `web` (with `/webconfig`), `lp`, `net`, `rb`, `display`, `sysinfo`, `github`, and `phone` (off until you add it). Everything else is Loomy's core and always on. Your choice is saved in `loomy.cfg` on that PC only.
+
+**Pocket Loomy: commands from your phone (PC side).** `/pkg add phone`, then `/phone` shows an 8-digit code; say it on the Pocket Loomy Android app (coming separately) and the phone is trusted for 7 days. After that it sends commands over Bluetooth and Loomy runs them like you typed them: `open`, `hide`, `web`, `rb`, `display` and `sysinfo` only, never a `/` command. Pairing uses CPace (a password-authenticated key exchange), so a recorded pairing can't be brute-forced, and a code is used up by its first try. Every connection after that is encrypted and authenticated. Any failed check shuts the listener down until you turn it back on in `/phone`, and Loomy tells you which device tried. With the feature off, nothing listens. Crypto: [Monocypher](https://monocypher.org) 4.0.2, vendored in `src/` (BSD-2 / CC0).
 
 Keys: **Tab** completes (commands, folder names after `lp`, site aliases, modes), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
 
@@ -33,7 +35,7 @@ Windows: install [w64devkit](https://github.com/skeeto/w64devkit), put its `bin`
 Linux: install `mingw-w64`, run `./build.sh`.
 
 ## Add a command
-Open `src/commands.c`, write a function, add one row to `COMMANDS` (name, what it does, bare word, alias, sys flag, modes, usage, max args, function — sys 1 means it needs the `/`). `help`, Tab completion and the usage replies pick it up on their own. If it's optional, add a feature to the `FEAT_` list in `loomy.h` and `src/features.c`, and put that feature last in its row; leave it out and the command is core.
+Open `src/commands.c`, write a function, add one row to `COMMANDS` (name, what it does, bare word, alias, sys flag, modes, usage, max args, function — sys 1 means it needs the `/`). `help`, Tab completion and the usage replies pick it up on their own. Mark it `.phone = 1` if Pocket Loomy may run it from the phone (plain commands only). If it's optional, add a feature to the `FEAT_` list in `loomy.h` and `src/features.c`, and put that feature last in its row; leave it out and the command is core.
 
 ## Versions and updates
 Tags look like `v2.10`. A letter means a fix build of the same version with no new features: `v2.9` → `v2.9b` → `v2.9c`. `LOOMY_VERSION` in `src/loomy.h` must match the tag exactly (minus the `v`).

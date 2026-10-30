@@ -96,7 +96,7 @@ void ui_restart(void) { ui_restart_to(mode_current(), 0); }
 int g_resets; void ui_reset_window(void) { g_resets++; }
 int g_refocus; void ui_refocus_soon(void) { g_refocus++; }
 static const char *KIND[] = { "TXT", "DIM", "ACC", "OK ", "ERR", ">  " };
-void out(int kind, const wchar_t *t) { swprintf(g_out[g_nout++ % 4000], 1100, L"%s %ls", KIND[kind], t); }
+void out(int kind, const wchar_t *t) { phone_out_tap(kind, t); swprintf(g_out[g_nout++ % 4000], 1100, L"%s %ls", KIND[kind], t); }
 void outf(int kind, const wchar_t *f, ...) { wchar_t b[1100]; va_list ap; va_start(ap, f); wvsprintfW(b, f, ap); va_end(ap); out(kind, b); }
 int settings_active(void){return 0;} int g_settingsSec = -1; void settings_open(int s){ g_settingsSec = s; } void settings_close(void){}
 void net_open(void){} void browser_open(const wchar_t *r){} void changelog_open(const wchar_t *a){ outf(OUT_TEXT, L"[changelog_open '%s']", a); }
@@ -120,3 +120,37 @@ int sysdata_open(SiSnap *s) {
 }
 void sysdata_sample(SiSnap *s) { g_sysSamples++; s->ready = 1; }
 void sysdata_close(void) { g_sysOpen = 0; }
+
+// ---- Pocket Loomy stand-ins: a fake Bluetooth radio, fake DPAPI, a clock the tests move
+HFONT CreateFontW(int a, int b, int c, int d, int e, DWORD f, DWORD g, DWORD h, DWORD i, DWORD j, DWORD k, DWORD l, DWORD m, const wchar_t *n) { return (HFONT)1; }
+BOOL DeleteObject(HGDIOBJ o) { return 1; }
+BOOL DeleteFileW(const wchar_t *p) { char path[1024]; w2u(p, path, 1024); return remove(path) == 0; }
+int g_shows, g_balloons, g_phoneTimer; wchar_t g_balloonMsg[300];
+void ui_show(void) { g_shows++; }
+void ui_show_if_panel(void) {}
+void ui_balloon(const wchar_t *t, const wchar_t *m) { g_balloons++; wcscpy(g_balloonMsg, m); }
+void ui_set_timer(int id, int ms) { if (id == TIMER_PHONE) g_phoneTimer = ms; }
+HWND ui_hwnd(void) { return 0; }
+int g_btOk = 1, g_btListening, g_btDrops, g_btSendFail;
+unsigned char g_toPhone[8192]; int g_toPhoneN;
+int  bt_listen(wchar_t *err, int cap) { if (!g_btOk) { wcscpy(err, L"No Bluetooth on this PC, or it's turned off."); return 0; } g_btListening = 1; return 1; }
+void bt_unlisten(void) { g_btListening = 0; }
+int  bt_listening(void) { return g_btListening; }
+int  bt_send(const unsigned char *p, int n) { if (g_btSendFail) return 0; memcpy(g_toPhone + g_toPhoneN, p, n); g_toPhoneN += n; return 1; }
+void bt_drop(void) { g_btDrops++; }
+void bt_event(WPARAM s, LPARAM e) {}
+void bt_shutdown(void) {}
+int g_rngFail; static unsigned long long g_rs = 0x9E3779B97F4A7C15ull;
+int os_random(void *p, int n) {
+    if (g_rngFail) return 0;
+    for (int i = 0; i < n; i++) { g_rs ^= g_rs << 13; g_rs ^= g_rs >> 7; g_rs ^= g_rs << 17; ((unsigned char *)p)[i] = (unsigned char)(g_rs >> 24); }
+    return 1;
+}
+int os_protect(const unsigned char *in, int n, unsigned char *out, int cap, int un) {   // "DP" + xor: not plaintext on disk
+    if (un) { if (n < 2 || in[0] != 'D' || in[1] != 'P' || n - 2 > cap) return 0; for (int i = 2; i < n; i++) out[i - 2] = in[i] ^ 0x5A; return n - 2; }
+    if (n + 2 > cap) return 0; out[0] = 'D'; out[1] = 'P'; for (int i = 0; i < n; i++) out[i + 2] = in[i] ^ 0x5A; return n + 2;
+}
+ULONGLONG g_now = 13400000000ull;
+ULONGLONG os_now(void) { return g_now; }
+void os_fmt_time(ULONGLONG s, wchar_t *b, int cap, int day) { swprintf(b, cap, day ? L"Day%llu %02d:%02d" : L"%02d:%02d", s / 86400 % 1000, (int)(s / 3600 % 24), (int)(s / 60 % 60)); if (!day) swprintf(b, cap, L"%02d:%02d", (int)(s / 3600 % 24), (int)(s / 60 % 60)); }
+int os_pc_name(char *u, int cap) { strcpy(u, "JIMMY-PC"); return 8; }

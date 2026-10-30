@@ -13,6 +13,14 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.17", L"2026-10-30", {
+        L"Pocket Loomy (PC side): commands from your Android phone over Bluetooth.",
+        L"Opt-in: /pkg add phone. Nothing listens until you turn it on.",
+        L"/phone shows an 8-digit code; say it on the phone, trusted for 7 days.",
+        L"Phone can run open, hide, web, rb, display, sysinfo. Never / commands.",
+        L"Encrypted, with CPace pairing so the code can't be guessed offline.",
+        L"Any failed check shuts listening down until Enter in /phone.",
+        0 } },
     { L"2.16", L"2026-10-30", {
         L"New /pkg: turn features on or off per PC (nothing is downloaded).",
         L"/pkg add <feature> and /pkg remove <feature> work too, with Tab.",
