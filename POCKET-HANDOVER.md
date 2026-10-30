@@ -260,3 +260,6 @@ Build these next on `claude/v2.18` (still a draft; not ended):
 9. Net speed: a toggle that turns the notification into a net-speed indicator (raw up/down, B/KB/MB per second,
    no "Loomy" title), like the status-bar speed apps. Assumed: the phone's own traffic (TrafficStats, no INTERNET
    permission needed), the number drawn into the status-bar icon. Confirm phone vs PC speed with him.
+   He named the model: the "Internet Speed Meter" style app by Nisarg Jhaveri, so ONE notification instead of
+   several stuck ones. Must work on its own with Pocket Loomy off: then no Bluetooth, no pings, no mic, just a
+   1 s TrafficStats read + icon redraw, **paused while the screen is off** (nobody sees it), so it's ~free.
