@@ -85,7 +85,7 @@ always-on mic and +20–50 MB RAM in Loomy, plus Windows' speech engine is depre
 
 ## 7. Status and order
 **PC side is released (v2.17), steps 1 and 2 below.** He checked it on Windows without a phone (§10 list, all fine);
-the real Bluetooth connection is still untested. Next is step 3, the Android app (`claude/v2.18`).
+the real Bluetooth connection is still untested. **Step 3 (Android app) is in progress on `claude/v2.18`, §11.**
 1. PC: feature `phone` (opt-in), Monocypher vendored, CPace + handshake + framing with tests, `/phone` panel, lockout.
 2. PC: Bluetooth listener (`WSAAsyncSelect`), allowlist, replies. Release.
 3. Android: Bluetooth connect + pairing by voice, send a command, show the reply. Then the notification/tile/
@@ -189,3 +189,30 @@ back as the reply ("Done." if nothing). Slash commands get "Slash commands only 
   that Loomy shows up as a service from the phone (any Bluetooth serial app listing SDP services); that
   `SO_BTH_AUTHENTICATE` doesn't block the Android connection (if it does, try without it); that `/reload` and quitting
   remove the SDP record; idle CPU stays 0 while listening.
+
+## 11. Android app (`pocket/`, v2.18, first cut)
+- Plain Kotlin, framework APIs only (no AndroidX, no libraries), minSdk 26, targetSdk/compileSdk 35, AGP 8.7.3,
+  Kotlin 2.0.21, Gradle 8.14.3, JDK 17. Package `io.github.jimmyuns.pocketloomy`. **No INTERNET permission**;
+  backups and device transfer exclude everything (`res/xml/no_backup.xml`).
+- `cpp/pocket_jni.c` + `CMakeLists.txt` compile `src/pocket.c` + Monocypher (arm64 + armv7 only).
+  `pk_random` = bionic `arc4random_buf`. `Native.kt` mirrors the JNI; event/failure numbers must match `pocket.h`.
+- `Store.kt`: trust (phone sk/pk, PC pk, paired time, PC name) sealed with AES-256-GCM under an Android Keystore key
+  (`pocket_trust`); PC address + label in plain prefs. Phone also shows the 7-day expiry.
+- `Link.kt`: one worker thread, blocking RFCOMM via `createRfcommSocketToServiceRecord(SERVICE)`, watchdog closes
+  the socket on timeouts (15 s connect/reply, 20 s pairing). Pairing: one connection, then hang up. Commands:
+  connect + handshake, keep it open 60 s for follow-ups, one retry on a stale kept connection.
+- `MainActivity.kt`: Choose PC (bonded devices), Pair (voice only: say 8 digits; `Words.code`), Talk (tap, speech,
+  `Words.command` strips "Loomy"/"run"), typed commands, a log. `SpeechRecognizer` with prefer-offline.
+- Not yet: notification + quick-settings tile, always-listening (foreground service), auto-off, battery exemption.
+- **Signing:** dev builds (branches) use `pocket/dev.keystore` (committed on purpose, password `pocketdev`,
+  applicationId suffix `.dev`, so dev and release install side by side). Release builds (tags only) use his key
+  from GitHub secrets `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD` (alias `pocket`); without them the tag
+  build skips the APK with a warning instead of failing.
+- **Workflow** `.github/workflows/pocket.yml` (he adds it; the bot can't touch workflows): builds the dev APK on
+  pushes to `claude/**` touching `pocket/`, `src/pocket.*` or `src/monocypher*` (artifact "pocket-loomy-dev"), and
+  on `v*` tags builds the signed APK and uploads `pocket-loomy.apk` to that release. Actions are pinned by SHA.
+  The bot reads build logs through the API to fix compile errors.
+- **Local checks** (sandbox can't build an APK): `tests/jni/run.sh` (JDK + kotlinc from the JetBrains GitHub
+  release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
+  (32 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
+  android-35): `kotlinc -cp android.jar *.kt`.
