@@ -1,4 +1,4 @@
-# Pocket Loomy — Handover (PC side built in v2.17; Android app not started)
+# Pocket Loomy — Handover (PC side released in v2.17; Android app next, v2.18)
 
 Brief for a fresh chat. **Pocket Loomy** = an Android app that hears Jimmy's voice commands and sends them to Loomy on
 his PC over **Bluetooth**; Loomy runs them. Read Loomy's `HANDOVER.md` first (who Jimmy is, how he works, workflow,
@@ -84,8 +84,8 @@ always-on mic and +20–50 MB RAM in Loomy, plus Windows' speech engine is depre
   the Android app. He's the tester.
 
 ## 7. Status and order
-**PC side is built (v2.17, branch `claude/v2.17`), steps 1 and 2 below.** Never run on Windows yet: see §10 for what
-to check. Next is step 3, the Android app.
+**PC side is released (v2.17), steps 1 and 2 below.** He checked it on Windows without a phone (§10 list, all fine);
+the real Bluetooth connection is still untested. Next is step 3, the Android app (`claude/v2.18`).
 1. PC: feature `phone` (opt-in), Monocypher vendored, CPace + handshake + framing with tests, `/phone` panel, lockout.
 2. PC: Bluetooth listener (`WSAAsyncSelect`), allowlist, replies. Release.
 3. Android: Bluetooth connect + pairing by voice, send a command, show the reply. Then the notification/tile/
