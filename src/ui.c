@@ -329,17 +329,20 @@ void ui_close_panels(void) {
     web_close(); display_close(); pkg_close(); phone_close();
     ui_redraw();
 }
-// a key into the open screen, exactly as if pressed on the PC (only while a screen is open)
+// a key into the open screen, exactly as if pressed on the PC (only while a screen is open).
+// Panels take their keys in edit_proc (the input box keeps focus), so that's where it goes:
+// sending it to the main window did nothing (2.18 bug, found on his phone; the Linux shim
+// dispatches straight to the panels, so the tests couldn't see it).
 int ui_panel_key(WPARAM vk, int shift) {
     if (!screen_active()) return 0;
     g_fakeShift = shift;
-    SendMessageW(g_wnd, WM_KEYDOWN, vk, 0);
+    SendMessageW(g_edit, WM_KEYDOWN, vk, 0);
     g_fakeShift = 0;
     return 1;
 }
 int ui_panel_char(wchar_t ch) {
     if (!screen_active()) return 0;
-    SendMessageW(g_wnd, WM_CHAR, ch, 0);
+    SendMessageW(g_edit, WM_CHAR, ch, 0);
     return 1;
 }
 void ui_panel_choices(wchar_t *b, int cap) {

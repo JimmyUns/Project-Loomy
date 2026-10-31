@@ -111,7 +111,8 @@ class TalkActivity : Activity() {
 
     private fun head() = when {
         Voice.inputMode -> "Input mode"
-        Voice.keep -> "Listening for \u201Cayo Loomy\u201D"
+        Voice.keep && Store(this).solo -> "Solo mode"
+        Voice.keep -> "Listening for \u201CLoomy\u201D"
         else -> "Listening..."
     }
 
@@ -132,7 +133,8 @@ class TalkActivity : Activity() {
             }
             listening -> show(head(), when {
                                   Voice.inputMode -> "Say next, back, ok, up, down..."
-                                  Voice.keep -> "Say \u201Cayo Loomy\u201D and a command"
+                                  Voice.keep && Store(this).solo -> "Just say a command"
+                                  Voice.keep -> "Say \u201CLoomy\u201D and a command"
                                   else -> "Say a command" }, accent)
             sawListening -> closeSoon(1500)
         }

@@ -28,27 +28,42 @@ object Words {
     }
 
     // how recognizers write "Loomy", and the greetings that make it clear you're talking to her
-    private val NAME = setOf("loomy", "loomie", "lumi", "lumie", "looney", "loony", "lumy", "loomi", "lumee", "loomey", "lumey")
+    private val NAME = setOf("loomy", "loomie", "lumi", "lumie", "looney", "loony", "lumy", "loomi", "lumee", "loomey", "lumey",
+                             "luumi", "lumia", "loomis", "lumis", "lomi", "lume", "lumii", "loomiy", "lumee's", "lumi's", "loomy's")
+    private val FILL = setOf("okay", "ok", "um", "uh", "so", "and", "oh", "alright", "right", "hey", "yo")
     private val HAIL = setOf("yo", "ayo", "eyo", "ayoo", "ayyo", "hey", "ay", "aye", "a", "oi", "hayo", "yoo")
 
     // words, keeping things like "youtube.com" or "c:/games" whole but dropping sentence punctuation
     private fun words(s: String) = s.lowercase().replace('\u2019', '\'').split(Regex("[^a-z0-9/'._:-]+"))
         .map { it.trim('.', ':', '-', '_', '\'') }.filter { it.isNotEmpty() }
 
+    private fun isName(x: String) = x in NAME || (x.startsWith("yo") && x.drop(2) in NAME) || (x.startsWith("ayo") && x.drop(3) in NAME)
+
     /**
-     * Keep-listening mode: was this said TO Loomy? Only "yo/ayo/hey Loomy ..." counts, anywhere in what was
-     * heard ("so anyway, ayo Loomy show screen"). Returns what came after it ("" = just the greeting),
-     * or null when it wasn't for Loomy (then it's ignored and never sent anywhere).
+     * Keep-listening mode: was this said TO Loomy? Her name has to open what was said ("Loomy show screen",
+     * "okay Lumi, system info", "ayo Loomy ..."), or follow a greeting anywhere ("so anyway, yo Loomy ...").
+     * A name in the middle of a sentence ("I told Loomy about it") doesn't count. Returns what came after
+     * the name ("" = just the name: a follow-up is coming), or null when it wasn't for Loomy (then it's
+     * ignored and never sent anywhere).
      */
     fun addressed(heard: String): String? {
         val w = words(heard)
         for (i in w.indices) {
-            val greeted = (w[i] in NAME && i > 0 && w[i - 1] in HAIL) ||
-                          (w[i].startsWith("yo") && w[i].drop(2) in NAME) || (w[i].startsWith("ayo") && w[i].drop(3) in NAME)
-            if (greeted) return w.drop(i + 1).joinToString(" ")
+            if (!isName(w[i])) continue
+            val opens = w.subList(0, i).all { it in HAIL || it in FILL }
+            val greeted = i > 0 && w[i - 1] in HAIL
+            if (opens || greeted) return w.drop(i + 1).joinToString(" ")
         }
         return null
     }
+
+    /** "... okay Loomy": the name came last, the command is probably in the next breath */
+    fun endsWithName(heard: String) = words(heard).lastOrNull()?.let { isName(it) } == true
+
+    /** words the recognizer should expect (Android 13+ uses this as a hint) */
+    val HINTS = arrayListOf("Loomy", "Lumi", "display", "extend", "screen on", "screen off", "system info", "recycle bin",
+        "input mode", "solo mode", "next tab", "previous tab", "back", "confirm", "cancel", "okay", "down", "up",
+        "hide", "show", "web", "help", "stop listening", "slash")
 
     /** input mode: key words work without the greeting until it's turned off */
     fun isInputModeOn(cmd: String) = cmd in setOf("input mode", "input mode on", "enable input mode", "start input mode",
@@ -70,7 +85,9 @@ object Words {
     /** input mode: "next tab" -> "input next tab", "go down three" -> "input down 3"; not a key -> null */
     fun key(heard: String): String? {
         var w = words(heard)
-        if (w.size > 1 && w[0] in HAIL && w[1] in NAME) w = w.drop(2)
+        while (w.size > 1 && (w[0] in HAIL || w[0] in FILL) && w.drop(1).any { isName(it) }) w = w.drop(1)
+        if (w.isNotEmpty() && isName(w[0])) w = w.drop(1)
+        if (w.isNotEmpty() && w[0] == "input") w = w.drop(1)              // "input down" said in input mode
         while (w.isNotEmpty() && w[0] in setOf("press", "hit", "go", "move", "and", "then", "now", "the")) {
             if (w.size == 2 && w[0] == "go" && w[1] == "back") break
             w = w.drop(1)
@@ -83,6 +100,13 @@ object Words {
         val k = KEYWORD[w.joinToString(" ")] ?: return null
         return "input $k$times"
     }
+
+    /** solo mode: when he's alone, everything said is for Loomy (no name needed) until it's turned off */
+    private fun solo(cmd: String) = cmd.replace("so low", "solo").replace("so lo", "solo").replace("sola", "solo")
+    fun isSoloOn(cmd: String) = solo(cmd) in setOf("solo mode", "solo mode on", "enable solo mode", "turn on solo mode",
+        "turn solo mode on", "start solo mode")
+    fun isSoloOff(cmd: String) = solo(cmd) in setOf("solo mode off", "disable solo mode", "turn off solo mode",
+        "turn solo mode off", "stop solo mode", "exit solo mode", "end solo mode", "leave solo mode", "no more solo mode")
 
     /** "stop listening", "that's all", "go to sleep": ends keep-listening */
     fun isStop(cmd: String) = cmd in setOf("stop", "stop listening", "that's all", "thats all", "go to sleep",
@@ -184,8 +208,10 @@ object Words {
      */
     fun command(heard: String): String {
         var w = words(heard)
-        if (w.size > 1 && w[0] in HAIL && w[1] in NAME) w = w.drop(2)     // "yo loomy ..."
-        if (w.isNotEmpty() && w[0] in NAME) w = w.drop(1)                 // "loomy ..."
+        // "so low mode" is how "solo mode" often comes out
+        w = w.joinToString(" ").replace("so low mode", "solo mode").replace("so lo mode", "solo mode").split(' ').filter { it.isNotEmpty() }
+        while (w.size > 1 && (w[0] in HAIL || w[0] in FILL) && w.drop(1).any { isName(it) }) w = w.drop(1)   // "okay yo ..."
+        if (w.isNotEmpty() && isName(w[0])) w = w.drop(1)                 // "loomy ..."
         if (w.size > 1 && w[0] == "run") w = w.drop(1)
         val parts = mutableListOf<MutableList<String>>(mutableListOf())
         for (x in w) if (x == "and" || x == "then") parts += mutableListOf<String>() else parts.last() += x

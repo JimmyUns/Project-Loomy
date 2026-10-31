@@ -81,6 +81,7 @@ class MainActivity : Activity() {
     private lateinit var swKeep: Switch
     private lateinit var swCard: Switch
     private lateinit var swSpeed: Switch
+    private lateinit var swSolo: Switch
 
     private val onChange: () -> Unit = { render() }
 
@@ -252,8 +253,10 @@ class MainActivity : Activity() {
         } to text(about, dim, 12f)
         val (n1, n1a) = setting("Notification", "Pocket Loomy in your notifications. Off: none while it's off, and a tucked-away one while it runs.") {
             store.showNotif = it; Pocket.sync(this) }
-        val (n2, n2a) = setting("Keep listening", "After Talk, keep listening until you stop it. Only acts on \u201Cyo/ayo Loomy ...\u201D and ignores everything else.") {
+        val (n2, n2a) = setting("Keep listening", "After Talk, keep listening until you stop it. Only acts on what starts with \u201CLoomy ...\u201D and ignores everything else.") {
             store.keepListening = it; render() }
+        val (n5, n5a) = setting("Solo mode", "For when you're alone: no need to say Loomy, everything you say is a command. Also by voice: \u201CLoomy solo mode\u201D / \u201Csolo mode off\u201D.") {
+            store.solo = it; render() }
         val (n3, n3a) = setting("Talk card", "The small card when you Talk from the notification. Off: it just listens, answers show in the notification.") {
             store.talkCard = it }
         val (n4, n4a) = setting("Net speed", "Your phone's down/up speed in the status bar, like a speed meter app. Works with Pocket Loomy off, paused while the screen is off.") {
@@ -261,8 +264,8 @@ class MainActivity : Activity() {
             if (!Pocket.sync(this)) { store.netSpeed = false; problem("Android didn't let the speed meter start.") }
             render()
         }
-        swNotif = n1; swKeep = n2; swCard = n3; swSpeed = n4
-        content.addView(box(text("Settings", accent, 13f, true), n1, n1a, n2, n2a, n3, n3a, n4, n4a),
+        swNotif = n1; swKeep = n2; swCard = n3; swSpeed = n4; swSolo = n5
+        content.addView(box(text("Settings", accent, 13f, true), n1, n1a, n2, n2a, n5, n5a, n3, n3a, n4, n4a),
                         LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
 
         // the rarely used buttons
@@ -292,6 +295,7 @@ class MainActivity : Activity() {
         swKeep.isChecked = store.keepListening
         swCard.isChecked = store.talkCard
         swSpeed.isChecked = store.netSpeed
+        swSolo.isChecked = store.solo
         onSwitch.isChecked = store.on
         settingSwitch = false
 
@@ -302,7 +306,8 @@ class MainActivity : Activity() {
             phase == Phase.FORGETTING -> "forgetting" to accent
             Voice.sending -> "talking to Loomy" to accent
             listening && Voice.inputMode -> "input mode" to accent
-            listening && Voice.keep -> "listening for ayo Loomy" to accent
+            listening && store.solo && Voice.keep -> "solo mode" to accent
+            listening && Voice.keep -> "listening for Loomy" to accent
             listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
             Pocket.linkState == LinkState.CONNECTING -> "connecting" to accent
@@ -347,10 +352,11 @@ class MainActivity : Activity() {
         live.text = when {
             listening && Voice.partial.isNotEmpty() -> Voice.partial
             listening && Voice.inputMode -> "input mode: say next, back, ok, up, down... (\u201Cinput mode off\u201D to stop)"
-            listening && Voice.keep -> "say \u201Cayo Loomy\u201D and a command"
+            listening && store.solo && Voice.keep -> "solo mode: just say a command (\u201Csolo mode off\u201D to stop)"
+            listening && Voice.keep -> "say \u201CLoomy\u201D and a command"
             listening -> "say a command"
             last != null -> "\u203A ${last.cmd}"
-            else -> "try \u201Cdisplay extend\u201D, \u201Cturn off the screen\u201D or \u201Csystem info and next tab\u201D"
+            else -> "try \u201CLoomy, turn off the screen\u201D or \u201CLoomy system info and next tab\u201D"
         }
         live.setTextColor(if (listening || last != null) accent else dim)
         val showMine = answer.isNotEmpty()

@@ -10,6 +10,7 @@ import android.speech.SpeechRecognizer
 // Android's speech recognizer, wrapped: live partial text and mic level for the screen, then the result.
 class Ear(
     private val ctx: Context,
+    private val hints: ArrayList<String>? = null,      // words to expect (Android 13+), null for the pairing code
     private val partial: (String) -> Unit,
     private val level: (Float) -> Unit,
     private val heard: (List<String>) -> Unit,
@@ -42,6 +43,12 @@ class Ear(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+            // wait a little longer before deciding you're done, so "Loomy ... show" isn't cut in two
+            // (some recognizers ignore these; Voice also handles a name said on its own)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L)
+            if (hints != null && android.os.Build.VERSION.SDK_INT >= 33)
+                putStringArrayListExtra("android.speech.extra.BIASING_STRINGS", hints)
         })
     }
 

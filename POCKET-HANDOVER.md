@@ -266,6 +266,17 @@ adaptive + themed). He found the first one (prompt + sound wave) too techy/conso
 (his design): the L in the middle, halftone dots along its left and bottom, biggest next to the letter and
 fading out (`pocket/tools/icon_dots.py` places them). Remember Android only shows the middle 72 of the 108 canvas. JNI/word test: 92 checks.
 
+Round 4 (Oct 31): **input from the phone never worked on Windows**: `ui_panel_key` sent WM_KEYDOWN to the main
+window, but panels take keys in `edit_proc` (the edit box). Fixed (send to `g_edit`). The Linux shim dispatches
+straight to the panels, so tests can't catch routing like that; keep it in mind. Voice: her **name alone** is the
+wake word now (`Words.addressed`: the name must open the utterance, after optional fillers/greetings, or follow a
+greeting); the name said alone (or last) arms an 8 s follow-up, also for a single Talk tap (`Voice.followUp`) -
+fixes the recognizer cutting "Loomy | show" in two. Recognizer: longer end-of-speech silence extras + Android 13
+biasing strings (`Words.HINTS`). Key words work with the name any time ("Loomy down"), bare in input/solo mode.
+**Solo mode** (`Store.solo`, setting + "Loomy solo mode"/"solo mode off"): no name needed. He asked about better
+recognition: the real step up would be an offline engine with a fixed command grammar (Vosk: ~40-50 MB model + its
+library, continuous, no beeps, much more reliable for a small vocabulary). Not done; offered to him. 112 word checks.
+
 The original list:
 1. App settings section: toggle the notification on/off.
 2. App setting "keep listening": after Talk, stay listening (run "show", keep listening) until he stops the mic

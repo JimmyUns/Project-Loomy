@@ -50,6 +50,10 @@ class Store(ctx: Context) {
     var talkCard: Boolean
         get() = prefs.getBoolean("talk_card", true)
         set(v) { prefs.edit().putBoolean("talk_card", v).apply() }
+    /** solo mode: no "Loomy" needed, everything heard while keep-listening is a command (for when he's alone) */
+    var solo: Boolean
+        get() = prefs.getBoolean("solo", false)
+        set(v) { prefs.edit().putBoolean("solo", v).apply() }
     /** the phone's up/down speed in the status bar */
     var netSpeed: Boolean
         get() = prefs.getBoolean("net_speed", false)

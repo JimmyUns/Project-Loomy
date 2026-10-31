@@ -7,13 +7,16 @@ import android.os.SystemClock
 
 // Listening, in one place, run by PocketService (so it keeps going while you use the phone, with the
 // microphone shown as in use). The app screen, the Talk card and the notification only show its state.
-//   once:  listen for one command, send it, done. "Loomy"/"ayo Loomy" in front is optional.
-//   keep:  listen again after every result until stopped, and only act on "yo/ayo/hey Loomy ...".
-//          Everything else it hears is dropped on the spot: never shown, never sent.
-//          "ayo Loomy" alone = she waits 8 s for the command. "ayo Loomy stop listening" ends it.
-//   input mode ("ayo Loomy input mode", keeps listening): key words alone work too ("next tab", "back",
-//          "ok", "down three"), sent as "input ..."; anything else that isn't greeted is still ignored.
-//          Ends with "input mode off" / "disable input mode" (greeting optional) or stopping.
+//   once:  listen for one command, send it, done. Her name in front is optional.
+//   keep:  listen again after every result until stopped, and only act on what's said TO Loomy: her name
+//          opening the sentence ("Loomy show screen", "okay Lumi system info", "ayo Loomy ..."). Everything
+//          else it hears is dropped on the spot: never shown, never sent.
+//   the name on its own ("Loomy" ... pause ... "show"): the recognizer often cuts there, so she takes the
+//          next thing said (within 8 s) as the command. Works for a single Talk tap too.
+//   input mode ("Loomy input mode"): bare key words work ("next tab", "back", "ok", "down three").
+//   solo mode (setting, or "Loomy solo mode"): no name needed at all, everything heard is a command.
+//   Both end with "... mode off" / "disable ... mode" (name optional), or by stopping.
+//   Key words with the name work any time: "Loomy down", "Loomy ok".
 object Voice {
     enum class State { OFF, LISTENING }
 
@@ -36,6 +39,7 @@ object Voice {
     private var ear: Ear? = null
     private lateinit var ctx: Context
     private var armedUntil = 0L
+    private var followUp = false
     private var errors = 0
 
     fun last(): Entry? = history.lastOrNull()
@@ -52,6 +56,7 @@ object Voice {
     /** main thread */
     fun stop() {
         keep = false
+        followUp = false
         armed = false
         inputMode = false
         main.removeCallbacksAndMessages(null)
@@ -64,7 +69,7 @@ object Voice {
     private fun changed() { Pocket.changed(); onChange() }
 
     private fun listenNow() {
-        val e = ear ?: Ear(ctx,
+        val e = ear ?: Ear(ctx, Words.HINTS,
             partial = { partial = it; Pocket.changed() },
             level = { level = it; Pocket.changed() },
             heard = { heard(it) },
@@ -75,8 +80,14 @@ object Voice {
         e.start()
     }
 
-    // after a result: keep mode listens again, once mode is done
+    // after a result: keep mode listens again, once mode is done (unless her name came alone: then once more)
     private fun next(delayMs: Long) {
+        if (!keep && followUp) {
+            followUp = false
+            partial = "Yes?"
+            main.postDelayed({ if (state == State.LISTENING) ear?.start() }, delayMs)
+            return
+        }
         if (!keep) { state = State.OFF; partial = ""; level = 0f; ear?.destroy(); ear = null; changed(); return }
         partial = ""
         main.postDelayed({ if (keep && state == State.LISTENING) ear?.start() }, delayMs)
@@ -84,41 +95,45 @@ object Voice {
 
     private fun heard(all: List<String>) {
         errors = 0
-        // input mode: turning it off works with or without the greeting; bare key words are keys
-        if (inputMode) {
-            if (all.any { Words.isInputModeOff(Words.command(it)) }) { switchInputMode(false); next(100); return }
-            if (all.none { Words.addressed(it) != null }) {
-                val k = all.firstNotNullOfOrNull { Words.key(it) }
-                if (k != null) send(k)                               // not a key: ignored, like anything not for Loomy
-                next(100)
-                return
-            }
-        }
-        var cmdText: String? = null
-        if (keep) {
-            val now = SystemClock.elapsedRealtime()
-            var said = all.firstNotNullOfOrNull { Words.addressed(it) }
-            if (said == null && armed && now < armedUntil) said = all.firstOrNull() ?: ""
-            if (said == null) { next(100); return }                  // not for Loomy: dropped, never sent
-            if (said.isBlank()) {                                    // just "ayo Loomy": wait for the command
-                armed = true
-                armedUntil = now + 8000
-                partial = "Yes?"
-                changed()
-                next(100)
-                return
-            }
-            armed = false
-            cmdText = said
-        } else cmdText = all.firstOrNull() ?: ""
+        val now = SystemClock.elapsedRealtime()
+        val first = all.firstOrNull() ?: ""
+        val solo = Store(ctx).solo
 
-        val cmd = Words.command(cmdText ?: "")
+        // the modes, by voice (name optional: you might be mid-flow)
+        val plain = all.map { Words.command(it) }
+        if (plain.any { Words.isInputModeOff(it) }) { switchInputMode(false); next(100); return }
+        if (plain.any { Words.isSoloOff(it) }) { switchSolo(false); next(100); return }
+        if (plain.any { Words.isInputModeOn(it) }) { keep = true; switchInputMode(true); next(100); return }
+        if (plain.any { Words.isSoloOn(it) }) { keep = true; switchSolo(true); next(100); return }
+
+        // was it said to Loomy? her name, a follow-up after her name alone, solo mode, or a Talk tap (once)
+        var said: String? = all.firstNotNullOfOrNull { Words.addressed(it) }
+        val following = armed && now < armedUntil
+        if (said == null && (following || solo || !keep)) said = first
+        if (said == null) {
+            // not for Loomy... unless it's a bare key word in input mode
+            if (inputMode) all.firstNotNullOfOrNull { Words.key(it) }?.let { armed = false; send(it) }
+            else if (all.any { Words.endsWithName(it) }) arm()           // "... okay Loomy" (cut off there)
+            next(100)
+            return
+        }
+        if (said.isBlank()) {                                       // just her name: the command is coming
+            arm()
+            if (!keep) followUp = true
+            next(100)
+            return
+        }
+        armed = false
+
+        // a key word ("down", "ok", "next tab") goes to the PC's open screen
+        val key = all.firstNotNullOfOrNull { h -> (Words.addressed(h) ?: if (following || solo || inputMode || !keep) h else null)?.let { Words.key(it) } }
+        if (key != null) { send(key); next(150); return }
+
+        val cmd = Words.command(said)
         if (keep && Words.isStop(cmd)) { add("stop listening", "Stopped listening.", false); stop(); return }
-        if (Words.isInputModeOn(cmd)) { keep = true; switchInputMode(true); next(100); return }
-        if (Words.isInputModeOff(cmd)) { switchInputMode(false); next(100); return }
         if (cmd.isEmpty()) {
-            add((cmdText ?: "").ifEmpty { "(nothing)" }, "Didn't catch a command.", true)
-            Pocket.reportMiss(ctx, cmdText ?: "")                         // the PC shows misses too
+            add(said.ifEmpty { "(nothing)" }, "Didn't catch a command.", true)
+            Pocket.reportMiss(ctx, said)                            // the PC shows misses too
             next(150)
             return
         }
@@ -126,8 +141,24 @@ object Voice {
         next(150)
     }
 
+    private fun arm() {
+        armed = true
+        armedUntil = SystemClock.elapsedRealtime() + 8000
+        partial = "Yes?"
+        Pocket.changed()
+    }
+
+    private fun switchSolo(on: Boolean) {
+        Store(ctx).solo = on
+        armed = false
+        add(if (on) "solo mode" else "solo mode off",
+            if (on) "Solo mode on: no need to say Loomy, everything you say is a command. \u201CSolo mode off\u201D to stop."
+            else "Solo mode off: start with \u201CLoomy\u201D again.", false)
+    }
+
     private fun missed(error: Int) {
         if (Ear.isMiss(error)) {
+            if (!keep && followUp) { followUp = false; armed = false; add("Loomy", "Heard her name, then nothing.", true); next(100); return }
             if (!keep) { add("(nothing)", Ear.message(error), true); Pocket.reportMiss(ctx, "") }
             else if (armed && SystemClock.elapsedRealtime() > armedUntil) { armed = false; partial = "" }
             next(100)
