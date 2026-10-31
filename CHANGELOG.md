@@ -11,7 +11,7 @@ All notable changes to Loomy, newest first.
 - **`display on`** wakes the screens again after `display off` (handy from the phone).
 - **One notification.** On/off and Talk live there, plus a "Loomy" quick-settings tile. While it's on, the phone checks in with the PC every 5 minutes (`/phone` shows last seen), and it turns itself off after 15 minutes without reaching the PC.
 - Settings in the app: notification on/off, keep listening, the Talk card, and a **net speed meter** (your phone's down/up speed in the status bar, works with Pocket Loomy off, paused while the screen is off, under 1 KB/s shows as 0).
-- A proper app icon: Loomy's `›_` prompt with its halftone dots and a little sound wave (also as a themed icon on Android 13+).
+- An app icon: a rounded L with Loomy's halftone dots (also as a themed icon on Android 13+).
 - **Every phone attempt shows in Loomy**, including commands it refused and things the phone didn't catch.
 - **Forget on the phone makes Loomy forget it too.**
 - Protocol v2: the phone and Loomy must both be 2.18+. An older one says to update instead of failing a check.

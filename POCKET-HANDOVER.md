@@ -262,7 +262,8 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
 Round 3 (Oct 31): net speed under 1 KB/s shows 0; "height" (his accent) = "hide" (`Words.one`); **input mode**
 ("ayo Loomy input mode", greeting optional for on/off): bare key words via `Words.key()` -> "input ..." until "input
 mode off" / "disable input mode" (`Voice.inputMode`; non-keys still ignored); new icon (`ic_launcher_bg/fg/mono.xml`,
-adaptive + themed: Loomy's prompt, halftone rows, sound wave). JNI/word test: 92 checks.
+adaptive + themed). He found the first one (prompt + sound wave) too techy/console; now a rounded L with a 4x4
+halftone dot field growing toward its corner, plum background glow. JNI/word test: 92 checks.
 
 The original list:
 1. App settings section: toggle the notification on/off.
