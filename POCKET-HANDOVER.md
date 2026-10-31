@@ -284,6 +284,17 @@ in `Voice.control`: `Words.isDisconnect` ("stop (the) connection", "disconnect".
 `Words.isStop` ("mute", "ok that's it", "stop listening"...) = stop listening. Both need her name (or solo / a Talk
 tap / following her name), except in input mode. 130 word checks.
 
+Round 6 (Oct 31, last for 2.18): the On switch's label was always "On" (and the dark theme's switch colours made
+off look on): label follows the state, all switches tinted (purple on / grey off). **Phrases.kt**: the library of
+ways to say things (COMMANDS, STARTS, KNOWN, KEYS, MUTE, SLEEP, DISCONNECT, mode on/off sets); `Words` does the
+cleanup and looks phrases up there; `Words.plain` is the cleaned phrase used for switches/controls. "open <word>"
+that isn't a command = `web <word>`. Solo mode is now a session: her name wakes it (`Voice.soloAwake`), SLEEP
+phrases ("ok thank you", "thanks", "stop listening") put it back to waiting for her name, mic stays on. MUTE
+(mic off) is multi-word only ("turn off the mic", "stop listening" outside solo). tests/jni/run.sh now fails
+loudly if kotlinc fails (it silently reused an old jar once). 161 checks.
+He asked whether he needs a small LLM for free talk: answered no for now (phrase library + rules; the bigger win
+would be a grammar-limited offline recognizer like Vosk).
+
 The original list:
 1. App settings section: toggle the notification on/off.
 2. App setting "keep listening": after Talk, stay listening (run "show", keep listening) until he stops the mic

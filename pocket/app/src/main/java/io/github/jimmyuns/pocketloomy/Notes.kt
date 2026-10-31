@@ -111,7 +111,8 @@ object Notes {
         val title = when {
             meter -> "\u2193 ${speedText(down)}   \u2191 ${speedText(up)}"
             listening && Voice.inputMode -> "Input mode: next, back, ok, up, down..."
-            listening && Voice.keep && s.solo -> "Solo mode: just say a command"
+            listening && Voice.keep && s.solo && Voice.soloAwake -> "Solo mode: listening"
+            listening && Voice.keep && s.solo -> "Solo mode: say \u201CLoomy\u201D to start"
             listening && Voice.keep -> "Listening for \u201CLoomy\u201D"
             listening -> "Listening..."
             s.on -> "Pocket Loomy is on"
@@ -122,7 +123,7 @@ object Notes {
             listening && Voice.partial.isNotEmpty() -> Voice.partial
             recent && last != null -> "\u203A ${last.cmd}: ${last.answer.lineSequence().first()}"
             meter && listening && Voice.inputMode -> "Input mode: next, back, ok, up, down..."
-            meter && listening && Voice.keep && s.solo -> "Solo mode: just say a command"
+            meter && listening && Voice.keep && s.solo -> if (Voice.soloAwake) "Solo mode: listening" else "Solo mode: say \u201CLoomy\u201D"
             meter && listening && Voice.keep -> "Listening for \u201CLoomy\u201D"
             meter && !s.on -> null
             s.on -> Pocket.status(ctx)

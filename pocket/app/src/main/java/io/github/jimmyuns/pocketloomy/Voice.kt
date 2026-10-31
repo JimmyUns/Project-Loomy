@@ -14,9 +14,12 @@ import android.os.SystemClock
 //   the name on its own ("Loomy" ... pause ... "show"): the recognizer often cuts there, so she takes the
 //          next thing said (within 8 s) as the command. Works for a single Talk tap too.
 //   input mode ("Loomy input mode"): bare key words work ("next tab", "back", "ok", "down three").
-//   solo mode (setting, or "Loomy solo mode"): no name needed at all, everything heard is a command.
+//   solo mode (setting, or "Loomy solo mode"): say "Loomy" once and it's awake: everything said is a command,
+//          no name needed, until "ok thank you" / "thanks" / "stop listening" (then her name wakes it again).
 //   Both end with "... mode off" / "disable ... mode" (name optional), or by stopping.
 //   Key words with the name work any time: "Loomy down", "Loomy ok".
+//   "turn off the mic" / "stop listening" (outside solo) = mic off until Talk; "stop the connection" = Loomy off.
+//   What means what is in Phrases.kt.
 object Voice {
     enum class State { OFF, LISTENING }
 
@@ -28,7 +31,8 @@ object Voice {
     @Volatile var partial = ""
     @Volatile var level = 0f
     @Volatile var armed = false            // heard just "ayo Loomy": the next thing said is the command
-    @Volatile var inputMode = false        // "ayo Loomy input mode": bare key words (next, back, ok...) work
+    @Volatile var inputMode = false        // "Loomy input mode": bare key words (next, back, ok...) work
+    @Volatile var soloAwake = false        // solo mode: woken by her name, asleep again after "ok thank you"
     @Volatile var lastAt = 0L              // when the last answer came (the notification shows it for a while)
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
@@ -56,6 +60,7 @@ object Voice {
     /** main thread */
     fun stop() {
         keep = false
+        soloAwake = false
         followUp = false
         armed = false
         inputMode = false
@@ -100,17 +105,19 @@ object Voice {
         val solo = Store(ctx).solo
 
         // the modes, by voice (name optional: you might be mid-flow)
-        val plain = all.map { Words.command(it) }
+        val plain = all.map { Words.plain(it) }
         if (plain.any { Words.isInputModeOff(it) }) { switchInputMode(false); next(100); return }
         if (plain.any { Words.isSoloOff(it) }) { switchSolo(false); next(100); return }
         if (plain.any { Words.isInputModeOn(it) }) { keep = true; switchInputMode(true); next(100); return }
-        if (plain.any { Words.isSoloOn(it) }) { keep = true; switchSolo(true); next(100); return }
+        if (plain.any { Words.isSoloOn(it) }) { keep = true; switchSolo(true); soloAwake = true; changed(); next(100); return }
 
-        // was it said to Loomy? her name, a follow-up after her name alone, solo mode, or a Talk tap (once)
-        // (mute / stop connection need that too, except in input mode, so "that's it" from a friend can't mute you)
+        // was it said to Loomy? her name; or, without it: a follow-up after her name alone, solo mode once
+        // she's been woken, or a Talk tap (once). Mute / stop connection need that too, except in input
+        // mode, so "that's it" from a friend can't mute you.
         var said: String? = all.firstNotNullOfOrNull { Words.addressed(it) }
+        if (said != null && solo && !soloAwake) { soloAwake = true; changed() }     // solo: her name wakes it
         val following = armed && now < armedUntil
-        if (said == null && (following || solo || !keep)) said = first
+        if (said == null && (following || (solo && soloAwake) || !keep)) said = first
         if (said == null) {
             // not for Loomy... unless it's bare keys (or mute / stop connection) in input mode
             if (inputMode && all.any { control(it) }) return
@@ -120,12 +127,20 @@ object Voice {
             return
         }
         if (said.isBlank()) {                                       // just her name: the command is coming
+            if (solo && keep) { add("Loomy", "I'm listening. No need to say Loomy until \u201Cok thank you\u201D.", false); next(100); return }
             arm()
             if (!keep) followUp = true
             next(100)
             return
         }
         armed = false
+        // solo mode: "ok thank you" / "stop listening" -> back to waiting for her name (mic stays on)
+        if (solo && keep && Words.isSleep(Words.plain(said))) {
+            soloAwake = false
+            add("thank you", "Okay. Say \u201CLoomy\u201D when you need me.", false)
+            next(100)
+            return
+        }
         if (control(said)) return
 
         // a key word ("down", "ok", "next tab") goes to the PC's open screen
@@ -143,17 +158,17 @@ object Voice {
         next(150)
     }
 
-    // phone-side controls: "mute" / "ok that's it" stop listening (Talk starts it again);
+    // phone-side controls: "turn off the mic" / "stop listening" stop listening (Talk starts it again);
     // "stop connection" turns Pocket Loomy off (the app, the tile or the notification turn it back on)
     private fun control(text: String): Boolean {
-        val c = Words.command(text)
+        val c = Words.plain(text)
         if (Words.isDisconnect(c)) {
             add("stop connection", "Connection off. Turn Pocket Loomy on again from the app, the Loomy tile or the notification.", false)
             Pocket.turnOff(ctx)
             return true
         }
-        if (Words.isStop(c)) {
-            add("mute", "Muted. Tap Talk to listen again.", false)
+        if (Words.isMute(c)) {
+            add("mic off", "Mic off. Tap Talk to listen again.", false)
             stop()
             return true
         }
@@ -169,9 +184,10 @@ object Voice {
 
     private fun switchSolo(on: Boolean) {
         Store(ctx).solo = on
+        soloAwake = on
         armed = false
         add(if (on) "solo mode" else "solo mode off",
-            if (on) "Solo mode on: no need to say Loomy, everything you say is a command. \u201CSolo mode off\u201D to stop."
+            if (on) "Solo mode on: I'm listening, no need to say Loomy. \u201COk thank you\u201D and I'll wait for my name again. \u201CSolo mode off\u201D ends it."
             else "Solo mode off: start with \u201CLoomy\u201D again.", false)
     }
 

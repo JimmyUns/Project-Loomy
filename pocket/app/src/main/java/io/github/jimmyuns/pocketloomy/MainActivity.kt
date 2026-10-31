@@ -144,6 +144,13 @@ class MainActivity : Activity() {
 
     private fun gap(h: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(h)) }
 
+    // switches: purple when on, grey when off (the dark theme's own colours made "off" look on)
+    private fun tint(sw: Switch) {
+        val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        sw.thumbTintList = android.content.res.ColorStateList(states, intArrayOf(accent, Color.rgb(0x9A, 0x8C, 0xA8)))
+        sw.trackTintList = android.content.res.ColorStateList(states, intArrayOf(accentDim, Color.rgb(0x3A, 0x30, 0x44)))
+    }
+
     private fun buildUi(): View {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg) }
         root.setOnApplyWindowInsetsListener { v, insets ->   // Android 15 draws under the bars: keep clear (and of the keyboard)
@@ -187,6 +194,7 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             setOnCheckedChangeListener { _, checked -> if (!settingSwitch) toggleOn(checked) }
         }
+        tint(onSwitch)
         onLine = text("", dim, 12f)
         talkBg = rounded(accent, radius = 20)
         talk = Button(this).apply {
@@ -250,12 +258,13 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             setPadding(0, dp(8), 0, 0)
             setOnCheckedChangeListener { _, on -> if (!settingSwitch) onFlip(on) }
+            tint(this)
         } to text(about, dim, 12f)
         val (n1, n1a) = setting("Notification", "Pocket Loomy in your notifications. Off: none while it's off, and a tucked-away one while it runs.") {
             store.showNotif = it; Pocket.sync(this) }
         val (n2, n2a) = setting("Keep listening", "After Talk, keep listening until you stop it. Only acts on what starts with \u201CLoomy ...\u201D and ignores everything else.") {
             store.keepListening = it; render() }
-        val (n5, n5a) = setting("Solo mode", "For when you're alone: no need to say Loomy, everything you say is a command. Also by voice: \u201CLoomy solo mode\u201D / \u201Csolo mode off\u201D.") {
+        val (n5, n5a) = setting("Solo mode", "For when you're alone: say \u201CLoomy\u201D once, then just talk, every sentence is a command. \u201COk thank you\u201D and she waits for her name again. By voice: \u201CLoomy solo mode\u201D / \u201Csolo mode off\u201D.") {
             store.solo = it; render() }
         val (n3, n3a) = setting("Talk card", "The small card when you Talk from the notification. Off: it just listens, answers show in the notification.") {
             store.talkCard = it }
@@ -291,6 +300,7 @@ class MainActivity : Activity() {
         footer.visibility = if (t != null) View.VISIBLE else View.GONE
 
         settingSwitch = true
+        onSwitch.text = if (store.on) "On  " else "Off  "
         swNotif.isChecked = store.showNotif
         swKeep.isChecked = store.keepListening
         swCard.isChecked = store.talkCard
@@ -306,7 +316,8 @@ class MainActivity : Activity() {
             phase == Phase.FORGETTING -> "forgetting" to accent
             Voice.sending -> "talking to Loomy" to accent
             listening && Voice.inputMode -> "input mode" to accent
-            listening && store.solo && Voice.keep -> "solo mode" to accent
+            listening && store.solo && Voice.keep && Voice.soloAwake -> "solo: listening" to accent
+            listening && store.solo && Voice.keep -> "solo: say Loomy" to accent
             listening && Voice.keep -> "listening for Loomy" to accent
             listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
@@ -352,7 +363,8 @@ class MainActivity : Activity() {
         live.text = when {
             listening && Voice.partial.isNotEmpty() -> Voice.partial
             listening && Voice.inputMode -> "input mode: say next, back, ok, up, down... (\u201Cinput mode off\u201D to stop)"
-            listening && store.solo && Voice.keep -> "solo mode: just say a command (\u201Csolo mode off\u201D to stop)"
+            listening && store.solo && Voice.keep && Voice.soloAwake -> "solo mode: just talk (\u201Cok thank you\u201D when you're done)"
+            listening && store.solo && Voice.keep -> "solo mode: say \u201CLoomy\u201D to start"
             listening && Voice.keep -> "say \u201CLoomy\u201D and a command"
             listening -> "say a command"
             last != null -> "\u203A ${last.cmd}"
