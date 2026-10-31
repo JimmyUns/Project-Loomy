@@ -2,6 +2,23 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.18
+- **Pocket Loomy for Android** (first release of the app). Pair by saying the code, then tap Talk or type to run Loomy commands from your phone. The screen follows what's happening: setup steps until paired, then the live transcript, what was sent, and Loomy's answer.
+- **Talk like a person.** "Loomy, can you turn off the screen please" works ("yo/ayo Loomy" too). So do "show screen", "open system info and go to the next tab", "slash packages" and "recycle bin". Join commands with "and".
+- **Keep listening** (setting): after Talk it keeps listening until you stop it, and only acts on what starts with "Loomy ...". Anything else it hears is dropped on the phone, never sent. If the phone cuts you off right after "Loomy", the next thing you say is taken as the command.
+- **Solo mode** (setting, or "Loomy solo mode"): for when you're alone. Say "Loomy" once, then just talk: every sentence is a command until "ok thank you" / "stop listening", then she waits for her name again. "Solo mode off" ends it.
+- **A phrase library** (`pocket/.../Phrases.kt`): lots of everyday ways to say things, like "go back one tab", "next page", "mirror the screens", "how's my PC doing", "open gmail" (a saved site), "go away" / "come back" (hide / show).
+- **From the phone you can run any normal command now**, including `help` (it gets a short list back). Use `input back` / `input next tab` / `input down 2` / `input enter` for Loomy's open screen. A new command closes the open screen first, and screens like `si`, `display` and `web` tell the phone what you can pick. Slash commands still only run on the PC.
+- **Input mode:** say "Loomy input mode", then plain "next", "next tab", "back", "ok", "cancel", "down three" work on their own until "input mode off", several in one go too ("up up right confirm"). Anything else said meanwhile is still ignored. ("Loomy down" works any time.)
+- "Loomy off" / "Loomy on" hide and show Loomy. "Loomy, stop the connection" turns Pocket Loomy off. "Ok turn off the mic" / "turn the mic off" / "Loomy stop listening" turns the mic off until you tap Talk again.
+- **`display on`** wakes the screens again after `display off` (handy from the phone).
+- **One notification.** On/off and Talk live there, plus a "Loomy" quick-settings tile. While it's on, the phone checks in with the PC every 5 minutes (`/phone` shows last seen), and it turns itself off after 15 minutes without reaching the PC.
+- Settings in the app: notification on/off, keep listening, the Talk card, and a **net speed meter** (your phone's down/up speed in the status bar, works with Pocket Loomy off, paused while the screen is off, under 1 KB/s shows as 0).
+- An app icon: a rounded L with Loomy's halftone dots (also as a themed icon on Android 13+).
+- **Every phone attempt shows in Loomy**, including commands it refused and things the phone didn't catch.
+- **Forget on the phone makes Loomy forget it too.**
+- Protocol v2: the phone and Loomy must both be 2.18+. An older one says to update instead of failing a check.
+
 ## v2.17
 - **Pocket Loomy, PC side**: an Android phone can send Loomy commands over Bluetooth. Opt-in: `/pkg add phone` (off by default, nothing listens until then).
 - `/phone` shows an 8-digit pairing code. Say it on the phone and it's trusted for 7 days. A code lives 2 minutes and is used up by its first try; N makes a new one. `/phone forget` (or F twice) drops the phone.

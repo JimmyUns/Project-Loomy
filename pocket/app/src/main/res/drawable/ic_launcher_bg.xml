@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- deep plum with a soft glow behind the letter, like Loomy's window -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0 h108 v108 h-108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="54" android:centerY="50" android:gradientRadius="62">
+                <item android:offset="0" android:color="#FF341650" />
+                <item android:offset="0.6" android:color="#FF1B0B29" />
+                <item android:offset="1" android:color="#FF110717" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

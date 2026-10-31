@@ -19,7 +19,6 @@ typedef struct {
     int            maxargs; // most words allowed after it; ARGS_TEXT / ARGS_SELF below
     CmdFn fn;
     int            feature; // FEAT_CORE (left out = core) or the /pkg feature it belongs to
-    int            phone;   // 1 = Pocket Loomy may run it from the phone (.phone = 1). Never a / command.
 } Command;
 
 #define ARGS_TEXT -1   // free text, any number of words (lp folder names can have spaces)
@@ -143,11 +142,11 @@ static const Command COMMANDS[] = {
 //    name            about                                   type        alias               sys modes usage                              maxargs    fn
     { L"Help",         L"show this list",                     L"help",     0,                  0, ALL, 0,                                  0,         c_help },
     { L"Loomy's Path", L"browse your folders",                L"lp",       0,                  0, ALL, L"[folder name]",                   ARGS_TEXT, c_lp, FEAT_LP },
-    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web, FEAT_WEB, .phone = 1 },
+    { L"Websites",     L"open a saved website",               L"web",      0,                  0, ALL, L"[alias | many]",                  1,         c_web, FEAT_WEB },
     { L"Network",      L"see what's using the internet",      L"net",      0,                  0, ALL, 0,                                  0,         c_net, FEAT_NET },
-    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb, FEAT_RB, .phone = 1 },
-    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off]", 1,         c_display, FEAT_DISPLAY, .phone = 1 },
-    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo, FEAT_SYSINFO, .phone = 1 },
+    { L"Recycle Bin",  L"open the recycle bin",               L"rb",       0,                  0, ALL, 0,                                  0,         c_rb, FEAT_RB },
+    { L"Display",      L"switch screen layout (like Win+P)", L"display", L"dp",            0, ALL, L"[extend|second|pc|duplicate|off|on]", 1,      c_display, FEAT_DISPLAY },
+    { L"System Info",  L"live CPU, GPU, memory and apps",     L"sysinfo",  L"si",              0, ALL, L"[general|cpu|gpu [n]]",           ARGS_SELF, c_sysinfo, FEAT_SYSINFO },
     { L"GitHub",       L"open Loomy's GitHub page",           L"github",   L"gh",              0, CORE, 0,                                 0,         c_github, FEAT_GITHUB },
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
@@ -215,6 +214,19 @@ static void c_help(wchar_t *args) {
 
 // ---------------------------------------------------------------- running a line
 
+// help for the phone: just the command words you can say right now (mode + /pkg), short
+void cmd_phone_help(wchar_t *b, int cap) {
+    s_cpy(b, L"You can say: open, hide, input <key>", cap);
+    for (int i = 0; i < NCOMMANDS; i++) {
+        const Command *c = &COMMANDS[i];
+        if (c->sys || !in_mode(c)) continue;
+        s_cat(b, L", ", cap);
+        s_cat(b, c->type, cap);
+        if (c->alias) { s_cat(b, L"/", cap); s_cat(b, c->alias, cap); }
+    }
+    s_cat(b, L". Join them with \u201Cand\u201D.", cap);
+}
+
 void cmd_greet(void) {
     SYSTEMTIME t; GetLocalTime(&t);
     const wchar_t *g = t.wHour < 5 ? L"Up late" : t.wHour < 12 ? L"Good morning" :
@@ -239,14 +251,14 @@ static const Command *find_command(const wchar_t *word) {
     return 0;
 }
 
-// Pocket Loomy's allowlist: only plain commands marked .phone, and only if they exist right now
-// (mode + /pkg). Slash commands never run from the phone, so /shutdown, /update, /pkg, /config,
-// /phone, /reload and /webconfig are out by construction.
+// Pocket Loomy (2.18, his rule): every plain command may run from the phone, if it exists right now
+// (mode + /pkg). Slash commands never do, so /shutdown, /update, /pkg, /config, /phone, /reload and
+// /webconfig are out by construction. (A later build may open slash commands behind an extra check.)
 int cmd_phone_ok(const wchar_t *word) {
     if (word[0] == SYS_PREFIX) return find_command(word + 1) ? -1 : 0;
     const Command *c = find_command(word);
     if (!c) return 0;
-    return c->phone && !c->sys ? 1 : -1;
+    return c->sys ? -1 : 1;
 }
 
 void cmd_run(wchar_t *line) {

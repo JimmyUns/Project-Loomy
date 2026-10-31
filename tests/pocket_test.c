@@ -228,11 +228,26 @@ static void engines(void) {
     EXPECT(pk_send_ping(&ph) && deliver(&ph, &pc, &e2) == PK_EV_PING, "ping");
     EXPECT(deliver(&pc, &ph, &e2) == PK_EV_PONG, "pong");
     EXPECT(pk_send_reply(&pc, (const uint8_t *)"", 0) && deliver(&pc, &ph, &e2) == PK_EV_REPLY && ph.textlen == 0, "empty reply is fine");
+    EXPECT(pk_send_note(&ph, (const uint8_t *)"banana split", 12) && deliver(&ph, &pc, &e2) == PK_EV_NOTE && !strcmp((char *)pc.text, "banana split"), "note (a failed attempt) arrives");
+    EXPECT(pk_send_note(&ph, (const uint8_t *)"", 0) && deliver(&ph, &pc, &e2) == PK_EV_NOTE && pc.textlen == 0, "empty note is fine");
+    EXPECT(!pk_send_note(&pc, (const uint8_t *)"x", 1), "PC can't send notes");
     uint8_t big[PK_TEXTMAX + 1]; memset(big, 'a', sizeof big);
     EXPECT(!pk_send_cmd(&ph, big, PK_TEXTMAX + 1) && pk_send_cmd(&ph, big, PK_TEXTMAX), "text cap");
     EXPECT(deliver(&ph, &pc, &e2) == PK_EV_CMD && pc.textlen == PK_TEXTMAX, "max-size command arrives");
     EXPECT(!pk_send_cmd(&pc, (const uint8_t *)"x", 1) && !pk_send_reply(&ph, (const uint8_t *)"x", 1), "roles can't send each other's messages");
 
+    {   // forget: ends the connection on both sides; anything after it is refused
+        PkConn a, b; connect(&good, &good, &a, &b);
+        EXPECT(pk_send_forget(&b) && pk_done(&b) && !pk_send_cmd(&b, (const uint8_t *)"rb", 2), "phone: forget ends its side");
+        EXPECT(deliver(&b, &a, &e2) == PK_EV_FORGET && pk_done(&a), "PC hears it");
+        uint8_t junk[3] = { 0, 1, 0x22 }; int used;
+        EXPECT(pk_feed(&a, junk, 3, &used) == PK_EV_FAIL && a.fail == PK_F_AFTERDONE, "nothing after forget");
+    }
+    {   // a v1 phone meets a v2 PC: the phone stops before sending anything
+        PkConn a, b; pk_init_pc(&a, CODE, 0, 0, 0, 0, 0, 0); pk_init_phone(&b, CODE, 0, 0, 0, 0, 0, 0);
+        a.out[3] = 1; int used;
+        EXPECT(pk_feed(&b, a.out, a.outlen, &used) == PK_EV_FAIL && b.fail == PK_F_VERSION && b.outlen == 0, "old version refused cleanly");
+    }
     {   // replay: the same sealed frame twice
         pk_send_cmd(&ph, (const uint8_t *)"rb", 2);
         uint8_t copy[600]; int n = ph.outlen; memcpy(copy, ph.out, n);
@@ -310,7 +325,7 @@ static void hostile(void) {
         m[1] = 49 + PK_NAMEMAX + 1;
         pk_init_pc(&pc, CODE, 0, 0, 0, 0, 0, 0); e = pk_feed(&pc, m, 2 + m[1], &used);
         EXPECT(e == PK_EV_FAIL && pc.fail == PK_F_FRAMESIZE, "PAIR_A with an overlong name");
-        uint8_t h[2 + 19] = { 0, 19, 0x01, 2 };
+        uint8_t h[2 + 19] = { 0, 19, 0x01, 9 };
         PkConn ph; pk_init_phone(&ph, CODE, 0, 0, 0, 0, 0, 0); e = pk_feed(&ph, h, 21, &used);
         EXPECT(e == PK_EV_FAIL && ph.fail == PK_F_VERSION, "phone refuses another version");
         uint8_t w[3] = { 0, 1, 0x07 };

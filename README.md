@@ -1,4 +1,4 @@
-# Loomy 2.17
+# Loomy 2.18
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -24,7 +24,7 @@ Every time Loomy hides, it comes back with a clean screen.
 
 **Pick your features per PC with `/pkg`.** Like extensions, but nothing gets downloaded: every feature ships inside Loomy, and `/pkg` turns them on or off on this PC. Type `/pkg` for a list (Enter, Space or a click toggles), or `/pkg remove sysinfo` / `/pkg add sysinfo`. An off feature's commands disappear (not in `help`, no Tab) and its code never runs. Optional features: `web` (with `/webconfig`), `lp`, `net`, `rb`, `display`, `sysinfo`, `github`, and `phone` (off until you add it). Everything else is Loomy's core and always on. Your choice is saved in `loomy.cfg` on that PC only.
 
-**Pocket Loomy: commands from your phone (PC side).** `/pkg add phone`, then `/phone` shows an 8-digit code; say it on the Pocket Loomy Android app (coming separately) and the phone is trusted for 7 days. After that it sends commands over Bluetooth and Loomy runs them like you typed them: `open`, `hide`, `web`, `rb`, `display` and `sysinfo` only, never a `/` command. Pairing uses CPace (a password-authenticated key exchange), so a recorded pairing can't be brute-forced, and a code is used up by its first try. Every connection after that is encrypted and authenticated. Any failed check shuts the listener down until you turn it back on in `/phone`, and Loomy tells you which device tried. With the feature off, nothing listens. Crypto: [Monocypher](https://monocypher.org) 4.0.2, vendored in `src/` (BSD-2 / CC0).
+**Pocket Loomy: commands from your phone (PC side).** `/pkg add phone`, then `/phone` shows an 8-digit code; say it in the Pocket Loomy Android app (`pocket/`, the APK comes with each release) and the phone is trusted for 7 days. After that you talk to it ("ayo Loomy, turn off the screen", "system info and next tab") and Loomy runs any normal command like you typed it, never a `/` command; `input back` / `input next tab` / `input enter` work its open screens. Pairing uses CPace (a password-authenticated key exchange), so a recorded pairing can't be brute-forced, and a code is used up by its first try. Every connection after that is encrypted and authenticated. Every attempt from the phone shows in Loomy, including ones it didn't understand. Any failed check shuts the listener down until you turn it back on in `/phone`, and Loomy tells you which device tried. With the feature off, nothing listens. Crypto: [Monocypher](https://monocypher.org) 4.0.2, vendored in `src/` (BSD-2 / CC0).
 
 Keys: **Tab** completes (commands, folder names after `lp`, site aliases, modes), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
 

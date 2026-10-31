@@ -1,4 +1,4 @@
-# Pocket Loomy — Handover (PC side built in v2.17; Android app not started)
+# Pocket Loomy — Handover (PC side released in v2.17; Android app next, v2.18)
 
 Brief for a fresh chat. **Pocket Loomy** = an Android app that hears Jimmy's voice commands and sends them to Loomy on
 his PC over **Bluetooth**; Loomy runs them. Read Loomy's `HANDOVER.md` first (who Jimmy is, how he works, workflow,
@@ -84,8 +84,8 @@ always-on mic and +20–50 MB RAM in Loomy, plus Windows' speech engine is depre
   the Android app. He's the tester.
 
 ## 7. Status and order
-**PC side is built (v2.17, branch `claude/v2.17`), steps 1 and 2 below.** Never run on Windows yet: see §10 for what
-to check. Next is step 3, the Android app.
+**PC side is released (v2.17), steps 1 and 2 below.** He checked it on Windows without a phone (§10 list, all fine);
+the real Bluetooth connection is still untested. **Step 3 (Android app) is in progress on `claude/v2.18`, §11.**
 1. PC: feature `phone` (opt-in), Monocypher vendored, CPace + handshake + framing with tests, `/phone` panel, lockout.
 2. PC: Bluetooth listener (`WSAAsyncSelect`), allowlist, replies. Release.
 3. Android: Bluetooth connect + pairing by voice, send a command, show the reply. Then the notification/tile/
@@ -96,7 +96,7 @@ to check. Next is step 3, the Android app.
 - Wake phrase details ("Loomy run …" vs just "Loomy …"), and whether tap-to-talk comes first.
 - APK signing/distribution (debug sideload vs release key in GitHub secrets).
 
-## 9. Wire protocol (v1, as built)
+## 9. Wire protocol (v2 since Loomy 2.18; v1 was 2.17)
 The Android app must match this byte for byte. The easiest way is to compile the same `src/pocket.c` +
 `src/monocypher.c` + `src/monocypher-ed25519.c` through the NDK and drive it from Kotlin via JNI (the engine has
 no OS calls and no allocation; the app only supplies `pk_random()`, e.g. from `getrandom()`). `pocket.h` explains
@@ -117,7 +117,7 @@ how to drive it. Constants below are in `pocket.c`.
   direction per connection and never sent (so replays, drops and reordering fail the tag).
 
 ### 9.3 HELLO (PC -> phone, plain), always first
-`01 | version (01) | flags | nb[16]`. Flags: bit0 = a pairing code is open, bit1 = a phone is trusted; other bits
+`01 | version (02) | flags | nb[16]`. A phone refuses any other version (F_VERSION, before sending anything). Flags: bit0 = a pairing code is open, bit1 = a phone is trusted; other bits
 must be 0 (phone refuses otherwise). Version + flags are bound into the keys below.
 
 ### 9.4 Pairing (CPace, draft-irtf-cfrg-cpace, CPACE-X25519-SHA512, phone = initiator A, PC = responder B)
@@ -151,12 +151,17 @@ must be 0 (phone refuses otherwise). Version + flags are bound into the keys bel
 ### 9.6 After the handshake (sealed)
 - `20 | text` command (phone -> PC, UTF-8, 1..400 bytes, no NULs); `21 | text` reply (PC -> phone, 0..400 bytes).
 - `22` ping (phone -> PC), `23` pong. The PC hangs up after 90 s of silence, so ping (or just reconnect).
+- v2: `24 | text` note (phone -> PC, 0..400 bytes): something the phone heard but couldn't turn into a command
+  (empty = heard nothing). The PC prints it ("didn't catch a command (heard ...)") and logs it. No reply.
+- v2: `25` forget (phone -> PC): the phone dropped the pairing. The PC forgets the phone at once (deletes
+  `phone.dat`, stops listening). Nothing may follow it (both engines go to DONE).
 
 ### 9.7 What the PC does with a command (phone.c)
 `open`/`show` and `hide` (alone) show/hide Loomy. Otherwise the first word must be a plain command marked
 `.phone = 1` in `commands.c` that exists right now (mode + `/pkg`): `web`, `rb`, `display`/`dp`, `sysinfo`/`si`.
 It runs through `cmd_run` (strict args apply), prints "From your phone:" in Loomy, and everything it prints goes
-back as the reply ("Done." if nothing). Slash commands get "Slash commands only work on the PC.", others
+back as the reply ("Done." if nothing). Refused and unknown commands are printed in Loomy too (2.18), with the
+reason, and logged in `/phone` Recent. Slash commands get "Slash commands only work on the PC.", others
 "'x' only works on the PC." / "I don't know 'x'." Control characters and bad UTF-8 are refused politely.
 
 ### 9.8 PC policy (phone.c)
@@ -189,3 +194,125 @@ back as the reply ("Done." if nothing). Slash commands get "Slash commands only 
   that Loomy shows up as a service from the phone (any Bluetooth serial app listing SDP services); that
   `SO_BTH_AUTHENTICATE` doesn't block the Android connection (if it does, try without it); that `/reload` and quitting
   remove the SDP record; idle CPU stays 0 while listening.
+
+## 11. Android app (`pocket/`, v2.18, first cut)
+- Plain Kotlin, framework APIs only (no AndroidX, no libraries), minSdk 26, targetSdk/compileSdk 35, AGP 8.7.3,
+  Kotlin 2.0.21, Gradle 8.14.3, JDK 17. Package `io.github.jimmyuns.pocketloomy`. **No INTERNET permission**;
+  backups and device transfer exclude everything (`res/xml/no_backup.xml`).
+- `cpp/pocket_jni.c` + `CMakeLists.txt` compile `src/pocket.c` + Monocypher (arm64 + armv7 only).
+  `pk_random` = bionic `arc4random_buf`. `Native.kt` mirrors the JNI; event/failure numbers must match `pocket.h`.
+- `Store.kt`: trust (phone sk/pk, PC pk, paired time, PC name) sealed with AES-256-GCM under an Android Keystore key
+  (`pocket_trust`); PC address + label in plain prefs. Phone also shows the 7-day expiry.
+- `Link.kt`: one worker thread, blocking RFCOMM via `createRfcommSocketToServiceRecord(SERVICE)`, watchdog closes
+  the socket on timeouts (15 s connect/reply, 20 s pairing). Pairing: one connection, then hang up. Commands:
+  connect + handshake, keep it open 60 s for follow-ups, one retry on a stale kept connection.
+- `MainActivity.kt`: Choose PC (bonded devices), Pair (voice only: say 8 digits; `Words.code`), Talk (tap, speech,
+  `Words.command` strips "Loomy"/"run"), typed commands, a log. `SpeechRecognizer` with prefer-offline.
+- 2.18 additions (his feedback after the first real test, which worked):
+  - `Words.command`: "slash X" (also "slesh/slush/flash") -> "/X"; spoken names -> commands (packages -> pkg,
+    recycle bin -> rb, system info -> si, web config -> webconfig, d p -> dp, reset window -> resetwindow).
+    Slash commands are still refused by the PC (§9.7); **he was asked which ones to allow** (pending).
+  - Misses go to the PC as notes (`Pocket.reportMiss`): recognizer no-match/timeout, or text that made no command.
+  - Forget: `Link.forget` sends `25` first; if the PC can't be reached the app says to `/phone forget` there.
+  - `Pocket` (app-wide state + On/Off), `Notes` (channel "pocket", low importance; OFF notification id 2 with
+    "Turn on", re-posted when swiped via its delete intent; ON notification id 1 = the service's, with "Talk" and
+    "Turn off"), `Actions` (the buttons' receiver), `PocketService` (foreground, type connectedDevice, no mic:
+    pings every 5 min, first one at once; 3 misses in a row = turns itself off), `PocketTile` (on/off tile, opens
+    the app when it can't turn on), `TalkActivity` (translucent card: listens at once, sends, shows the answer,
+    closes; tap card = again), `Ear` (SpeechRecognizer with partial results + mic level).
+  - `MainActivity` is drawn from state (`render()`): setup steps 1 (PC) / 2 (pair) until paired; then PC card with
+    the On switch, a Talk button that glows with the mic level while listening, the live transcript, the last
+    answer, typing, history; a status chip (not paired / listening / pairing / talking to Loomy / connecting /
+    connected / can't reach PC / on / off). Battery-optimization exemption asked once when first turned on.
+  - `Store.on` + `PocketService.running`; `Pocket.fixStaleOn` resets "on" if the process died without onDestroy.
+- Keep-listening with the "yo/ayo Loomy" greeting is built (§12). Not yet: auto-off after idle time.
+- **Signing:** dev builds (branches) use `pocket/dev.keystore` (committed on purpose, password `pocketdev`,
+  applicationId suffix `.dev`, so dev and release install side by side). Release builds (tags only) use his key
+  from GitHub secrets `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD` (alias `pocket`); without them the tag
+  build skips the APK with a warning instead of failing.
+- **Workflow** `.github/workflows/pocket.yml` (he adds it; the bot can't touch workflows): builds the dev APK on
+  pushes to `claude/**` touching `pocket/`, `src/pocket.*` or `src/monocypher*` (artifact "pocket-loomy-dev"), and
+  on `v*` tags builds the signed APK and uploads `pocket-loomy.apk` to that release. Actions are pinned by SHA.
+  The bot can see each run's step results through the API (`/actions/runs`, `/jobs`), but **not logs or
+  artifacts**: those redirect to `*.blob.core.windows.net`, which the sandbox can't reach. For error text, ask him
+  to paste it (or to allow that domain in the chat's network settings). First run (21:57, Oct 30): built fine in 2 min.
+- **Local checks** (sandbox can't build an APK): `tests/jni/run.sh` (JDK + kotlinc from the JetBrains GitHub
+  release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
+  (44 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
+  android-35): `kotlinc -cp android.jar *.kt`.
+
+## 12. His feedback after testing the first 2.18 build — DONE (Oct 31), all items below are built
+(Plus two he added: "screen on/off" in any wording -> `display off|on`, and talking like a human with a
+"yo/ayo Loomy" greeting in keep-listening mode.) How it's built:
+- PC: `cmd_phone_ok` = any plain command (the `.phone` flag is gone); `run_from_phone` splits on " and " only where a
+  command/input/open/hide follows ("lp salt and pepper" stays whole); `run_one` closes the open panel first
+  (`ui_close_panels`), runs it, appends `ui_panel_choices` (sysinfo/display/web list theirs; others a generic hint);
+  `phone_input` maps words to keys (`KEYS[]` in phone.c, trailing count "down 3"/"down three") and sends them through
+  `ui_panel_key` (a real WM_KEYDOWN into wnd_proc; Shift faked via `ui_shift()`, which sysinfo uses), only while a
+  panel is open. `help` from the phone replies with `cmd_phone_help` (a short list), the table still prints on the PC.
+  `display on` = `ui_screens_on` (1-pixel mouse nudge there and back). PK_TEXTMAX is 480 now.
+- App: `Words` (greeting detection `addressed()`, fillers, screen phrases, `press`/natural key phrases -> `input`,
+  "open X", slash, spoken names, "gpu one", per-"and"-part cleanup); `Voice` (the listening loop, in the service);
+  `PocketService` owns the one notification and runs pings / listening / the speed meter with matching FGS types;
+  `Notes` (speed icon bitmap, "pocket" + "pocket_min" channels); `TalkActivity` follows `Voice` (or vanishes when
+  the card is off); `Boot` brings the speed meter back after reboot/update; settings in `MainActivity`.
+- Known: Google's recognizer beeps each time it starts listening; in keep-listening that's every few seconds. Not
+  fixed (would mean muting system sounds). Ask him if it bothers him.
+
+Round 3 (Oct 31): net speed under 1 KB/s shows 0; "height" (his accent) = "hide" (`Words.one`); **input mode**
+("ayo Loomy input mode", greeting optional for on/off): bare key words via `Words.key()` -> "input ..." until "input
+mode off" / "disable input mode" (`Voice.inputMode`; non-keys still ignored); new icon (`ic_launcher_bg/fg/mono.xml`,
+adaptive + themed). He found the first one (prompt + sound wave) too techy/console, and a plain L + dot grid "dumb". Final
+(his design): the L in the middle, halftone dots along its left and bottom, biggest next to the letter and
+fading out (`pocket/tools/icon_dots.py` places them). Remember Android only shows the middle 72 of the 108 canvas. JNI/word test: 92 checks.
+
+Round 4 (Oct 31): **input from the phone never worked on Windows**: `ui_panel_key` sent WM_KEYDOWN to the main
+window, but panels take keys in `edit_proc` (the edit box). Fixed (send to `g_edit`). The Linux shim dispatches
+straight to the panels, so tests can't catch routing like that; keep it in mind. Voice: her **name alone** is the
+wake word now (`Words.addressed`: the name must open the utterance, after optional fillers/greetings, or follow a
+greeting); the name said alone (or last) arms an 8 s follow-up, also for a single Talk tap (`Voice.followUp`) -
+fixes the recognizer cutting "Loomy | show" in two. Recognizer: longer end-of-speech silence extras + Android 13
+biasing strings (`Words.HINTS`). Key words work with the name any time ("Loomy down"), bare in input/solo mode.
+**Solo mode** (`Store.solo`, setting + "Loomy solo mode"/"solo mode off"): no name needed. He asked about better
+recognition: the real step up would be an offline engine with a fixed command grammar (Vosk: ~40-50 MB model + its
+library, continuous, no beeps, much more reliable for a small vocabulary). Not done; offered to him. 112 word checks.
+
+Round 5 (Oct 31): `Words.key` reads several keys in one breath ("up up right confirm" -> "input up 2 and input
+right and input confirm"; every word must be a key/count/filler or it's not keys); the PC takes up to 16 chained
+parts and only the last one describes the screen (`g_lastPart`). "off"/"on" alone = hide/open. Phone-side controls
+in `Voice.control`: `Words.isDisconnect` ("stop (the) connection", "disconnect"...) = `Pocket.turnOff`;
+`Words.isStop` ("mute", "ok that's it", "stop listening"...) = stop listening. Both need her name (or solo / a Talk
+tap / following her name), except in input mode. 130 word checks.
+
+Round 6 (Oct 31, last for 2.18): the On switch's label was always "On" (and the dark theme's switch colours made
+off look on): label follows the state, all switches tinted (purple on / grey off). **Phrases.kt**: the library of
+ways to say things (COMMANDS, STARTS, KNOWN, KEYS, MUTE, SLEEP, DISCONNECT, mode on/off sets); `Words` does the
+cleanup and looks phrases up there; `Words.plain` is the cleaned phrase used for switches/controls. "open <word>"
+that isn't a command = `web <word>`. Solo mode is now a session: her name wakes it (`Voice.soloAwake`), SLEEP
+phrases ("ok thank you", "thanks", "stop listening") put it back to waiting for her name, mic stays on. MUTE
+(mic off) is multi-word only ("turn off the mic", "stop listening" outside solo). tests/jni/run.sh now fails
+loudly if kotlinc fails (it silently reused an old jar once). 161 checks.
+He asked whether he needs a small LLM for free talk: answered no for now (phrase library + rules; the bigger win
+would be a grammar-limited offline recognizer like Vosk).
+
+The original list:
+1. App settings section: toggle the notification on/off.
+2. App setting "keep listening": after Talk, stay listening (run "show", keep listening) until he stops the mic
+   from the notification or the app. Needs a microphone foreground service (green dot stays on).
+3. App setting: the bottom Talk card from the notification is optional, so with 2 he can use Loomy hands-free
+   while using the phone normally, no UI popping up.
+4. When a command opens a panel on the PC (e.g. `si`), the reply lists the choices (views/tabs/rows) so the app
+   can show them; he can't memorise them.
+5. "input <key>" from the phone: `input back`, `input next`, `input next tab` (= Tab), etc. Sends that key to
+   Loomy's open panel only (not system-wide keystrokes).
+6. Running a new command closes the open panel first (si open + "help" -> back to the main screen, then help).
+7. Policy change (he decided): **any plain (non-/) command is allowed from the phone by default** (help was
+   blocked and annoyed him). **Slash commands need a separate security step before they're allowed** — that's a
+   LATER build, not 2.18. Until then slash stays refused.
+8. Chaining: "system info AND input next tab" runs both in order.
+9. Net speed: a toggle that turns the notification into a net-speed indicator (raw up/down, B/KB/MB per second,
+   no "Loomy" title), like the status-bar speed apps. Assumed: the phone's own traffic (TrafficStats, no INTERNET
+   permission needed), the number drawn into the status-bar icon. Confirm phone vs PC speed with him.
+   He named the model: the "Internet Speed Meter" style app by Nisarg Jhaveri, so ONE notification instead of
+   several stuck ones. Must work on its own with Pocket Loomy off: then no Bluetooth, no pings, no mic, just a
+   1 s TrafficStats read + icon redraw, **paused while the screen is off** (nobody sees it), so it's ~free.

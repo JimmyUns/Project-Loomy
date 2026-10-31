@@ -10,11 +10,11 @@
 #define POCKET_H
 #include <stdint.h>
 
-#define PK_VERSION   1
+#define PK_VERSION   2          // v2 (Loomy 2.18): + NOTE and FORGET
 #define PK_MAXFRAME  512        // body bytes per frame; the 2-byte length prefix comes on top
 #define PK_CODELEN   8          // pairing code digits
 #define PK_NAMEMAX   48         // device name bytes (UTF-8) carried in the handshakes
-#define PK_TEXTMAX   400        // command / reply text bytes
+#define PK_TEXTMAX   480        // command / reply text bytes (fits one 512-byte frame)
 #define PK_MAC       16
 
 enum { PK_PC, PK_PHONE };
@@ -29,7 +29,9 @@ enum {
     PK_EV_REPLY,         // phone: c->text holds the PC's answer
     PK_EV_PING,          // PC: the phone checked in (a PONG is already queued)
     PK_EV_PONG,          // phone: the PC answered a ping
-    PK_EV_FAIL           // c->fail says why; nothing is queued; close the connection
+    PK_EV_FAIL,          // c->fail says why; nothing is queued; close the connection
+    PK_EV_NOTE,          // PC: c->text holds something the phone couldn't turn into a command (may be empty)
+    PK_EV_FORGET         // PC: the phone dropped its pairing; forget it too (nothing more will come)
 };
 
 // why it failed (pk_fail_text() turns these into words)
@@ -76,6 +78,8 @@ int  pk_feed(PkConn *c, const uint8_t *p, int n, int *used);
 int  pk_send_cmd(PkConn *c, const uint8_t *text, int n);   // phone -> PC
 int  pk_send_reply(PkConn *c, const uint8_t *text, int n); // PC -> phone
 int  pk_send_ping(PkConn *c);                              // phone -> PC
+int  pk_send_note(PkConn *c, const uint8_t *text, int n);  // phone -> PC: a failed attempt, for the PC's log
+int  pk_send_forget(PkConn *c);                            // phone -> PC: "I forgot you", ends the connection
 
 int  pk_ready(const PkConn *c);
 int  pk_done(const PkConn *c);                             // pairing finished, nothing more expected

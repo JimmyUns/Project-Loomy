@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.17 in progress: Pocket Loomy PC side)
+# Loomy — Handover (v2.18 ended, waiting for him to merge + release)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -152,15 +152,26 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.17 (draft PR #15, not ended): Pocket Loomy PC side is built** — protocol, `/phone`, Bluetooth listener,
+- **v2.18 ENDED (Oct 31)**: PR #16 marked ready; he merges and creates release `v2.18`. The release APK only gets
+  built if he has set up the signing secrets (`POCKET_KEYSTORE_B64`, `POCKET_KEYSTORE_PASSWORD`, alias `pocket`;
+  steps were given in chat: PowerShell + keytool from a JDK); without them the release just has `loomy.exe` and he
+  keeps using the dev APK. The release app is a separate install from "Pocket Loomy dev" (needs its own pairing).
+- **The Pocket Loomy Android app** on `claude/v2.18` (PR #16), in `pocket/` — status in
+  `POCKET-HANDOVER.md` §11. He added `.github/workflows/pocket.yml` on the branch (pull before pushing). **First real test
+  worked** (pairing + commands). His feedback is in as 2.18 (protocol v2: notes + forget; misses and refusals shown
+  on the PC; notification + tile + 5-min ping; state-driven screen; "slash" words). His second round of feedback is built (`POCKET-HANDOVER.md` §12); waiting on his test of that build.
+  Later (his call, separate build): slash commands from the phone behind an extra security step. App (Kotlin + the same `pocket.c` via the
+  NDK). The APK goes on the same `vX.Y` release as `loomy.exe` (an APK-only release would look like the latest
+  release to `/update`). The sandbox can't build it; that needs a workflow change only he can make.
+- **v2.17 is released** (PR #15, tag `v2.17`, exe 206,848 B built by Actions first try). He tested on Windows: Loomy
+  unchanged with the feature off; `/pkg add phone`, `/phone` code + "listening", 0 CPU idle, code expiry, `/reload`
+  all fine. The real phone connection is untested until the app exists. **Pocket Loomy PC side**: — protocol, `/phone`, Bluetooth listener,
   lockout, allowlist, tests, docs. Full details, the wire protocol and what to check on Windows are in
   `POCKET-HANDOVER.md` (§9, §10). Opt-in feature `phone`: `features_on = phone` in `loomy.cfg` (opt-in features
   are stored as an ON list, `FEATURES_OPTIN` in `loomy.h`; they don't count in help's "N features are off").
   Also new in `loomy.cfg`: `phone_locked`. Nothing of it ran on Windows yet. Calls he hasn't confirmed: hang-ups
   mid-handshake aren't a lockout; `SO_BTH_AUTHENTICATE` (needs Windows-level Bluetooth pairing first); the
-  phone-safe list. Next after he ends the version: the Android app (`pocket/`, Kotlin + the same `pocket.c` via NDK;
-  the APK build needs a workflow only he can add).
-  Voice on the PC itself was considered and dropped (always-on mic, +20–50 MB RAM, Windows' speech engine is
+  phone-safe list.   Voice on the PC itself was considered and dropped (always-on mic, +20–50 MB RAM, Windows' speech engine is
   deprecated); the phone listens instead.
 - **GPU temperature (sysinfo) reads a stuck 101 °C on his laptop; he parked it ("forget it for now").** Unconfirmed
   which GPU. Suspect: the Intel iGPU's driver reporting junk via D3DKMT; Task Manager never shows iGPU temps. Likely

@@ -318,6 +318,51 @@ void ui_hide(void) {
 }
 
 void ui_show(void) { show(); }
+
+// ---- for Pocket Loomy: work Loomy's open screen from the phone
+static int g_fakeShift;
+int ui_shift(void) { return g_fakeShift || GetKeyState(VK_SHIFT) < 0; }
+int ui_panel_open(void) { return screen_active(); }
+void ui_close_panels(void) {
+    sysinfo_close();
+    settings_close(); browser_close(); net_close(); changelog_close(); mode_close();
+    web_close(); display_close(); pkg_close(); phone_close();
+    ui_redraw();
+}
+// a key into the open screen, exactly as if pressed on the PC (only while a screen is open).
+// Panels take their keys in edit_proc (the input box keeps focus), so that's where it goes:
+// sending it to the main window did nothing (2.18 bug, found on his phone; the Linux shim
+// dispatches straight to the panels, so the tests couldn't see it).
+int ui_panel_key(WPARAM vk, int shift) {
+    if (!screen_active()) return 0;
+    g_fakeShift = shift;
+    SendMessageW(g_edit, WM_KEYDOWN, vk, 0);
+    g_fakeShift = 0;
+    return 1;
+}
+int ui_panel_char(wchar_t ch) {
+    if (!screen_active()) return 0;
+    SendMessageW(g_edit, WM_CHAR, ch, 0);
+    return 1;
+}
+void ui_panel_choices(wchar_t *b, int cap) {
+    b[0] = 0;
+    if (sysinfo_active()) sysinfo_choices(b, cap);
+    else if (display_active()) display_choices(b, cap);
+    else if (web_active()) web_choices(b, cap);
+    else if (screen_active())
+        s_cpy(b, L"A screen is open on the PC. Say \u201Cinput up\u201D / \u201Cdown\u201D, \u201Cinput enter\u201D, \u201Cinput back\u201D.", cap);
+}
+// wake the screens after `dp off` (nobody at the mouse): a 1-pixel nudge there and back
+void ui_screens_on(void) {
+    KillTimer(g_wnd, TIMER_SCREENS);
+    INPUT in[2];
+    memset(in, 0, sizeof in);
+    in[0].type = in[1].type = INPUT_MOUSE;
+    in[0].mi.dwFlags = in[1].mi.dwFlags = MOUSEEVENTF_MOVE;
+    in[0].mi.dx = 1; in[1].mi.dx = -1;
+    SendInput(2, in, sizeof(INPUT));
+}
 void ui_show_if_panel(void) { if (screen_active() && !IsWindowVisible(g_wnd)) show(); }
 HWND ui_hwnd(void) { return g_wnd; }
 void ui_set_timer(int id, int ms) {

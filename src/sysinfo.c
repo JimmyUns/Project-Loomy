@@ -200,6 +200,20 @@ static void switch_view(int d) {
     ui_redraw();
 }
 
+// for Pocket Loomy: what you can pick, so the phone can show it
+void sysinfo_choices(wchar_t *b, int cap) {
+    wchar_t t[48];
+    if (g_expanded) {
+        if (g_view == SIV_GENERAL) s_cpy(b, L"Showing General. ", cap);
+        else if (g_view == SIV_CPU) s_cpy(b, L"Showing CPU. ", cap);
+        else { wsprintfW(t, L"Showing GPU %d. ", g_view - SIV_GPU + 1); s_cpy(b, t, cap); }
+    } else s_cpy(b, L"", cap);
+    s_cat(b, L"Views: general, cpu", cap);
+    for (int i = 1; i <= g_snap.ngpu; i++) { wsprintfW(t, L", gpu %d", i); s_cat(b, t, cap); }
+    s_cat(b, g_expanded ? L". Say \u201Cinput next tab\u201D, or \u201Csystem info cpu\u201D."
+                        : L". Say \u201Cinput down\u201D then \u201Cinput enter\u201D, or \u201Csystem info cpu\u201D.", cap);
+}
+
 int sysinfo_key(WPARAM vk) {
     if (!g_expanded) {
         switch (vk) {
@@ -213,7 +227,7 @@ int sysinfo_key(WPARAM vk) {
         return 1;
     }
     switch (vk) {
-    case VK_TAB:    switch_view(GetKeyState(VK_SHIFT) < 0 ? -1 : 1); break;
+    case VK_TAB:    switch_view(ui_shift() ? -1 : 1); break;
     case VK_RIGHT:  switch_view(+1); break;
     case VK_LEFT:   switch_view(-1); break;
     case VK_BACK:                                             // back to the picker, normal size

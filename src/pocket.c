@@ -32,6 +32,8 @@
 #define E_REPLY     0x21
 #define E_PING      0x22
 #define E_PONG      0x23
+#define E_NOTE      0x24 // v2: phone couldn't make a command of what it heard (text, may be empty)
+#define E_FORGET    0x25 // v2: phone dropped the pairing
 
 #define F_PAIRING 1      // HELLO flags: a pairing code is open
 #define F_TRUSTED 2      //              a phone is trusted
@@ -475,6 +477,14 @@ static int on_sealed(PkConn *c, const uint8_t *hdr, const uint8_t *body, int L) 
             for (int i = 1; i < n && ok; i++) if (!plain[i]) ok = 0;   // no NULs inside text
             if (!ok || tl > PK_TEXTMAX) ev = fail(c, PK_F_BADMSG);
             else { cp(c->text, plain + 1, tl); c->text[tl] = 0; c->textlen = tl; ev = t == E_CMD ? PK_EV_CMD : PK_EV_REPLY; }
+        } else if (c->role == PK_PC && t == E_NOTE) {
+            int tl = n - 1, ok = tl <= PK_TEXTMAX;
+            for (int i = 1; i < n && ok; i++) if (!plain[i]) ok = 0;
+            if (!ok) ev = fail(c, PK_F_BADMSG);
+            else { cp(c->text, plain + 1, tl); c->text[tl] = 0; c->textlen = tl; ev = PK_EV_NOTE; }
+        } else if (c->role == PK_PC && t == E_FORGET && n == 1) {
+            c->state = ST_DONE;
+            ev = PK_EV_FORGET;
         } else if (c->role == PK_PC && t == E_PING && n == 1) {
             seal(c, E_PONG, 0, 0);
             ev = PK_EV_PING;
@@ -522,6 +532,16 @@ int pk_send_ping(PkConn *c) {
     return seal(c, E_PING, 0, 0);
 }
 
+int pk_send_note(PkConn *c, const uint8_t *text, int n) {
+    if (c->role != PK_PHONE || c->state != ST_READY || n < 0 || n > PK_TEXTMAX) return 0;
+    return seal(c, E_NOTE, text, n);
+}
+int pk_send_forget(PkConn *c) {
+    if (c->role != PK_PHONE || c->state != ST_READY || !seal(c, E_FORGET, 0, 0)) return 0;
+    c->state = ST_DONE;
+    return 1;
+}
+
 int  pk_ready(const PkConn *c)       { return c->state == ST_READY; }
 int  pk_done(const PkConn *c)        { return c->state == ST_DONE; }
 int  pk_mid_pairing(const PkConn *c) { return c->role == PK_PC && (c->state == ST_PAIR_C || c->state == ST_PAIR_KEY); }
@@ -531,7 +551,7 @@ const char *pk_fail_text(int f) {
     switch (f) {
     case PK_F_FRAMESIZE:  return "a frame with a bad size";
     case PK_F_UNEXPECTED: return "a message out of order";
-    case PK_F_VERSION:    return "a different protocol version";
+    case PK_F_VERSION:    return "a different protocol version (update Loomy and the app)";
     case PK_F_NOPAIRING:  return "a pairing try while no code was open";
     case PK_F_NOTRUST:    return "a connect try while no phone is trusted";
     case PK_F_LOWORDER:   return "a bad key (low-order point)";
