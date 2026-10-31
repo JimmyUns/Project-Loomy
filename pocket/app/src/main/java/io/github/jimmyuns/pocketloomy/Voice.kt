@@ -107,11 +107,13 @@ object Voice {
         if (plain.any { Words.isSoloOn(it) }) { keep = true; switchSolo(true); next(100); return }
 
         // was it said to Loomy? her name, a follow-up after her name alone, solo mode, or a Talk tap (once)
+        // (mute / stop connection need that too, except in input mode, so "that's it" from a friend can't mute you)
         var said: String? = all.firstNotNullOfOrNull { Words.addressed(it) }
         val following = armed && now < armedUntil
         if (said == null && (following || solo || !keep)) said = first
         if (said == null) {
-            // not for Loomy... unless it's a bare key word in input mode
+            // not for Loomy... unless it's bare keys (or mute / stop connection) in input mode
+            if (inputMode && all.any { control(it) }) return
             if (inputMode) all.firstNotNullOfOrNull { Words.key(it) }?.let { armed = false; send(it) }
             else if (all.any { Words.endsWithName(it) }) arm()           // "... okay Loomy" (cut off there)
             next(100)
@@ -124,13 +126,13 @@ object Voice {
             return
         }
         armed = false
+        if (control(said)) return
 
         // a key word ("down", "ok", "next tab") goes to the PC's open screen
         val key = all.firstNotNullOfOrNull { h -> (Words.addressed(h) ?: if (following || solo || inputMode || !keep) h else null)?.let { Words.key(it) } }
         if (key != null) { send(key); next(150); return }
 
         val cmd = Words.command(said)
-        if (keep && Words.isStop(cmd)) { add("stop listening", "Stopped listening.", false); stop(); return }
         if (cmd.isEmpty()) {
             add(said.ifEmpty { "(nothing)" }, "Didn't catch a command.", true)
             Pocket.reportMiss(ctx, said)                            // the PC shows misses too
@@ -139,6 +141,23 @@ object Voice {
         }
         send(cmd)
         next(150)
+    }
+
+    // phone-side controls: "mute" / "ok that's it" stop listening (Talk starts it again);
+    // "stop connection" turns Pocket Loomy off (the app, the tile or the notification turn it back on)
+    private fun control(text: String): Boolean {
+        val c = Words.command(text)
+        if (Words.isDisconnect(c)) {
+            add("stop connection", "Connection off. Turn Pocket Loomy on again from the app, the Loomy tile or the notification.", false)
+            Pocket.turnOff(ctx)
+            return true
+        }
+        if (Words.isStop(c)) {
+            add("mute", "Muted. Tap Talk to listen again.", false)
+            stop()
+            return true
+        }
+        return false
     }
 
     private fun arm() {

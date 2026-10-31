@@ -277,6 +277,13 @@ biasing strings (`Words.HINTS`). Key words work with the name any time ("Loomy d
 recognition: the real step up would be an offline engine with a fixed command grammar (Vosk: ~40-50 MB model + its
 library, continuous, no beeps, much more reliable for a small vocabulary). Not done; offered to him. 112 word checks.
 
+Round 5 (Oct 31): `Words.key` reads several keys in one breath ("up up right confirm" -> "input up 2 and input
+right and input confirm"; every word must be a key/count/filler or it's not keys); the PC takes up to 16 chained
+parts and only the last one describes the screen (`g_lastPart`). "off"/"on" alone = hide/open. Phone-side controls
+in `Voice.control`: `Words.isDisconnect` ("stop (the) connection", "disconnect"...) = `Pocket.turnOff`;
+`Words.isStop` ("mute", "ok that's it", "stop listening"...) = stop listening. Both need her name (or solo / a Talk
+tap / following her name), except in input mode. 130 word checks.
+
 The original list:
 1. App settings section: toggle the notification on/off.
 2. App setting "keep listening": after Talk, stay listening (run "show", keep listening) until he stops the mic

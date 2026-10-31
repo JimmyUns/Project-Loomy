@@ -623,10 +623,16 @@ int main(void) {
         a = ask("rb");              EXPECT(!display_active(), "a new command closes the open screen first");
         a = ask("web");             EXPECT(web_active() && strstr(a, "Sites:") , "web panel: lists the sites");
         a = ask("display and input down 2 and input back");
-        EXPECT(!display_active() && strstr(a, "Layouts") && strstr(a, "Closed."), "chain: display, down twice, back");
+        EXPECT(!display_active() && strstr(a, "Closed.") && !strstr(a, "Layouts"), "chain: display, down twice, back (described once, at the end)");
         a = ask("rb and banana");   EXPECT(strstr(a, "Usage: rb"), "\"and\" only splits before a command (rb gets \"and banana\")");
         a = ask("rb and help");     EXPECT(strstr(a, "recycle bin") && strstr(a, "si"), "two commands, two answers");
         a = ask("display and input tab"); EXPECT(display_active(), "a key the picker ignores is fine");
+        a = ask("input down and input down and input up and input down 2 and input back");
+        EXPECT(!display_active() && strstr(a, "Closed.") && !strstr(a, "Layouts"), "a key chain: runs in order, describes the screen once, at the end");
+        a = ask("display and input down and input down");
+        { int n = 0; for (const char *q = a; (q = strstr(q, "Layouts")); q++) n++;
+          EXPECT(display_active() && n == 1, "chain ending on an open screen lists it once"); }
+        ask("input back");
         ask("input back");
         { last_out = g_nout; pk_send_note(&ph, (const uint8_t *)"lumi displaay", 13); pump();
           EXPECT(saw(L"didn't catch a command (heard \"lumi displaay\")"), "a missed command shows on the PC");

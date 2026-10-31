@@ -327,6 +327,7 @@ void phone_out_tap(int kind, const wchar_t *text) {
 // every attempt from the phone shows in Loomy, run or not, so you can see what it heard.
 // The answer for the phone builds up in g_rep (several commands can come in one go: "si and input next tab").
 static wchar_t g_rep[600];
+static int     g_lastPart;            // only the last key of a chain describes the screen (keeps the answer short)
 
 static void rep(const wchar_t *t) {
     if (!t || !*t) return;
@@ -388,6 +389,7 @@ static void phone_input(const wchar_t *t, wchar_t *what) {
         else ui_panel_key(KEYS[found].vk, KEYS[found].shift);
     }
     log_add(L"Phone: input %s", k);
+    if (!g_lastPart && ui_panel_open()) return;      // "up up right ok": say what's on screen once, at the end
     wchar_t c[400];
     ui_panel_choices(c, 400);
     rep(c[0] ? c : L"Closed.");
@@ -430,7 +432,7 @@ static void run_one(wchar_t *t) {
         cmd_phone_help(h, 400);
         rep(h);
     } else rep(g_cap[0] ? g_cap : L"Done.");
-    if (ui_panel_open()) {                           // it opened a screen: say what's in it
+    if (ui_panel_open() && g_lastPart) {             // it opened a screen: say what's in it (once, at the end)
         wchar_t c[400];
         ui_panel_choices(c, 400);
         rep(c);
@@ -456,10 +458,10 @@ static void run_from_phone(void) {
     wchar_t *t = s_trim(line);
     if (!*t) { reply(L"Say a command."); return; }
 
-    wchar_t *parts[6];
+    wchar_t *parts[16];               // "up up right confirm" from input mode arrives as 4 chained inputs
     int np = 0;
     parts[np++] = t;
-    for (wchar_t *p = t; *p && np < 6; p++) {
+    for (wchar_t *p = t; *p && np < 16; p++) {
         if (p[0] != L' ' || !((p[1] | 32) == L'a' && (p[2] | 32) == L'n' && (p[3] | 32) == L'd' && p[4] == L' ')) continue;
         wchar_t next[48];
         int k = 0;
@@ -476,6 +478,7 @@ static void run_from_phone(void) {
     }
     for (int i = 0; i < np; i++) {
         wchar_t *one = s_trim(parts[i]);
+        g_lastPart = i == np - 1;
         if (*one) run_one(one);
     }
     reply(g_rep[0] ? g_rep : L"Done.");

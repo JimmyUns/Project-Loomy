@@ -82,24 +82,40 @@ object Words {
         "page up" to "page up", "page down" to "page down", "home" to "home", "top" to "home", "end" to "end", "bottom" to "end",
     )
 
-    /** input mode: "next tab" -> "input next tab", "go down three" -> "input down 3"; not a key -> null */
+    private val KEYPHRASES = KEYWORD.keys.map { it.split(' ') }.sortedByDescending { it.size }
+    private val KEYFILL = setOf("press", "hit", "go", "move", "and", "then", "now", "the", "please", "times", "time", "it", "a")
+    private val TWICE = mapOf("twice" to 2, "thrice" to 3)
+
+    /**
+     * Keys, one or several in one breath: "next tab" -> "input next tab"; "go down three" -> "input down 3";
+     * "up up right confirm" -> "input up 2 and input right and input confirm" (Loomy runs them in order).
+     * Every word has to be a key, a count or filler, otherwise it's not keys at all -> null.
+     */
     fun key(heard: String): String? {
         var w = words(heard)
         while (w.size > 1 && (w[0] in HAIL || w[0] in FILL) && w.drop(1).any { isName(it) }) w = w.drop(1)
         if (w.isNotEmpty() && isName(w[0])) w = w.drop(1)
-        if (w.isNotEmpty() && w[0] == "input") w = w.drop(1)              // "input down" said in input mode
-        while (w.isNotEmpty() && w[0] in setOf("press", "hit", "go", "move", "and", "then", "now", "the")) {
-            if (w.size == 2 && w[0] == "go" && w[1] == "back") break
-            w = w.drop(1)
+        val keys = mutableListOf<Pair<String, Int>>()
+        var i = 0
+        while (i < w.size) {
+            if (w[i] == "input") { i++; continue }                         // "input down" said in input mode
+            val p = KEYPHRASES.firstOrNull { ph -> i + ph.size <= w.size && w.subList(i, i + ph.size) == ph }
+            if (p != null) { keys += KEYWORD.getValue(p.joinToString(" ")) to 1; i += p.size; continue }
+            val n = NUM[w[i]]?.toInt() ?: TWICE[w[i]] ?: w[i].takeIf { it.length == 1 && it[0] in '1'..'9' }?.toInt()
+            if (n != null && keys.isNotEmpty() && keys.last().second == 1) { keys[keys.size - 1] = keys.last().first to n; i++; continue }
+            if (w[i] in KEYFILL) { i++; continue }
+            return null
         }
-        while (w.isNotEmpty() && w.last() in setOf("please", "now", "times", "time")) w = w.dropLast(1)
-        if (w.isEmpty()) return null
-        var times = ""
-        val n = NUM[w.last()] ?: w.last().takeIf { it.length == 1 && it[0] in '1'..'9' }
-        if (n != null && w.size > 1) { times = " $n"; w = w.dropLast(1) }
-        val k = KEYWORD[w.joinToString(" ")] ?: return null
-        return "input $k$times"
+        if (keys.isEmpty()) return null
+        val merged = mutableListOf<Pair<String, Int>>()                 // "up up up" -> up 3
+        for (k in keys) if (merged.isNotEmpty() && merged.last().first == k.first) merged[merged.size - 1] = k.first to (merged.last().second + k.second).coerceAtMost(9) else merged += k
+        return merged.take(12).joinToString(" and ") { (k, n) -> "input $k" + if (n > 1) " $n" else "" }
     }
+
+    /** "stop connection", "disconnect": turns Pocket Loomy's On switch off */
+    fun isDisconnect(cmd: String) = cmd in setOf("stop connection", "stop the connection", "end connection", "end the connection",
+        "disconnect", "disconnect from the pc", "cut the connection", "cut connection", "close the connection", "close connection",
+        "turn off connection", "turn off the connection", "turn the connection off", "connection off", "stop connecting", "kill the connection")
 
     /** solo mode: when he's alone, everything said is for Loomy (no name needed) until it's turned off */
     private fun solo(cmd: String) = cmd.replace("so low", "solo").replace("so lo", "solo").replace("sola", "solo")
@@ -108,9 +124,10 @@ object Words {
     fun isSoloOff(cmd: String) = solo(cmd) in setOf("solo mode off", "disable solo mode", "turn off solo mode",
         "turn solo mode off", "stop solo mode", "exit solo mode", "end solo mode", "leave solo mode", "no more solo mode")
 
-    /** "stop listening", "that's all", "go to sleep": ends keep-listening */
-    fun isStop(cmd: String) = cmd in setOf("stop", "stop listening", "that's all", "thats all", "go to sleep",
-                                            "stop it", "be quiet", "bye", "goodbye", "never mind", "nevermind")
+    /** "mute", "ok that's it", "stop listening": stops listening until Talk is tapped again (Loomy stays on) */
+    fun isStop(cmd: String) = cmd in setOf("stop", "stop listening", "that's all", "thats all", "that's it", "thats it",
+        "that is it", "that is all", "mute", "mute yourself", "mute it", "mute the mic", "mute mic", "go to sleep",
+        "stop it", "be quiet", "quiet", "bye", "goodbye", "never mind", "nevermind", "we're done", "were done", "done")
 
     private val SLASH = setOf("slash", "slesh", "slush", "flash")
 
@@ -168,6 +185,9 @@ object Words {
         if (w.isEmpty()) return ""
         // his accent vs the recognizer: "hide" keeps coming out as "height"
         if (w.size == 1 && w[0] in setOf("height", "hight", "hyde", "hied", "heid")) return "hide"
+        // the short way: "Loomy off" hides Loomy, "Loomy on" brings it up
+        if (w == listOf("off")) return "hide"
+        if (w == listOf("on")) return "open"
         // the screens: "turn off the screen", "screen off", "show screen", "turn the display off"
         val screenish = w.any { it in SCREEN } || (w[0] != "display" && "display" in w)
         if (screenish && w.all { it in SCREEN_FILL }) {
