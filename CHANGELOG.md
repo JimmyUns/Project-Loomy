@@ -7,9 +7,11 @@ All notable changes to Loomy, newest first.
 - **Talk like a person.** "Ayo Loomy, can you turn off the screen please" works. So do "show screen", "open system info and go to the next tab", "slash packages" and "recycle bin". Join commands with "and".
 - **Keep listening** (setting): after Talk it keeps listening until you stop it, and only acts on "yo/ayo Loomy ...". Anything else it hears is dropped on the phone, never sent.
 - **From the phone you can run any normal command now**, including `help` (it gets a short list back). Use `input back` / `input next tab` / `input down 2` / `input enter` for Loomy's open screen. A new command closes the open screen first, and screens like `si`, `display` and `web` tell the phone what you can pick. Slash commands still only run on the PC.
+- **Input mode:** say "ayo Loomy input mode", then plain "next", "next tab", "back", "ok", "cancel", "down three" work without the greeting until "input mode off". Anything else said meanwhile is still ignored.
 - **`display on`** wakes the screens again after `display off` (handy from the phone).
 - **One notification.** On/off and Talk live there, plus a "Loomy" quick-settings tile. While it's on, the phone checks in with the PC every 5 minutes (`/phone` shows last seen), and it turns itself off after 15 minutes without reaching the PC.
-- Settings in the app: notification on/off, keep listening, the Talk card, and a **net speed meter** (your phone's down/up speed in the status bar, works with Pocket Loomy off, paused while the screen is off).
+- Settings in the app: notification on/off, keep listening, the Talk card, and a **net speed meter** (your phone's down/up speed in the status bar, works with Pocket Loomy off, paused while the screen is off, under 1 KB/s shows as 0).
+- A proper app icon: Loomy's `›_` prompt with its halftone dots and a little sound wave (also as a themed icon on Android 13+).
 - **Every phone attempt shows in Loomy**, including commands it refused and things the phone didn't catch.
 - **Forget on the phone makes Loomy forget it too.**
 - Protocol v2: the phone and Loomy must both be 2.18+. An older one says to update instead of failing a check.

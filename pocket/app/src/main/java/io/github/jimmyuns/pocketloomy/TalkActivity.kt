@@ -109,6 +109,12 @@ class TalkActivity : Activity() {
 
     private fun closeSoon(ms: Long) { main.removeCallbacksAndMessages(null); main.postDelayed({ finish() }, ms) }
 
+    private fun head() = when {
+        Voice.inputMode -> "Input mode"
+        Voice.keep -> "Listening for \u201Cayo Loomy\u201D"
+        else -> "Listening..."
+    }
+
     private fun render() {
         val listening = Voice.state == Voice.State.LISTENING
         if (listening) sawListening = true
@@ -119,13 +125,15 @@ class TalkActivity : Activity() {
         val last = if (Voice.history.size > startedAt) Voice.history.last() else null
         when {
             Voice.sending && last != null -> show("Talking to Loomy...", "\u203A ${last.cmd}", accent)
-            listening && Voice.partial.isNotEmpty() -> show(if (Voice.keep) "Listening for \u201Cayo Loomy\u201D" else "Listening...", Voice.partial, accent)
+            listening && Voice.partial.isNotEmpty() -> show(head(), Voice.partial, accent)
             last != null -> {
                 show("\u203A ${last.cmd}", last.answer, if (last.bad) err else ok)
                 if (!listening) closeSoon(4500)
             }
-            listening -> show(if (Voice.keep) "Listening for \u201Cayo Loomy\u201D" else "Listening...",
-                              if (Voice.keep) "Say \u201Cayo Loomy\u201D and a command" else "Say a command", accent)
+            listening -> show(head(), when {
+                                  Voice.inputMode -> "Say next, back, ok, up, down..."
+                                  Voice.keep -> "Say \u201Cayo Loomy\u201D and a command"
+                                  else -> "Say a command" }, accent)
             sawListening -> closeSoon(1500)
         }
         val lvl = if (listening) Voice.level.coerceIn(0f, 10f) else 0f

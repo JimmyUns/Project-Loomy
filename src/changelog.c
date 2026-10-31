@@ -16,7 +16,7 @@ static const Release RELEASES[] = {
     { L"2.18", L"2026-10-31", {
         L"Pocket Loomy for Android: talk to Loomy (\u201Cayo Loomy, show screen\u201D).",
         L"Any normal command from the phone, joined with \u201Cand\u201D; slash stays PC-only.",
-        L"input back / next tab / down / enter works Loomy's open screens.",
+        L"Input mode: just say next, back, ok, down three for Loomy's screens.",
         L"display on wakes the screens again after display off.",
         L"Every phone attempt shows in Loomy; Forget on the phone forgets here too.",
         L"App: notification + Loomy tile, keep listening, net speed meter.",

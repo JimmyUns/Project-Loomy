@@ -60,14 +60,14 @@ object Notes {
     private fun action(ctx: Context, label: String, pi: PendingIntent) =
         Notification.Action.Builder(Icon.createWithResource(ctx, R.drawable.ic_stat), label, pi).build()
 
-    /** bytes per second -> ("1.2", "MB/s") */
+    /** bytes per second -> ("1.2", "MB/s"). Under 1 KB/s is just background chatter: it shows as 0. */
     fun speedParts(bps: Long): Pair<String, String> {
         val (v, unit) = when {
-            bps < 1024 -> bps.toDouble() to "B/s"
+            bps < 1024 -> 0.0 to "KB/s"
             bps < 1024L * 1024 -> bps / 1024.0 to "KB/s"
             else -> bps / (1024.0 * 1024.0) to "MB/s"
         }
-        val num = if (v < 10 && unit != "B/s") String.format("%.1f", v) else minOf(v.toLong(), 999).toString()
+        val num = if (v == 0.0) "0" else if (v < 10) String.format("%.1f", v) else minOf(v.toLong(), 999).toString()
         return num to unit
     }
 
@@ -110,6 +110,7 @@ object Notes {
         val recent = last != null && SystemClock.elapsedRealtime() - Voice.lastAt < 60_000
         val title = when {
             meter -> "\u2193 ${speedText(down)}   \u2191 ${speedText(up)}"
+            listening && Voice.inputMode -> "Input mode: next, back, ok, up, down..."
             listening && Voice.keep -> "Listening for \u201Cayo Loomy\u201D"
             listening -> "Listening..."
             s.on -> "Pocket Loomy is on"
@@ -119,6 +120,7 @@ object Notes {
             Voice.sending && last != null -> "\u203A ${last.cmd}"
             listening && Voice.partial.isNotEmpty() -> Voice.partial
             recent && last != null -> "\u203A ${last.cmd}: ${last.answer.lineSequence().first()}"
+            meter && listening && Voice.inputMode -> "Input mode: next, back, ok, up, down..."
             meter && listening && Voice.keep -> "Listening for \u201Cayo Loomy\u201D"
             meter && !s.on -> null
             s.on -> Pocket.status(ctx)

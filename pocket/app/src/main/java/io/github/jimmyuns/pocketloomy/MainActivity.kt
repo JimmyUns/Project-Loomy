@@ -301,6 +301,7 @@ class MainActivity : Activity() {
             phase == Phase.PAIRING -> "pairing" to accent
             phase == Phase.FORGETTING -> "forgetting" to accent
             Voice.sending -> "talking to Loomy" to accent
+            listening && Voice.inputMode -> "input mode" to accent
             listening && Voice.keep -> "listening for ayo Loomy" to accent
             listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
@@ -345,6 +346,7 @@ class MainActivity : Activity() {
         val last = Voice.last()
         live.text = when {
             listening && Voice.partial.isNotEmpty() -> Voice.partial
+            listening && Voice.inputMode -> "input mode: say next, back, ok, up, down... (\u201Cinput mode off\u201D to stop)"
             listening && Voice.keep -> "say \u201Cayo Loomy\u201D and a command"
             listening -> "say a command"
             last != null -> "\u203A ${last.cmd}"

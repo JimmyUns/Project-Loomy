@@ -50,6 +50,40 @@ object Words {
         return null
     }
 
+    /** input mode: key words work without the greeting until it's turned off */
+    fun isInputModeOn(cmd: String) = cmd in setOf("input mode", "input mode on", "enable input mode", "start input mode",
+        "turn on input mode", "turn input mode on", "go into input mode", "enter input mode", "inputs mode")
+    fun isInputModeOff(cmd: String) = cmd in setOf("input mode off", "disable input mode", "stop input mode", "exit input mode",
+        "end input mode", "turn off input mode", "turn input mode off", "leave input mode", "close input mode", "no more input mode")
+
+    // input mode: what counts as a key (said bare, no "ayo Loomy" needed). Anything else is ignored.
+    private val KEYWORD = mapOf(
+        "next" to "next", "next tab" to "next tab", "tab" to "next tab",
+        "previous" to "previous", "previous tab" to "previous tab", "last tab" to "previous tab", "prev" to "previous",
+        "back" to "back", "go back" to "back", "escape" to "back", "cancel" to "cancel", "close" to "close", "exit" to "back",
+        "confirm" to "confirm", "ok" to "ok", "okay" to "ok", "enter" to "enter", "select" to "select", "yes" to "yes",
+        "select it" to "select", "open it" to "enter", "pick it" to "select",
+        "up" to "up", "down" to "down", "left" to "left", "right" to "right",
+        "page up" to "page up", "page down" to "page down", "home" to "home", "top" to "home", "end" to "end", "bottom" to "end",
+    )
+
+    /** input mode: "next tab" -> "input next tab", "go down three" -> "input down 3"; not a key -> null */
+    fun key(heard: String): String? {
+        var w = words(heard)
+        if (w.size > 1 && w[0] in HAIL && w[1] in NAME) w = w.drop(2)
+        while (w.isNotEmpty() && w[0] in setOf("press", "hit", "go", "move", "and", "then", "now", "the")) {
+            if (w.size == 2 && w[0] == "go" && w[1] == "back") break
+            w = w.drop(1)
+        }
+        while (w.isNotEmpty() && w.last() in setOf("please", "now", "times", "time")) w = w.dropLast(1)
+        if (w.isEmpty()) return null
+        var times = ""
+        val n = NUM[w.last()] ?: w.last().takeIf { it.length == 1 && it[0] in '1'..'9' }
+        if (n != null && w.size > 1) { times = " $n"; w = w.dropLast(1) }
+        val k = KEYWORD[w.joinToString(" ")] ?: return null
+        return "input $k$times"
+    }
+
     /** "stop listening", "that's all", "go to sleep": ends keep-listening */
     fun isStop(cmd: String) = cmd in setOf("stop", "stop listening", "that's all", "thats all", "go to sleep",
                                             "stop it", "be quiet", "bye", "goodbye", "never mind", "nevermind")
@@ -108,6 +142,8 @@ object Words {
             for (p in TAIL) if (endsWith(w, p) && w.size > p.size) { w = w.dropLast(p.size); changed = true }
         }
         if (w.isEmpty()) return ""
+        // his accent vs the recognizer: "hide" keeps coming out as "height"
+        if (w.size == 1 && w[0] in setOf("height", "hight", "hyde", "hied", "heid")) return "hide"
         // the screens: "turn off the screen", "screen off", "show screen", "turn the display off"
         val screenish = w.any { it in SCREEN } || (w[0] != "display" && "display" in w)
         if (screenish && w.all { it in SCREEN_FILL }) {

@@ -11,6 +11,9 @@ import android.os.SystemClock
 //   keep:  listen again after every result until stopped, and only act on "yo/ayo/hey Loomy ...".
 //          Everything else it hears is dropped on the spot: never shown, never sent.
 //          "ayo Loomy" alone = she waits 8 s for the command. "ayo Loomy stop listening" ends it.
+//   input mode ("ayo Loomy input mode", keeps listening): key words alone work too ("next tab", "back",
+//          "ok", "down three"), sent as "input ..."; anything else that isn't greeted is still ignored.
+//          Ends with "input mode off" / "disable input mode" (greeting optional) or stopping.
 object Voice {
     enum class State { OFF, LISTENING }
 
@@ -22,6 +25,7 @@ object Voice {
     @Volatile var partial = ""
     @Volatile var level = 0f
     @Volatile var armed = false            // heard just "ayo Loomy": the next thing said is the command
+    @Volatile var inputMode = false        // "ayo Loomy input mode": bare key words (next, back, ok...) work
     @Volatile var lastAt = 0L              // when the last answer came (the notification shows it for a while)
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
@@ -49,6 +53,7 @@ object Voice {
     fun stop() {
         keep = false
         armed = false
+        inputMode = false
         main.removeCallbacksAndMessages(null)
         ear?.cancel()
         ear?.destroy()
@@ -79,6 +84,16 @@ object Voice {
 
     private fun heard(all: List<String>) {
         errors = 0
+        // input mode: turning it off works with or without the greeting; bare key words are keys
+        if (inputMode) {
+            if (all.any { Words.isInputModeOff(Words.command(it)) }) { switchInputMode(false); next(100); return }
+            if (all.none { Words.addressed(it) != null }) {
+                val k = all.firstNotNullOfOrNull { Words.key(it) }
+                if (k != null) send(k)                               // not a key: ignored, like anything not for Loomy
+                next(100)
+                return
+            }
+        }
         var cmdText: String? = null
         if (keep) {
             val now = SystemClock.elapsedRealtime()
@@ -99,6 +114,8 @@ object Voice {
 
         val cmd = Words.command(cmdText ?: "")
         if (keep && Words.isStop(cmd)) { add("stop listening", "Stopped listening.", false); stop(); return }
+        if (Words.isInputModeOn(cmd)) { keep = true; switchInputMode(true); next(100); return }
+        if (Words.isInputModeOff(cmd)) { switchInputMode(false); next(100); return }
         if (cmd.isEmpty()) {
             add((cmdText ?: "").ifEmpty { "(nothing)" }, "Didn't catch a command.", true)
             Pocket.reportMiss(ctx, cmdText ?: "")                         // the PC shows misses too
@@ -122,6 +139,15 @@ object Voice {
         }
         add("(listening)", Ear.message(error), true)
         stop()
+    }
+
+    private fun switchInputMode(on: Boolean) {
+        if (inputMode == on) return
+        inputMode = on
+        armed = false
+        add(if (on) "input mode" else "input mode off",
+            if (on) "Input mode on. Just say next, next tab, back, ok, cancel, up, down (\u201Cdown three\u201D works). \u201CInput mode off\u201D to stop."
+            else "Input mode off. Commands need \u201Cayo Loomy\u201D again.", false)
     }
 
     private fun add(cmd: String, answer: String, bad: Boolean) {
