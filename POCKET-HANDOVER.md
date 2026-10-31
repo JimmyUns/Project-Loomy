@@ -225,7 +225,7 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
     answer, typing, history; a status chip (not paired / listening / pairing / talking to Loomy / connecting /
     connected / can't reach PC / on / off). Battery-optimization exemption asked once when first turned on.
   - `Store.on` + `PocketService.running`; `Pocket.fixStaleOn` resets "on" if the process died without onDestroy.
-- Not yet: always-listening (wake word), auto-off after idle time.
+- Keep-listening with the "yo/ayo Loomy" greeting is built (§12). Not yet: auto-off after idle time.
 - **Signing:** dev builds (branches) use `pocket/dev.keystore` (committed on purpose, password `pocketdev`,
   applicationId suffix `.dev`, so dev and release install side by side). Release builds (tags only) use his key
   from GitHub secrets `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD` (alias `pocket`); without them the tag
@@ -241,8 +241,25 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   (44 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
   android-35): `kotlinc -cp android.jar *.kt`.
 
-## 12. QUEUED: his feedback after testing 2.18 (Oct 30, not started; he's out of usage until ~4am)
-Build these next on `claude/v2.18` (still a draft; not ended):
+## 12. His feedback after testing the first 2.18 build — DONE (Oct 31), all items below are built
+(Plus two he added: "screen on/off" in any wording -> `display off|on`, and talking like a human with a
+"yo/ayo Loomy" greeting in keep-listening mode.) How it's built:
+- PC: `cmd_phone_ok` = any plain command (the `.phone` flag is gone); `run_from_phone` splits on " and " only where a
+  command/input/open/hide follows ("lp salt and pepper" stays whole); `run_one` closes the open panel first
+  (`ui_close_panels`), runs it, appends `ui_panel_choices` (sysinfo/display/web list theirs; others a generic hint);
+  `phone_input` maps words to keys (`KEYS[]` in phone.c, trailing count "down 3"/"down three") and sends them through
+  `ui_panel_key` (a real WM_KEYDOWN into wnd_proc; Shift faked via `ui_shift()`, which sysinfo uses), only while a
+  panel is open. `help` from the phone replies with `cmd_phone_help` (a short list), the table still prints on the PC.
+  `display on` = `ui_screens_on` (1-pixel mouse nudge there and back). PK_TEXTMAX is 480 now.
+- App: `Words` (greeting detection `addressed()`, fillers, screen phrases, `press`/natural key phrases -> `input`,
+  "open X", slash, spoken names, "gpu one", per-"and"-part cleanup); `Voice` (the listening loop, in the service);
+  `PocketService` owns the one notification and runs pings / listening / the speed meter with matching FGS types;
+  `Notes` (speed icon bitmap, "pocket" + "pocket_min" channels); `TalkActivity` follows `Voice` (or vanishes when
+  the card is off); `Boot` brings the speed meter back after reboot/update; settings in `MainActivity`.
+- Known: Google's recognizer beeps each time it starts listening; in keep-listening that's every few seconds. Not
+  fixed (would mean muting system sounds). Ask him if it bothers him.
+
+The original list:
 1. App settings section: toggle the notification on/off.
 2. App setting "keep listening": after Talk, stay listening (run "show", keep listening) until he stops the mic
    from the notification or the app. Needs a microphone foreground service (green dot stays on).

@@ -13,13 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
-    { L"2.18", L"2026-10-30", {
-        L"Pocket Loomy for Android: pair by voice, then Talk or type commands.",
-        L"On/off from the notification or a Loomy quick-settings tile.",
-        L"While on, the phone checks in every 5 min (/phone shows last seen).",
-        L"Every phone attempt shows in Loomy, even refused or misheard ones.",
-        L"Forget on the phone makes Loomy forget it too.",
-        L"Saying \u201cslash packages\u201d becomes /pkg (still PC-only).",
+    { L"2.18", L"2026-10-31", {
+        L"Pocket Loomy for Android: talk to Loomy (\u201Cayo Loomy, show screen\u201D).",
+        L"Any normal command from the phone, joined with \u201Cand\u201D; slash stays PC-only.",
+        L"input back / next tab / down / enter works Loomy's open screens.",
+        L"display on wakes the screens again after display off.",
+        L"Every phone attempt shows in Loomy; Forget on the phone forgets here too.",
+        L"App: notification + Loomy tile, keep listening, net speed meter.",
         0 } },
     { L"2.17", L"2026-10-30", {
         L"Pocket Loomy (PC side): commands from your Android phone over Bluetooth.",

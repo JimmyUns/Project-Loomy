@@ -3,12 +3,16 @@
 All notable changes to Loomy, newest first.
 
 ## v2.18
-- **Pocket Loomy for Android** (first release of the app): pair by saying the code, then tap Talk (or type) to run Loomy commands from your phone. The screen follows what's happening: setup steps until paired, then the live transcript while it listens, what it sent, and Loomy's answer.
-- **On/off from your notifications and a "Loomy" quick-settings tile.** While on, the notification has a Talk button (a small card pops up, listens, shows the answer) and the phone checks in with the PC every 5 minutes, so `/phone` shows when it was last seen. It turns itself off after 15 minutes without reaching the PC.
-- **Every phone attempt shows in Loomy now**, including commands it refused and things the phone didn't catch ("didn't catch a command (heard ...)").
-- **Forget on the phone tells the PC**, which forgets the phone right away.
-- Saying "slash" works ("slash packages" becomes `/pkg`), and spoken names like "recycle bin" and "system info" map to `rb` and `si`. Slash commands still only run on the PC.
-- Protocol v2 (the phone and Loomy must both be 2.18+; an older one says to update instead of failing a check).
+- **Pocket Loomy for Android** (first release of the app). Pair by saying the code, then tap Talk or type to run Loomy commands from your phone. The screen follows what's happening: setup steps until paired, then the live transcript, what was sent, and Loomy's answer.
+- **Talk like a person.** "Ayo Loomy, can you turn off the screen please" works. So do "show screen", "open system info and go to the next tab", "slash packages" and "recycle bin". Join commands with "and".
+- **Keep listening** (setting): after Talk it keeps listening until you stop it, and only acts on "yo/ayo Loomy ...". Anything else it hears is dropped on the phone, never sent.
+- **From the phone you can run any normal command now**, including `help` (it gets a short list back). Use `input back` / `input next tab` / `input down 2` / `input enter` for Loomy's open screen. A new command closes the open screen first, and screens like `si`, `display` and `web` tell the phone what you can pick. Slash commands still only run on the PC.
+- **`display on`** wakes the screens again after `display off` (handy from the phone).
+- **One notification.** On/off and Talk live there, plus a "Loomy" quick-settings tile. While it's on, the phone checks in with the PC every 5 minutes (`/phone` shows last seen), and it turns itself off after 15 minutes without reaching the PC.
+- Settings in the app: notification on/off, keep listening, the Talk card, and a **net speed meter** (your phone's down/up speed in the status bar, works with Pocket Loomy off, paused while the screen is off).
+- **Every phone attempt shows in Loomy**, including commands it refused and things the phone didn't catch.
+- **Forget on the phone makes Loomy forget it too.**
+- Protocol v2: the phone and Loomy must both be 2.18+. An older one says to update instead of failing a check.
 
 ## v2.17
 - **Pocket Loomy, PC side**: an Android phone can send Loomy commands over Bluetooth. Opt-in: `/pkg add phone` (off by default, nothing listens until then).

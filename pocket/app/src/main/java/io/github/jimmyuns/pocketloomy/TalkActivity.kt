@@ -18,9 +18,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
-// The Talk button in the notification: a small card over whatever you're doing. It listens right away,
-// sends what you said, shows Loomy's answer for a moment and goes away. Tap the card to talk again,
-// tap outside to close.
+// Talk, from the notification. Listening itself runs in PocketService (so it can carry on in the
+// background); this only starts it, and shows a small card over whatever you're doing unless the
+// card is turned off in settings (then it gets out of the way right away and the notification shows it).
+// Tap the card to talk again, tap outside to close it (keep-listening carries on).
 class TalkActivity : Activity() {
     private val accent = Color.rgb(0xA8, 0x55, 0xF7)
     private val textC = Color.rgb(0xD9, 0xCE, 0xE6)
@@ -31,102 +32,104 @@ class TalkActivity : Activity() {
     private lateinit var title: TextView
     private lateinit var said: TextView
     private lateinit var meter: View
-    private lateinit var card: LinearLayout
-    private lateinit var ear: Ear
     private val main = Handler(Looper.getMainLooper())
-    private var busy = false
+    private var card = true
+    private var startedAt = 0
+    private var sawListening = false
+    private val onChange: () -> Unit = { render() }
 
     private fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
 
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
+        card = Store(this).talkCard
         val root = FrameLayout(this).apply { setOnClickListener { finish() } }
-        card = LinearLayout(this).apply {
+        val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(18), dp(22), dp(20))
             background = GradientDrawable().apply { cornerRadius = dp(18).toFloat(); setColor(Color.rgb(0x1A, 0x0E, 0x27)); setStroke(dp(1), accent) }
-            setOnClickListener { if (!busy) listen() }
+            setOnClickListener { if (Voice.state == Voice.State.OFF) talk() }
         }
         title = TextView(this).apply { textSize = 20f; typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD); setTextColor(accent) }
         said = TextView(this).apply { textSize = 15f; typeface = Typeface.MONOSPACE; setTextColor(textC); setPadding(0, dp(8), 0, 0) }
         meter = View(this).apply { background = GradientDrawable().apply { cornerRadius = dp(3).toFloat(); setColor(accent) } }
-        card.addView(title)
-        card.addView(said)
-        card.addView(meter, LinearLayout.LayoutParams(dp(8), dp(6)).apply { topMargin = dp(12) })
-        root.addView(card, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { setMargins(dp(14), 0, dp(14), dp(24)) })
+        box.addView(title)
+        box.addView(said)
+        box.addView(meter, LinearLayout.LayoutParams(dp(8), dp(6)).apply { topMargin = dp(12) })
+        root.addView(box, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { setMargins(dp(14), 0, dp(14), dp(24)) })
         root.setOnApplyWindowInsetsListener { v, insets ->
             val b = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.systemBars()).bottom
                     else @Suppress("DEPRECATION") insets.systemWindowInsetBottom
             v.setPadding(0, 0, 0, b)
             insets
         }
+        if (!card) { root.visibility = View.INVISIBLE; window.setDimAmount(0f) }
         setContentView(root)
-
-        ear = Ear(this,
-            partial = { said.text = it; said.setTextColor(textC) },
-            level = { rms -> meter.layoutParams = meter.layoutParams.apply { width = dp(8 + (rms.coerceIn(0f, 10f) * 22).toInt()) }; meter.requestLayout() },
-            heard = { got(it) },
-            missed = { e ->
-                show(Ear.message(e), "Tap to try again", err)
-                if (Ear.isMiss(e)) Pocket.reportMiss(this, "")
-                closeSoon(4000)
-            })
-        listen()
+        Pocket.listen(onChange)
+        talk()
     }
 
     override fun onDestroy() {
-        ear.destroy()
+        Pocket.unlisten(onChange)
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    private fun talk() {
+        main.removeCallbacksAndMessages(null)
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            if (!card) { finish(); return }
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+            show("Microphone", "Allow the microphone, then tap here.", dim)
+            return
+        }
+        val why = Pocket.talk(this, Store(this).keepListening)
+        if (why != null) {
+            if (!card) { Notes.off(this, why); finish(); return }
+            show("Can't talk yet", why, err)
+            closeSoon(4000)
+            return
+        }
+        startedAt = Voice.history.size
+        sawListening = false
+        if (!card) main.postDelayed({ finish() }, 2500)     // in case listening never starts
+        render()
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
+        if (results.isNotEmpty() && results[0] == PackageManager.PERMISSION_GRANTED) talk()
+        else { show("No microphone", "Pocket Loomy needs it to hear you.", err); closeSoon(4000) }
     }
 
     private fun show(head: String, body: String, color: Int) {
         title.text = head
         title.setTextColor(color)
         said.text = body
-        said.setTextColor(textC)
-    }
-
-    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
-        if (results.isNotEmpty() && results[0] == PackageManager.PERMISSION_GRANTED) listen()
-        else { show("No microphone", "Pocket Loomy needs it to hear you.", err); closeSoon(4000) }
     }
 
     private fun closeSoon(ms: Long) { main.removeCallbacksAndMessages(null); main.postDelayed({ finish() }, ms) }
 
-    private fun listen() {
-        main.removeCallbacksAndMessages(null)
-        Pocket.ready(this)?.let { show("Can't talk yet", it, err); closeSoon(4000); return }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
-            show("Microphone", "Allow the microphone, then tap here.", dim)
+    private fun render() {
+        val listening = Voice.state == Voice.State.LISTENING
+        if (listening) sawListening = true
+        if (!card) {                                   // no card: as soon as it listens, get out of the way
+            if (sawListening) finish()
             return
         }
-        if (!ear.available()) { show("No speech recognizer", "Open the app and type instead.", err); closeSoon(4000); return }
-        show("Listening...", "Say a command", accent)
-        ear.start()
-    }
-
-    private fun got(heard: List<String>) {
-        val cmd = heard.firstOrNull()?.let { Words.command(it) } ?: ""
-        if (cmd.isEmpty()) {
-            show("Didn't catch a command", heard.firstOrNull() ?: "", err)
-            Pocket.reportMiss(this, heard.firstOrNull() ?: "")
-            closeSoon(4000)
-            return
-        }
-        val device = Pocket.device(this)
-        val trust = Store(this).trust()
-        if (device == null || trust == null) { show("Can't talk yet", "Pair with your PC in the app first.", err); closeSoon(4000); return }
-        busy = true
-        show("Talking to Loomy...", "\u203A $cmd", accent)
-        Pocket.link.send(device, trust, Pocket.myName(this), cmd) { r ->
-            Pocket.mark(r.isSuccess)
-            runOnUiThread {
-                busy = false
-                r.onSuccess { show("\u203A $cmd", it.ifEmpty { "Done." }, ok) }.onFailure { show("\u203A $cmd", it.message ?: "Failed.", err) }
-                closeSoon(4500)
+        val last = if (Voice.history.size > startedAt) Voice.history.last() else null
+        when {
+            Voice.sending && last != null -> show("Talking to Loomy...", "\u203A ${last.cmd}", accent)
+            listening && Voice.partial.isNotEmpty() -> show(if (Voice.keep) "Listening for \u201Cayo Loomy\u201D" else "Listening...", Voice.partial, accent)
+            last != null -> {
+                show("\u203A ${last.cmd}", last.answer, if (last.bad) err else ok)
+                if (!listening) closeSoon(4500)
             }
+            listening -> show(if (Voice.keep) "Listening for \u201Cayo Loomy\u201D" else "Listening...",
+                              if (Voice.keep) "Say \u201Cayo Loomy\u201D and a command" else "Say a command", accent)
+            sawListening -> closeSoon(1500)
         }
+        val lvl = if (listening) Voice.level.coerceIn(0f, 10f) else 0f
+        meter.layoutParams = meter.layoutParams.apply { width = dp(8 + (lvl * 22).toInt()) }
+        meter.requestLayout()
     }
 }

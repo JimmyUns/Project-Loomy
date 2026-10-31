@@ -31,7 +31,8 @@ import java.util.Date
 
 // The app screen. It's drawn from state every time something changes (render()): setup steps until
 // the phone is paired, then the PC, the On switch, a big Talk button that shows what it's doing
-// (listening with the live transcript and mic level, talking to Loomy, the answer), typing, history.
+// (listening with the live transcript and mic level, talking to Loomy, the answer), typing, history,
+// and settings. Listening itself runs in PocketService (Voice), so it can carry on outside the app.
 @SuppressLint("MissingPermission", "UseSwitchCompatOrMaterialCode")
 class MainActivity : Activity() {
     private val bg = Color.rgb(0x13, 0x09, 0x1C)
@@ -44,15 +45,15 @@ class MainActivity : Activity() {
     private val ok = Color.rgb(0x8E, 0xE3, 0xB8)
     private val err = Color.rgb(0xFF, 0x7C, 0x96)
 
-    private enum class Phase { IDLE, LISTEN_CODE, LISTEN_CMD, PAIRING, SENDING }
+    private enum class Phase { IDLE, LISTEN_CODE, PAIRING, FORGETTING }   // the screen's own work; talking is Voice
 
     private lateinit var store: Store
     private lateinit var ear: Ear
     private var phase = Phase.IDLE
-    private var transcript = ""          // live while listening, then what was sent
-    private var answer = ""              // Loomy's last answer (or the last problem)
+    private var transcript = ""          // the pairing code while it's heard
+    private var answer = ""              // a problem or a note from the screen itself (pairing, forget)
     private var answerBad = false
-    private var level = 0f
+    private var shownHistory = -1
 
     // views
     private lateinit var chip: TextView
@@ -71,8 +72,15 @@ class MainActivity : Activity() {
     private lateinit var answerBox: TextView
     private lateinit var input: EditText
     private lateinit var log: LinearLayout
-    private lateinit var logScroll: ScrollView
+    private lateinit var scroll: ScrollView
+    private lateinit var footer: View
+    private lateinit var historyLabel: View
+    private lateinit var stopBtn: Button
     private var settingSwitch = false
+    private lateinit var swNotif: Switch
+    private lateinit var swKeep: Switch
+    private lateinit var swCard: Switch
+    private lateinit var swSpeed: Switch
 
     private val onChange: () -> Unit = { render() }
 
@@ -81,14 +89,14 @@ class MainActivity : Activity() {
         super.onCreate(saved)
         store = Store(this)
         Pocket.fixStaleOn(this)
-        ear = Ear(this,
+        ear = Ear(this,                      // only for hearing the pairing code
             partial = { transcript = it; render() },
-            level = { level = it; renderTalk() },
-            heard = { gotSpeech(it) },
-            missed = { missedSpeech(it) })
+            level = {},
+            heard = { gotCode(it) },
+            missed = { phase = Phase.IDLE; transcript = ""; problem(Ear.message(it)) })
         setContentView(buildUi())
         askPermissions()
-        if (!store.on) Notes.off(this)
+        Notes.syncOff(this)
         render()
     }
 
@@ -97,7 +105,7 @@ class MainActivity : Activity() {
     override fun onDestroy() { ear.destroy(); super.onDestroy() }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
-        if (!store.on && Notes.allowed(this)) Notes.off(this)
+        Notes.syncOff(this)
         render()
     }
 
@@ -145,7 +153,7 @@ class MainActivity : Activity() {
             insets
         }
 
-        // header: name + a chip saying what's going on
+        // header: name + a chip saying what's going on (stays put; the rest scrolls)
         chip = text("", dim, 12f).apply { setPadding(dp(10), dp(4), dp(10), dp(4)) }
         root.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -153,6 +161,9 @@ class MainActivity : Activity() {
             addView(chip)
         })
         root.addView(gap(14))
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll = ScrollView(this).apply { addView(content); isFillViewport = true }
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // setup: two steps, shown until the phone is paired
         step1 = text("", textC)
@@ -164,7 +175,7 @@ class MainActivity : Activity() {
             addView(gap(12))
             addView(box(text("2  Pair", accent, 13f, true), gap(6), step2, gap(10), codeBtn))
         }
-        root.addView(setup)
+        content.addView(setup)
 
         // paired: PC + On switch, Talk, live text, answer, typing
         pcName = text("", bright, 17f, true)
@@ -185,6 +196,7 @@ class MainActivity : Activity() {
             background = talkBg
             setOnClickListener { talkPressed() }
         }
+        stopBtn = button("Stop listening", false) { Pocket.stopTalking(this) }
         live = text("", accent, 16f).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(10), 0, 0) }
         answerBox = text("", textC, 17f).apply { background = rounded(card); setPadding(dp(14), dp(12), dp(14), dp(12)) }
         input = EditText(this).apply {
@@ -212,6 +224,7 @@ class MainActivity : Activity() {
                 },
                 gap(6), onLine))
             addView(talk, LinearLayout.LayoutParams(-1, dp(110)).apply { topMargin = dp(16) })
+            addView(stopBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
             addView(live)
             addView(answerBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
             addView(LinearLayout(this@MainActivity).apply {
@@ -221,20 +234,46 @@ class MainActivity : Activity() {
                 addView(button("Send", false) { sendTyped() })
             }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
-        root.addView(paired)
+        content.addView(paired)
 
-        // history + the rarely used buttons
+        // history (what was said and what Loomy answered)
+        historyLabel = text("History", dim, 12f).apply { setPadding(0, dp(14), 0, dp(2)) }
         log = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        logScroll = ScrollView(this).apply { addView(log) }
-        root.addView(text("History", dim, 12f).apply { setPadding(0, dp(14), 0, dp(2)) })
-        root.addView(logScroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(LinearLayout(this).apply {
+        content.addView(historyLabel)
+        content.addView(log)
+
+        // settings (always there: the speed meter works without pairing)
+        fun setting(label: String, about: String, onFlip: (Boolean) -> Unit) = Switch(this).apply {
+            text = label
+            setTextColor(textC)
+            typeface = Typeface.MONOSPACE
+            setPadding(0, dp(8), 0, 0)
+            setOnCheckedChangeListener { _, on -> if (!settingSwitch) onFlip(on) }
+        } to text(about, dim, 12f)
+        val (n1, n1a) = setting("Notification", "Pocket Loomy in your notifications. Off: none while it's off, and a tucked-away one while it runs.") {
+            store.showNotif = it; Pocket.sync(this) }
+        val (n2, n2a) = setting("Keep listening", "After Talk, keep listening until you stop it. Only acts on \u201Cyo/ayo Loomy ...\u201D and ignores everything else.") {
+            store.keepListening = it; render() }
+        val (n3, n3a) = setting("Talk card", "The small card when you Talk from the notification. Off: it just listens, answers show in the notification.") {
+            store.talkCard = it }
+        val (n4, n4a) = setting("Net speed", "Your phone's down/up speed in the status bar, like a speed meter app. Works with Pocket Loomy off, paused while the screen is off.") {
+            store.netSpeed = it
+            if (!Pocket.sync(this)) { store.netSpeed = false; problem("Android didn't let the speed meter start.") }
+            render()
+        }
+        swNotif = n1; swKeep = n2; swCard = n3; swSpeed = n4
+        content.addView(box(text("Settings", accent, 13f, true), n1, n1a, n2, n2a, n3, n3a, n4, n4a),
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+
+        // the rarely used buttons
+        footer = LinearLayout(this).apply {
             gravity = Gravity.END
+            setPadding(0, dp(12), 0, 0)
             addView(button("Change PC", false) { choosePc() })
             addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(8), 1))
             addView(button("Forget", false) { confirmForget() })
-            tag = "footer"
-        })
+        }
+        content.addView(footer)
         return root
     }
 
@@ -242,17 +281,28 @@ class MainActivity : Activity() {
     private fun render() {
         val t = store.trust()
         val isPaired = t != null && t.valid()
-        val busy = phase != Phase.IDLE
+        val listening = Voice.state == Voice.State.LISTENING
 
         setup.visibility = if (isPaired) View.GONE else View.VISIBLE
         paired.visibility = if (isPaired) View.VISIBLE else View.GONE
-        (logScroll.parent as LinearLayout).findViewWithTag<View>("footer").visibility = if (t != null) View.VISIBLE else View.GONE
+        footer.visibility = if (t != null) View.VISIBLE else View.GONE
+
+        settingSwitch = true
+        swNotif.isChecked = store.showNotif
+        swKeep.isChecked = store.keepListening
+        swCard.isChecked = store.talkCard
+        swSpeed.isChecked = store.netSpeed
+        onSwitch.isChecked = store.on
+        settingSwitch = false
 
         // chip
         val (chipText, chipColor) = when {
-            phase == Phase.LISTEN_CMD || phase == Phase.LISTEN_CODE -> "listening" to accent
+            phase == Phase.LISTEN_CODE -> "listening" to accent
             phase == Phase.PAIRING -> "pairing" to accent
-            phase == Phase.SENDING -> "talking to Loomy" to accent
+            phase == Phase.FORGETTING -> "forgetting" to accent
+            Voice.sending -> "talking to Loomy" to accent
+            listening && Voice.keep -> "listening for ayo Loomy" to accent
+            listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
             Pocket.linkState == LinkState.CONNECTING -> "connecting" to accent
             !Pocket.reachable -> "can't reach PC" to err
@@ -264,53 +314,63 @@ class MainActivity : Activity() {
         chip.setTextColor(chipColor)
         chip.background = rounded(card, chipColor, 20)
 
+        renderHistory()
+
         if (!isPaired) {
             step1.text = store.pcLabel?.let { "\u2713 $it" } ?: "Pick your PC from the phone's Bluetooth devices. (Pair it in Android's Bluetooth settings first.)"
             step1.setTextColor(if (store.pcLabel != null) ok else textC)
             step2.text = when {
                 t != null -> "The pairing ran out after 7 days. On the PC type /phone, then tap below and say the 8 digits."
-                phase == Phase.LISTEN_CODE -> "Listening... say the 8 digits.  ${transcript}"
+                phase == Phase.LISTEN_CODE -> "Listening... say the 8 digits.  $transcript"
                 phase == Phase.PAIRING -> "Pairing with ${store.pcLabel}..."
                 else -> "On the PC type /phone. Then tap below and say the 8 digits it shows."
             }
-            codeBtn.isEnabled = store.pcLabel != null && !busy
+            codeBtn.isEnabled = store.pcLabel != null && phase == Phase.IDLE
             codeBtn.alpha = if (codeBtn.isEnabled) 1f else 0.4f
             codeBtn.text = if (phase == Phase.LISTEN_CODE) "Listening..." else if (phase == Phase.PAIRING) "Pairing..." else "Say the code"
+            step2.setTextColor(textC)
+            if (answer.isNotEmpty() && phase == Phase.IDLE) {          // what went wrong (or a note), right where he looks
+                step2.text = answer
+                step2.setTextColor(if (answerBad) err else ok)
+            }
             return
         }
 
         pcName.text = t!!.pcName
         pcSub.text = "paired until " + DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(t.expiresAt))
-        settingSwitch = true
-        onSwitch.isChecked = store.on
-        settingSwitch = false
         val seen = if (Pocket.lastSeen > 0) " Last answer from the PC at " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(Pocket.lastSeen)) + "." else ""
-        onLine.text = if (store.on) "On: in your notifications and the Loomy tile, checks in every 5 minutes.$seen"
+        onLine.text = if (store.on) "On: Talk is in your notifications and the Loomy tile, and it checks in every 5 minutes.$seen"
                       else "Off: turn on to Talk from the notification or the Loomy quick-settings tile.$seen"
-        live.text = when (phase) {
-            Phase.LISTEN_CMD -> transcript.ifEmpty { "say a command" }
-            Phase.SENDING -> "\u203A $transcript"
-            else -> if (transcript.isNotEmpty()) "\u203A $transcript" else "try \"display extend\" or \"web gmail\""
+
+        val last = Voice.last()
+        live.text = when {
+            listening && Voice.partial.isNotEmpty() -> Voice.partial
+            listening && Voice.keep -> "say \u201Cayo Loomy\u201D and a command"
+            listening -> "say a command"
+            last != null -> "\u203A ${last.cmd}"
+            else -> "try \u201Cdisplay extend\u201D, \u201Cturn off the screen\u201D or \u201Csystem info and next tab\u201D"
         }
-        live.setTextColor(if (phase == Phase.IDLE && transcript.isEmpty()) dim else accent)
-        answerBox.visibility = if (answer.isEmpty()) View.GONE else View.VISIBLE
-        answerBox.text = answer
-        answerBox.setTextColor(if (answerBad) err else bright)
+        live.setTextColor(if (listening || last != null) accent else dim)
+        val showMine = answer.isNotEmpty()
+        val text = if (showMine) answer else last?.answer ?: ""
+        answerBox.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+        answerBox.text = text
+        answerBox.setTextColor(if (showMine && answerBad || !showMine && last?.bad == true) err else bright)
+        stopBtn.visibility = if (listening && Voice.keep) View.VISIBLE else View.GONE
         renderTalk()
     }
 
     private fun renderTalk() {
-        if (!::talk.isInitialized) return
-        val listening = phase == Phase.LISTEN_CMD
-        talk.text = when (phase) {
-            Phase.LISTEN_CMD -> "Listening..."
-            Phase.SENDING -> "Talking to Loomy..."
+        val listening = Voice.state == Voice.State.LISTENING
+        talk.text = when {
+            Voice.sending -> "Talking to Loomy..."
+            listening -> "Listening...  (tap to stop)"
+            store.keepListening -> "Talk (keeps listening)"
             else -> "Talk"
         }
-        talk.isEnabled = phase == Phase.IDLE || listening      // tap while listening = stop
         // while listening the button glows with your voice
-        val k = if (listening) (level.coerceIn(0f, 10f) / 10f) else 0f
-        talkBg.setColor(if (phase == Phase.SENDING) accentDim else blend(accent, Color.WHITE, k * 0.35f))
+        val k = if (listening) (Voice.level.coerceIn(0f, 10f) / 10f) else 0f
+        talkBg.setColor(if (Voice.sending && !listening) accentDim else blend(accent, Color.WHITE, k * 0.35f))
         talkBg.setStroke(dp(if (listening) 3 else 0), bright)
     }
 
@@ -319,13 +379,22 @@ class MainActivity : Activity() {
         (Color.green(a) + (Color.green(b) - Color.green(a)) * k).toInt(),
         (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).toInt())
 
-    private fun history(s: String, color: Int) {
-        if (log.childCount >= 60) log.removeViewAt(0)
-        log.addView(text(s, color, 13f).apply { setPadding(0, dp(3), 0, dp(3)) })
-        logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
+    // the history comes from Voice (it also holds what was said from the notification); rebuilt when it grows
+    private fun renderHistory() {
+        val h = Voice.history
+        val sig = h.size * 31 + (h.lastOrNull()?.answer?.length ?: 0)
+        if (sig == shownHistory) return
+        shownHistory = sig
+        log.removeAllViews()
+        for (e in h.takeLast(30)) {
+            log.addView(text("\u203A ${e.cmd}", accent, 13f).apply { setPadding(0, dp(4), 0, 0) })
+            log.addView(text(e.answer, if (e.bad) err else textC, 13f))
+        }
+        historyLabel.visibility = if (h.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun problem(s: String) { answer = s; answerBad = true; history(s, err); render() }
+    private fun problem(s: String) { answer = s; answerBad = true; render() }
+    private fun note(s: String) { answer = s; answerBad = false; render() }
 
     // ------------------------------------------------------------------ permissions, PC
     private fun askPermissions() {
@@ -365,7 +434,7 @@ class MainActivity : Activity() {
                     Pocket.turnOff(this)
                     store.forget()
                     Pocket.link.close()
-                    history("New PC chosen, so the old pairing is gone. Pair again.", dim)
+                    note("New PC chosen, so the old pairing is gone. Pair again.")
                 }
                 store.pcAddress = d.address
                 store.pcLabel = d.name ?: d.address
@@ -374,46 +443,26 @@ class MainActivity : Activity() {
             .show()
     }
 
-    // ------------------------------------------------------------------ listening
-    private fun listen(p: Phase) {
+    // ------------------------------------------------------------------ pairing
+    private fun startPairing() {
+        if (!bluetoothOk() || Pocket.device(this) == null) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            problem("Pocket Loomy needs the microphone to hear you."); askPermissions(); return
+            problem("Pocket Loomy needs the microphone to hear the code."); askPermissions(); return
         }
-        if (!ear.available()) { problem("This phone has no speech recognizer (Google app / Speech Services). You can still type."); return }
-        phase = p
+        if (!ear.available()) { problem("This phone has no speech recognizer (Google app / Speech Services)."); return }
+        phase = Phase.LISTEN_CODE
         transcript = ""
-        level = 0f
+        answer = ""
         render()
         ear.start()
     }
 
-    private fun gotSpeech(heard: List<String>) {
-        val was = phase
-        phase = Phase.IDLE
-        if (was == Phase.LISTEN_CODE) gotCode(heard) else gotCommand(heard)
-    }
-
-    private fun missedSpeech(error: Int) {
-        val was = phase
-        phase = Phase.IDLE
-        transcript = ""
-        problem(Ear.message(error))
-        if (was == Phase.LISTEN_CMD && Ear.isMiss(error)) Pocket.reportMiss(this, "")   // the PC shows misses too
-    }
-
-    // ------------------------------------------------------------------ pairing
-    private fun startPairing() {
-        if (!bluetoothOk() || Pocket.device(this) == null) return
-        listen(Phase.LISTEN_CODE)
-    }
-
     private fun gotCode(heard: List<String>) {
         val code = heard.firstNotNullOfOrNull { Words.code(it) }
-        if (code == null) { problem("Didn't hear 8 digits (heard: ${heard.firstOrNull() ?: "nothing"}). Try again."); return }
+        if (code == null) { phase = Phase.IDLE; problem("Didn't hear 8 digits (heard: ${heard.firstOrNull() ?: "nothing"}). Try again."); return }
         val device = Pocket.device(this) ?: return
         phase = Phase.PAIRING
         transcript = "${code.substring(0, 4)} ${code.substring(4)}"
-        history("Heard $transcript. Pairing...", textC)
         render()
         Pocket.link.pair(device, code, Pocket.myName(this)) { result ->
             runOnUiThread {
@@ -422,10 +471,7 @@ class MainActivity : Activity() {
                 result.onSuccess { t ->
                     store.save(t)
                     Pocket.mark(true)
-                    answer = "Paired with ${t.pcName}. Trusted for 7 days."
-                    answerBad = false
-                    history(answer, ok)
-                    render()
+                    note("Paired with ${t.pcName}. Trusted for 7 days.")
                     offerOn()
                 }.onFailure { problem(it.message ?: "Pairing failed.") }
             }
@@ -446,7 +492,7 @@ class MainActivity : Activity() {
     private fun toggleOn(want: Boolean) {
         if (!want) { Pocket.turnOff(this); render(); return }
         val why = Pocket.turnOn(this)
-        if (why != null) { problem(why); render(); return }
+        if (why != null) { problem(why); return }
         askBatteryOnce()
         render()
     }
@@ -481,66 +527,32 @@ class MainActivity : Activity() {
         val device = Pocket.device(this)
         val t = store.trust()
         val done = { told: Boolean ->
+            phase = Phase.IDLE
             Pocket.turnOff(this)
             store.forget()
             Pocket.lastSeen = 0
-            answer = if (told) "Forgot ${t?.pcName ?: "the PC"}, and the PC forgot this phone too."
-                     else "Forgot the pairing here. The PC wasn't reachable, so type /phone forget on it too."
-            answerBad = !told
-            history(answer, if (told) ok else err)
-            render()
+            if (told) note("Forgot ${t?.pcName ?: "the PC"}, and the PC forgot this phone too.")
+            else problem("Forgot the pairing here. The PC wasn't reachable, so type /phone forget on it too.")
         }
         if (device == null || t == null || !t.valid() || !Pocket.canConnect(this)) { done(false); return }
-        phase = Phase.SENDING
-        transcript = "forget"
+        Pocket.stopTalking(this)
+        phase = Phase.FORGETTING
         render()
-        Pocket.link.forget(device, t, Pocket.myName(this)) { r -> runOnUiThread { phase = Phase.IDLE; transcript = ""; done(r.isSuccess) } }
+        Pocket.link.forget(device, t, Pocket.myName(this)) { r -> runOnUiThread { done(r.isSuccess) } }
     }
 
     // ------------------------------------------------------------------ commands
     private fun talkPressed() {
-        if (phase == Phase.LISTEN_CMD) { ear.cancel(); phase = Phase.IDLE; transcript = ""; render(); return }
-        Pocket.ready(this)?.let { problem(it); return }
-        listen(Phase.LISTEN_CMD)
-    }
-
-    private fun gotCommand(heard: List<String>) {
-        val cmd = heard.firstOrNull()?.let { Words.command(it) } ?: ""
-        if (cmd.isEmpty()) {
-            transcript = ""
-            problem("Didn't catch a command.")
-            Pocket.reportMiss(this, heard.firstOrNull() ?: "")
-            return
-        }
-        send(cmd)
+        answer = ""
+        if (Voice.state != Voice.State.OFF) { Pocket.stopTalking(this); return }
+        Pocket.talk(this, store.keepListening)?.let { problem(it) }
     }
 
     private fun sendTyped() {
         val cmd = Words.command(input.text.toString())
         if (cmd.isEmpty()) return
         input.setText("")
-        send(cmd)
-    }
-
-    private fun send(cmd: String) {
-        Pocket.ready(this)?.let { problem(it); return }
-        val device = Pocket.device(this) ?: return
-        val t = store.trust() ?: return
-        phase = Phase.SENDING
-        transcript = cmd
-        history("\u203A $cmd", accent)
-        render()
-        Pocket.link.send(device, t, Pocket.myName(this), cmd) { result ->
-            Pocket.mark(result.isSuccess)
-            runOnUiThread {
-                phase = Phase.IDLE
-                result.onSuccess {
-                    answer = it.ifEmpty { "Done." }
-                    answerBad = false
-                    history(answer, textC)
-                    render()
-                }.onFailure { problem(it.message ?: "Failed.") }
-            }
-        }
+        answer = ""
+        Voice.send(this, cmd)
     }
 }

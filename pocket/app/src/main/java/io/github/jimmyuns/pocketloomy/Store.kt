@@ -37,6 +37,24 @@ class Store(ctx: Context) {
         get() = prefs.getBoolean("asked_battery", false)
         set(v) { prefs.edit().putBoolean("asked_battery", v).apply() }
 
+    // settings (his 2.18 feedback)
+    /** Pocket Loomy in the notifications: off = no "off" notification, and a minimized one while it runs */
+    var showNotif: Boolean
+        get() = prefs.getBoolean("show_notif", true)
+        set(v) { prefs.edit().putBoolean("show_notif", v).apply() }
+    /** after Talk, keep listening (for "yo/ayo Loomy ...") until stopped */
+    var keepListening: Boolean
+        get() = prefs.getBoolean("keep_listening", false)
+        set(v) { prefs.edit().putBoolean("keep_listening", v).apply() }
+    /** the small card over other apps when Talk is pressed in the notification */
+    var talkCard: Boolean
+        get() = prefs.getBoolean("talk_card", true)
+        set(v) { prefs.edit().putBoolean("talk_card", v).apply() }
+    /** the phone's up/down speed in the status bar */
+    var netSpeed: Boolean
+        get() = prefs.getBoolean("net_speed", false)
+        set(v) { prefs.edit().putBoolean("net_speed", v).apply() }
+
     fun trust(): Trust? {
         val sealed = prefs.getString("trust", null) ?: return null
         return try {

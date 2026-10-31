@@ -66,33 +66,76 @@ object Pocket {
 
     fun pcName(ctx: Context) = Store(ctx).trust()?.pcName ?: Store(ctx).pcLabel ?: "your PC"
 
+    /** anything that needs the service: Pocket Loomy on, listening, or the net speed meter */
+    fun wantsService(ctx: Context) = Store(ctx).on || Store(ctx).netSpeed || Voice.state != Voice.State.OFF
+
+    /** bring the service and the notifications in line with the switches. Returns false if Android refused. */
+    fun sync(ctx: Context): Boolean {
+        var ok = true
+        if (wantsService(ctx)) {
+            try { ctx.startForegroundService(Intent(ctx, PocketService::class.java).setAction(PocketService.SYNC)) }
+            catch (e: Exception) { ok = false }                     // Android refuses some background starts
+        } else if (PocketService.running) {
+            ctx.stopService(Intent(ctx, PocketService::class.java))
+        }
+        Notes.syncOff(ctx)
+        refreshTile(ctx)
+        changed()
+        return ok
+    }
+
     /** the On switch. Returns why it couldn't, or null. */
     fun turnOn(ctx: Context): String? {
         ready(ctx)?.let { Notes.off(ctx, it); return it }
-        try {
-            ctx.startForegroundService(Intent(ctx, PocketService::class.java))
-        } catch (e: Exception) {          // Android refuses some background starts
+        Store(ctx).on = true
+        if (!sync(ctx)) {
+            Store(ctx).on = false
             val why = "Open Pocket Loomy to turn it on."
             Notes.off(ctx, why)
             return why
         }
-        Notes.clearOff(ctx)
-        refreshTile(ctx)
         return null
     }
 
     fun turnOff(ctx: Context, why: String? = null) {
-        ctx.stopService(Intent(ctx, PocketService::class.java))
         Store(ctx).on = false
-        Notes.off(ctx, why)
-        refreshTile(ctx)
-        changed()
+        Voice.stop()
+        sync(ctx)
+        if (why != null) Notes.off(ctx, why)
     }
 
-    /** the service died with the app (no onDestroy): don't pretend it's still on */
+    /** Talk: listening runs in the service (microphone shown in use). Returns why it couldn't, or null. */
+    fun talk(ctx: Context, keep: Boolean): String? {
+        ready(ctx)?.let { return it }
+        if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+            return "Pocket Loomy needs the microphone (open the app)."
+        return try {
+            ctx.startForegroundService(Intent(ctx, PocketService::class.java).setAction(PocketService.LISTEN)
+                .putExtra(PocketService.KEEP, keep))
+            null
+        } catch (e: Exception) { "Open Pocket Loomy to talk." }
+    }
+
+    fun stopTalking(ctx: Context) {
+        Voice.stop()
+        sync(ctx)
+    }
+
+    /** the notification's second line while Pocket Loomy is on */
+    fun status(ctx: Context): String {
+        val pc = pcName(ctx)
+        return when {
+            !reachable -> "Can't reach $pc right now"
+            lastSeen > 0 -> "$pc, last answer at " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(lastSeen))
+            else -> pc
+        }
+    }
+
+    /** the service died with the app (no onDestroy): don't pretend it's still on; the speed meter comes back */
     fun fixStaleOn(ctx: Context) {
         val s = Store(ctx)
         if (s.on && !PocketService.running) s.on = false
+        if (s.netSpeed && !PocketService.running) sync(ctx)
     }
 
     /** a failed attempt: tell the PC so it shows there too */

@@ -155,7 +155,8 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
 - **IN PROGRESS: the Pocket Loomy Android app** on `claude/v2.18` (draft PR #16), in `pocket/` — status in
   `POCKET-HANDOVER.md` §11. He added `.github/workflows/pocket.yml` on the branch (pull before pushing). **First real test
   worked** (pairing + commands). His feedback is in as 2.18 (protocol v2: notes + forget; misses and refusals shown
-  on the PC; notification + tile + 5-min ping; state-driven screen; "slash" words). **Next: his queued feedback, `POCKET-HANDOVER.md` §12.** App (Kotlin + the same `pocket.c` via the
+  on the PC; notification + tile + 5-min ping; state-driven screen; "slash" words). His second round of feedback is built (`POCKET-HANDOVER.md` §12); waiting on his test of that build.
+  Later (his call, separate build): slash commands from the phone behind an extra security step. App (Kotlin + the same `pocket.c` via the
   NDK). The APK goes on the same `vX.Y` release as `loomy.exe` (an APK-only release would look like the latest
   release to `/update`). The sandbox can't build it; that needs a workflow change only he can make.
 - **v2.17 is released** (PR #15, tag `v2.17`, exe 206,848 B built by Actions first try). He tested on Windows: Loomy
