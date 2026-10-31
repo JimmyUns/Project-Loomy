@@ -154,3 +154,29 @@ ULONGLONG g_now = 13400000000ull;
 ULONGLONG os_now(void) { return g_now; }
 void os_fmt_time(ULONGLONG s, wchar_t *b, int cap, int day) { swprintf(b, cap, day ? L"Day%llu %02d:%02d" : L"%02d:%02d", s / 86400 % 1000, (int)(s / 3600 % 24), (int)(s / 60 % 60)); if (!day) swprintf(b, cap, L"%02d:%02d", (int)(s / 3600 % 24), (int)(s / 60 % 60)); }
 int os_pc_name(char *u, int cap) { strcpy(u, "JIMMY-PC"); return 8; }
+// screen helpers for the phone's "input" (the real ones live in ui.c): same dispatch, real modules
+int g_shiftFake, g_screensOn;
+int ui_shift(void) { return g_shiftFake; }
+int ui_panel_open(void) { return web_active() || display_active() || sysinfo_active() || pkg_active() || phone_active(); }
+void ui_close_panels(void) { sysinfo_close(); web_close(); display_close(); pkg_close(); phone_close(); }
+int ui_panel_key(WPARAM vk, int shift) {
+    if (!ui_panel_open()) return 0;
+    g_shiftFake = shift;
+    if (sysinfo_active()) sysinfo_key(vk); else if (web_active()) web_key(vk); else if (display_active()) display_key(vk);
+    else if (pkg_active()) pkg_key(vk); else if (phone_active()) phone_key(vk);
+    g_shiftFake = 0;
+    return 1;
+}
+int ui_panel_char(wchar_t ch) {
+    if (!ui_panel_open()) return 0;
+    if (pkg_active()) pkg_char(ch); else if (phone_active()) phone_char(ch);
+    return 1;
+}
+void ui_panel_choices(wchar_t *b, int cap) {
+    b[0] = 0;
+    if (sysinfo_active()) sysinfo_choices(b, cap);
+    else if (display_active()) display_choices(b, cap);
+    else if (web_active()) web_choices(b, cap);
+    else if (ui_panel_open()) wcscpy(b, L"A screen is open on the PC.");
+}
+void ui_screens_on(void) { g_screensOn++; }

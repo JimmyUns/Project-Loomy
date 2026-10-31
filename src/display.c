@@ -1,11 +1,12 @@
 // display.c - the `display` command: switch how your screens are used, like Win+P.
 //   display                      picker panel: Up/Down, Enter switches, Esc closes
-//   display extend|second|pc|duplicate|off
+//   display extend|second|pc|duplicate|off|on
 //
 // Uses the same Windows call Win+P does (SetDisplayConfig with a topology), so no admin,
 // and Windows remembers each layout's resolution/arrangement on its own.
 // "off" isn't a layout: it puts the screens to standby (like their power button), so the
-// layout never changes and any key or mouse move wakes them in the same style.
+// layout never changes and any key or mouse move wakes them in the same style. "on" wakes
+// them again (for Pocket Loomy: "screen on" from the phone, when nobody's at the mouse).
 #include "loomy.h"
 
 #define NLAYOUTS 4          // real Win+P layouts
@@ -69,10 +70,11 @@ void cmd_display(wchar_t *args) {
     wchar_t *w[2];
     int n = s_words(args, w, 2);
     if (n == 0) { display_open(); return; }
+    if (s_ieq(w[0], L"on")) { ui_screens_on(); out(OUT_OK, L"Screens on."); return; }
     int i = find_layout(w[0]);
     if (i < 0) {
         outf(OUT_ERR, L"No display layout called '%s'.", w[0]);
-        cmd_usage(L"[extend|second|pc|duplicate|off]");
+        cmd_usage(L"[extend|second|pc|duplicate|off|on]");
         return;
     }
     apply(i);
@@ -80,6 +82,11 @@ void cmd_display(wchar_t *args) {
 
 void display_complete(const wchar_t *partial) {
     for (int i = 0; i < NROWS; i++) complete_add(WORD_[i], partial);
+    complete_add(L"on", partial);
+}
+
+void display_choices(wchar_t *b, int cap) {
+    s_cpy(b, L"Layouts: extend, second, pc, duplicate, off (say \u201Cdisplay extend\u201D, or \u201Cinput down\u201D then \u201Cinput enter\u201D).", cap);
 }
 
 // ---------------------------------------------------------------- the picker panel

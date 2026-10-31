@@ -301,9 +301,9 @@ static void paired(void) {
 }
 
 static void reply(const wchar_t *w) {
-    wchar_t buf[320];
+    wchar_t buf[PK_TEXTMAX + 1];
     char u8[PK_TEXTMAX + 1];
-    s_cpy(buf, w, 320);
+    s_cpy(buf, w, PK_TEXTMAX + 1);
     int len = s_len(buf);
     for (;;) {
         int need = len ? WideCharToMultiByte(CP_UTF8, 0, buf, len, 0, 0, 0, 0) : 0;
@@ -324,41 +324,89 @@ void phone_out_tap(int kind, const wchar_t *text) {
     s_cat(g_cap, text, 600);
 }
 
-// every attempt from the phone shows in Loomy, run or not, so you can see what it heard
+// every attempt from the phone shows in Loomy, run or not, so you can see what it heard.
+// The answer for the phone builds up in g_rep (several commands can come in one go: "si and input next tab").
+static wchar_t g_rep[600];
+
+static void rep(const wchar_t *t) {
+    if (!t || !*t) return;
+    if (g_rep[0]) s_cat(g_rep, L"\n", 600);
+    s_cat(g_rep, t, 600);
+}
+
 static void heard(const wchar_t *t) { out(OUT_DIM, L"From your phone:"); out(OUT_ECHO, t); }
 
 static void refuse(const wchar_t *t, const wchar_t *msg) {
     out(OUT_ERR, msg);
     log_add(L"Phone: \"%s\" (%s)", t, msg);
-    reply(msg);
+    rep(msg);
 }
 
-// what the phone may do: open/show and hide Loomy, and the plain commands marked .phone
-static void run_from_phone(void) {
-    wchar_t line[PK_TEXTMAX + 1];
-    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)g_pk.text, g_pk.textlen, line, PK_TEXTMAX);
-    int bad = n <= 0;
-    for (int i = 0; i < n && !bad; i++) if (line[i] < 0x20 || line[i] == 0x7F) bad = 1;
-    if (bad) {
-        out(OUT_ERR, L"From your phone: something unreadable (bad characters). Ignored.");
-        log_add(L"Phone sent something unreadable.");
-        reply(n <= 0 ? L"I couldn't read that." : L"That had control characters in it.");
+// "input back", "input next tab", "input down 3", "input n": keys into Loomy's open screen, nothing else
+static const struct { const wchar_t *say; WPARAM vk; int shift; } KEYS[] = {
+    { L"back", VK_ESCAPE, 0 }, { L"escape", VK_ESCAPE, 0 }, { L"esc", VK_ESCAPE, 0 }, { L"close", VK_ESCAPE, 0 },
+    { L"exit", VK_ESCAPE, 0 }, { L"cancel", VK_ESCAPE, 0 },
+    { L"next tab", VK_TAB, 0 }, { L"next", VK_TAB, 0 }, { L"tab", VK_TAB, 0 }, { L"next view", VK_TAB, 0 },
+    { L"previous tab", VK_TAB, 1 }, { L"previous", VK_TAB, 1 }, { L"prev", VK_TAB, 1 }, { L"last tab", VK_TAB, 1 },
+    { L"back tab", VK_TAB, 1 }, { L"shift tab", VK_TAB, 1 },
+    { L"up", VK_UP, 0 }, { L"down", VK_DOWN, 0 }, { L"left", VK_LEFT, 0 }, { L"right", VK_RIGHT, 0 },
+    { L"enter", VK_RETURN, 0 }, { L"select", VK_RETURN, 0 }, { L"ok", VK_RETURN, 0 }, { L"okay", VK_RETURN, 0 },
+    { L"open", VK_RETURN, 0 }, { L"confirm", VK_RETURN, 0 }, { L"return", VK_RETURN, 0 }, { L"yes", VK_RETURN, 0 },
+    { L"page up", VK_PRIOR, 0 }, { L"page down", VK_NEXT, 0 }, { L"home", VK_HOME, 0 }, { L"top", VK_HOME, 0 },
+    { L"end", VK_END, 0 }, { L"bottom", VK_END, 0 }, { L"delete", VK_DELETE, 0 }, { L"space", 0, 0 },
+};
+static const wchar_t *NUMW[] = { L"one", L"two", L"three", L"four", L"five", L"six", L"seven", L"eight", L"nine" };
+
+static void phone_input(const wchar_t *t, wchar_t *what) {
+    wchar_t k[64];
+    s_cpy(k, what, 64);
+    s_lower(k);
+    // a trailing count: "down 3", "down three", "down 3 times"
+    int times = 1, n = s_len(k);
+    if (n > 6 && s_ieq(k + n - 6, L" times")) { k[n - 6] = 0; n -= 6; }
+    wchar_t *sp = 0;
+    for (int i = n - 1; i > 0; i--) if (k[i] == L' ') { sp = k + i; break; }
+    if (sp) {
+        if (sp[1] >= L'1' && sp[1] <= L'9' && !sp[2]) { times = sp[1] - L'0'; *sp = 0; }
+        else for (int i = 0; i < 9; i++) if (s_ieq(sp + 1, NUMW[i])) { times = i + 1; *sp = 0; break; }
+    }
+    heard(t);
+    if (!ui_panel_open()) { refuse(t, L"Nothing is open on the PC to press keys in."); return; }
+    int found = -1;
+    for (int i = 0; i < (int)(sizeof KEYS / sizeof KEYS[0]); i++) if (s_ieq(k, KEYS[i].say)) { found = i; break; }
+    int ch = 0;
+    if (found < 0 && s_len(k) == 1 && ((k[0] >= L'a' && k[0] <= L'z') || (k[0] >= L'0' && k[0] <= L'9'))) ch = k[0];
+    if (found >= 0 && !KEYS[found].vk) ch = L' ';
+    if (found < 0 && !ch) {
+        wchar_t msg[120];
+        wsprintfW(msg, L"No key called '%s'. Try back, next tab, up, down, enter.", k);
+        refuse(t, msg);
         return;
     }
-    line[n] = 0;
-    wchar_t *t = s_trim(line);
-    if (!*t) { reply(L"Say a command."); return; }
+    for (int i = 0; i < times && ui_panel_open(); i++) {
+        if (ch) ui_panel_char((wchar_t)ch);
+        else ui_panel_key(KEYS[found].vk, KEYS[found].shift);
+    }
+    log_add(L"Phone: input %s", k);
+    wchar_t c[400];
+    ui_panel_choices(c, 400);
+    rep(c[0] ? c : L"Closed.");
+}
 
+// one command from the phone
+static void run_one(wchar_t *t) {
     wchar_t first[48];
     int k = 0;
     while (t[k] && t[k] != L' ' && k < 47) { first[k] = t[k]; k++; }
     first[k] = 0;
-    int alone = !t[k] || !*s_trim(t + k);
+    wchar_t *rest = s_trim(t + k);
+    int alone = !*rest;
+    if ((s_ieq(first, L"input") || s_ieq(first, L"press")) && !alone) { phone_input(t, rest); return; }
     if (alone && (s_ieq(first, L"open") || s_ieq(first, L"show"))) {
-        heard(t); log_add(L"Phone: open"); ui_show(); reply(L"Opening Loomy."); return;
+        heard(t); log_add(L"Phone: open"); ui_show(); rep(L"Opening Loomy."); return;
     }
     if (alone && s_ieq(first, L"hide")) {
-        heard(t); log_add(L"Phone: hide"); ui_hide(); reply(L"Hidden."); return;
+        heard(t); log_add(L"Phone: hide"); ui_hide(); rep(L"Hidden."); return;
     }
     wchar_t msg[160];
     int ok = cmd_phone_ok(first);
@@ -370,15 +418,67 @@ static void run_from_phone(void) {
         refuse(t, msg);
         return;
     }
-
+    if (ui_panel_open()) ui_close_panels();          // a new command starts from the main screen
     log_add(L"Phone: %s", t);
     out(OUT_DIM, L"From your phone:");
     g_cap[0] = 0;
     g_capturing = 1;
     cmd_run(t);
     g_capturing = 0;
-    reply(g_cap[0] ? g_cap : L"Done.");
+    if (s_ieq(first, L"help")) {                     // the PC's table is too wide for a phone: a short list instead
+        wchar_t h[400];
+        cmd_phone_help(h, 400);
+        rep(h);
+    } else rep(g_cap[0] ? g_cap : L"Done.");
+    if (ui_panel_open()) {                           // it opened a screen: say what's in it
+        wchar_t c[400];
+        ui_panel_choices(c, 400);
+        rep(c);
+    }
     ui_show_if_panel();
+}
+
+// what came from the phone: one command, or several joined by "and" ("si and input next tab").
+// "and" only splits where a command (or input/open/hide) follows, so "lp salt and pepper" stays whole.
+static void run_from_phone(void) {
+    wchar_t line[PK_TEXTMAX + 1];
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)g_pk.text, g_pk.textlen, line, PK_TEXTMAX);
+    int bad = n <= 0;
+    for (int i = 0; i < n && !bad; i++) if (line[i] < 0x20 || line[i] == 0x7F) bad = 1;
+    g_rep[0] = 0;
+    if (bad) {
+        out(OUT_ERR, L"From your phone: something unreadable (bad characters). Ignored.");
+        log_add(L"Phone sent something unreadable.");
+        reply(n <= 0 ? L"I couldn't read that." : L"That had control characters in it.");
+        return;
+    }
+    line[n] = 0;
+    wchar_t *t = s_trim(line);
+    if (!*t) { reply(L"Say a command."); return; }
+
+    wchar_t *parts[6];
+    int np = 0;
+    parts[np++] = t;
+    for (wchar_t *p = t; *p && np < 6; p++) {
+        if (p[0] != L' ' || !((p[1] | 32) == L'a' && (p[2] | 32) == L'n' && (p[3] | 32) == L'd' && p[4] == L' ')) continue;
+        wchar_t next[48];
+        int k = 0;
+        const wchar_t *q = p + 5;
+        while (*q == L' ') q++;
+        while (q[k] && q[k] != L' ' && k < 47) { next[k] = q[k]; k++; }
+        next[k] = 0;
+        int cmd = s_ieq(next, L"input") || s_ieq(next, L"press") || s_ieq(next, L"open") || s_ieq(next, L"show") ||
+                  s_ieq(next, L"hide") || (next[0] != L'/' && cmd_phone_ok(next) == 1);
+        if (!cmd) continue;
+        *p = 0;
+        parts[np++] = (wchar_t *)q;
+        p = (wchar_t *)q - 1;
+    }
+    for (int i = 0; i < np; i++) {
+        wchar_t *one = s_trim(parts[i]);
+        if (*one) run_one(one);
+    }
+    reply(g_rep[0] ? g_rep : L"Done.");
 }
 
 // the phone heard something it couldn't turn into a command (or nothing at all)

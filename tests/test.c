@@ -236,8 +236,8 @@ int main(void) {
     run(L"display second");     EXPECT(saw(L"Already on Second screen only") && g_setcalls == c && !g_hidden, "already: no switch, stays open"); }
     run(L"display pc");         EXPECT(g_topo == SDC_TOPOLOGY_INTERNAL, "pc");
     run(L"display duplicate");  EXPECT(g_topo == SDC_TOPOLOGY_CLONE, "duplicate");
-    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate|off]"), "unknown layout");
-    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate|off]"), "strict args");
+    run(L"display mirror");     EXPECT(saw(L"No display layout called 'mirror'") && saw(L"Usage: display [extend|second|pc|duplicate|off|on]"), "unknown layout");
+    run(L"display extend now"); EXPECT(saw(L"Usage: display [extend|second|pc|duplicate|off|on]"), "strict args");
     run(L"/display");           EXPECT(saw(L"no slash"), "display is plain");
     g_screens = 1; g_hidden = 0;
     run(L"display extend");     EXPECT(saw(L"couldn't switch to Extend") && saw(L"plugged in") && !g_hidden, "one screen: clear error, stays open");
@@ -248,12 +248,12 @@ int main(void) {
     tab(L"display s", L"display second ");
     tab(L"dp d", L"dp duplicate ");
     tab(L"display ", 0);
-    tab(L"dp o", L"dp off ");
+    tab(L"dp of", L"dp off ");
     { int c = g_setcalls, t = g_topo; g_hidden = 0; g_screensOff = 0;
     run(L"dp off");             EXPECT(g_screensOff == 1 && g_hidden && g_setcalls == c && g_topo == t && saw(L"Screens off"), "dp off: standby, hides, layout untouched");
     g_hidden = 0;
     run(L"display Off");        EXPECT(g_screensOff == 2 && g_hidden, "off, any case");
-    run(L"dp off now");         EXPECT(g_screensOff == 2 && saw(L"Usage: dp [extend|second|pc|duplicate|off]"), "off takes nothing more");
+    run(L"dp off now");         EXPECT(g_screensOff == 2 && saw(L"Usage: dp [extend|second|pc|duplicate|off|on]"), "off takes nothing more");
     display_open(); display_key(VK_END); display_key(VK_RETURN);
     EXPECT(g_screensOff == 3 && g_setcalls == c && !display_active(), "End = last row = screens off");
     display_open(); display_char(L'o'); display_key(VK_RETURN);
@@ -594,8 +594,8 @@ int main(void) {
         const char *a = ask("rb");  EXPECT(strstr(a, "Opening the recycle bin") && g_nopened == 1, "rb runs and answers");
         EXPECT(saw(L"From your phone:"), "Loomy shows it came from the phone");
         a = ask("  RB  ");          EXPECT(strstr(a, "recycle bin"), "trimmed, any case");
-        a = ask("help");            EXPECT(!strcmp(a, "'help' only works on the PC."), "help isn't phone-safe");
-        a = ask("lp");              EXPECT(strstr(a, "only works on the PC"), "lp isn't phone-safe");
+        a = ask("help");            EXPECT(strstr(a, "You can say: open, hide, input <key>") && strstr(a, "rb") && strstr(a, "sysinfo/si"), "2.18: help runs from the phone, short list back");
+        a = ask("web now please");  EXPECT(strstr(a, "Usage: web") || strstr(a, "No site"), "plain commands keep their strict args");
         a = ask("/shutdown");       EXPECT(!strcmp(a, "Slash commands only work on the PC."), "no slash commands");
         a = ask("/pkg remove phone"); EXPECT(strstr(a, "Slash") && feature_on(FEAT_PHONE), "can't turn itself off");
         a = ask("/banana");         EXPECT(strstr(a, "don't know"), "unknown slash");
@@ -612,6 +612,22 @@ int main(void) {
         a = ask("web");             EXPECT(strstr(a, "don't know"), "a /pkg-off feature is off for the phone too");
         run(L"/pkg add web");
         { ph_nev = 0; pk_send_ping(&ph); pump(); EXPECT(ph_saw(PK_EV_PONG), "ping, pong"); }
+        // 2.18: screens, input keys, chains, choices
+        extern int g_screensOn;
+        a = ask("display on");      EXPECT(g_screensOn == 1 && strstr(a, "Screens on"), "display on wakes the screens");
+        a = ask("display");         EXPECT(display_active() && strstr(a, "Layouts: extend, second"), "a picker lists its choices for the phone");
+        a = ask("input down");      EXPECT(display_active() && strstr(a, "Layouts"), "input down moves in the open picker");
+        a = ask("input back");      EXPECT(!display_active() && strstr(a, "Closed."), "input back closes it");
+        a = ask("input back");      EXPECT(strstr(a, "Nothing is open"), "input with nothing open");
+        a = ask("display");         a = ask("input banana"); EXPECT(strstr(a, "No key called 'banana'"), "unknown key");
+        a = ask("rb");              EXPECT(!display_active(), "a new command closes the open screen first");
+        a = ask("web");             EXPECT(web_active() && strstr(a, "Sites:") , "web panel: lists the sites");
+        a = ask("display and input down 2 and input back");
+        EXPECT(!display_active() && strstr(a, "Layouts") && strstr(a, "Closed."), "chain: display, down twice, back");
+        a = ask("rb and banana");   EXPECT(strstr(a, "Usage: rb"), "\"and\" only splits before a command (rb gets \"and banana\")");
+        a = ask("rb and help");     EXPECT(strstr(a, "recycle bin") && strstr(a, "si"), "two commands, two answers");
+        a = ask("display and input tab"); EXPECT(display_active(), "a key the picker ignores is fine");
+        ask("input back");
         { last_out = g_nout; pk_send_note(&ph, (const uint8_t *)"lumi displaay", 13); pump();
           EXPECT(saw(L"didn't catch a command (heard \"lumi displaay\")"), "a missed command shows on the PC");
           last_out = g_nout; pk_send_note(&ph, (const uint8_t *)"", 0); pump();

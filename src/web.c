@@ -472,6 +472,17 @@ static char g_opened[MAX_SITES];          // web many: which rows you've opened 
 
 int web_active(void) { return g_active; }
 
+// for Pocket Loomy: the saved sites, so the phone can show them
+void web_choices(wchar_t *b, int cap) {
+    s_cpy(b, g_n ? L"Sites: " : L"No saved sites yet (/webconfig on the PC).", cap);
+    for (int i = 0; i < g_n; i++) {
+        if (s_len(b) + s_len(g_s[i].alias) + 40 >= cap) { s_cat(b, L", ...", cap); break; }
+        if (i) s_cat(b, L", ", cap);
+        s_cat(b, g_s[i].alias, cap);
+    }
+    if (g_n) s_cat(b, L". Say \u201Cweb <name>\u201D.", cap);
+}
+
 void web_open(int many) {
     g_many = many;
     memset(g_opened, 0, sizeof(g_opened));

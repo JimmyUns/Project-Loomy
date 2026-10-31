@@ -39,7 +39,7 @@ class Link {
             done(runCatching {
                 val bytes = text.toByteArray(Charsets.UTF_8)
                 if (bytes.isEmpty()) throw PocketError("Say a command.")
-                if (bytes.size > 400) throw PocketError("That command is too long.")
+                if (bytes.size > 480) throw PocketError("That command is too long.")
                 session(device, trust, myName) {
                     Native.sendCmd(h, bytes)
                     pumpUntil(Native.EV_REPLY, 15)
@@ -61,7 +61,7 @@ class Link {
         worker.execute {
             runCatching {
                 var b = heard.toByteArray(Charsets.UTF_8)
-                if (b.size > 400) b = b.copyOf(400)
+                if (b.size > 480) b = b.copyOf(480)
                 session(device, trust, myName) { Native.sendNote(h, b); flushOut() }
             }
         }

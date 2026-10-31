@@ -14,7 +14,7 @@
 #define PK_MAXFRAME  512        // body bytes per frame; the 2-byte length prefix comes on top
 #define PK_CODELEN   8          // pairing code digits
 #define PK_NAMEMAX   48         // device name bytes (UTF-8) carried in the handshakes
-#define PK_TEXTMAX   400        // command / reply text bytes
+#define PK_TEXTMAX   480        // command / reply text bytes (fits one 512-byte frame)
 #define PK_MAC       16
 
 enum { PK_PC, PK_PHONE };

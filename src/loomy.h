@@ -81,6 +81,16 @@ void ui_show_if_panel(void);                          // a panel opened while hi
 void ui_balloon(const wchar_t *title, const wchar_t *msg);   // tray notification
 void ui_set_timer(int id, int ms);                    // 0 = stop it
 HWND ui_hwnd(void);
+int  ui_shift(void);                                  // Shift held (or faked by the phone's "input")
+int  ui_panel_open(void);                             // any screen/panel/list open
+void ui_close_panels(void);
+int  ui_panel_key(WPARAM vk, int shift);              // a key into the open screen (0 = none open)
+int  ui_panel_char(wchar_t ch);
+void ui_panel_choices(wchar_t *buf, int cap);         // what you can pick there, in words
+void ui_screens_on(void);                             // wake them after `dp off`
+void sysinfo_choices(wchar_t *buf, int cap);
+void display_choices(wchar_t *buf, int cap);
+void web_choices(wchar_t *buf, int cap);
 
 // ---------- commands.c ----------
 void cmd_run(wchar_t *line);
@@ -93,7 +103,8 @@ const wchar_t *folders_dir(void);                     // %APPDATA%\Loomy\Folders
 const wchar_t *cmd_typed(void);                       // the command word as typed, e.g. "/m"
 void cmd_usage(const wchar_t *shape);                 // prints "Usage: <typed> <shape>"
 void complete_add(const wchar_t *candidate, const wchar_t *partial);   // for Tab completion
-int  cmd_phone_ok(const wchar_t *word);               // 1 = may run from the phone, -1 = PC only, 0 = unknown
+int  cmd_phone_ok(const wchar_t *word);
+void cmd_phone_help(wchar_t *buf, int cap);           // the phone's short "help"               // 1 = may run from the phone, -1 = PC only, 0 = unknown
 
 // ---------- modes.c (home / work / core, the /mode command + picker panel) ----------
 #define NMODES 3

@@ -57,7 +57,7 @@ fun main() {
     check(toPhone(p2, TestPc.takeOut(pc2)).contains(Native.EV_REPLY) && String(Native.text(p2)) == "Switched to Extend.", "phone got the reply")
     check(Native.sendPing(p2) && toPc(pc2, Native.takeOut(p2)).contains(6), "ping")
     check(toPhone(p2, TestPc.takeOut(pc2)).contains(Native.EV_PONG), "pong")
-    check(!Native.sendCmd(p2, ByteArray(401) { 'a'.code.toByte() }), "too long refused")
+    check(!Native.sendCmd(p2, ByteArray(481) { 'a'.code.toByte() }), "too long refused")
 
     // ---- failures surface with the right numbers
     val pc3 = TestPc.create(); TestPc.initPc(pc3, null, null, null, null)
