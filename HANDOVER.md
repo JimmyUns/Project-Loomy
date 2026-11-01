@@ -17,7 +17,9 @@ agreed design and security rules. Read it before touching voice/phone work.
 A summon-anywhere command console for Windows (hotkey → dark overlay → short commands), built by the user,
 **Jimmy Younes**. It's one tiny C program with no runtime (~163 KB exe at 2.16; Pocket Loomy's PC side added ~43 KB in 2.17). Values: **as light as possible**, local-first,
 plum/purple theme with a halftone dot strip, accent themeable. Long-term: voice (SAPI) and optional AI, still light.
-He runs it on his personal PC and his work laptop (no admin there; never help get around workplace security).
+It started as a tool for his personal PC and his work laptop, but it's grown well past what the work laptop needed
+(Nov 2026): his **personal PC is the target**. Don't plan, test or ask around the work laptop unless he brings it
+up. If he does use it there: no admin, and never help get around workplace security.
 
 **How he likes to work:** straight-talking, concise, casual, no hype. Give real tradeoffs with a clear
 recommendation; he makes the calls. Say plainly what you could and couldn't test. A little "why" helps him learn.
@@ -157,11 +159,10 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.20 in progress (Nov 1): Ellune's ping.** The server (`ellune/`) is live; `/ellune` (core) pings it. Details in
-  `ELLUNE-HANDOVER.md` §2. Version, README and both changelogs are bumped. This session couldn't push (the git proxy
-  didn't have the repo in the session's sources), so the work went to him as a patch + a test exe (he downloaded
-  the exe). Push `claude/v2.20` and open the draft PR first. Not run on Windows yet: ask him whether `/ellune`
-  says up, the ms looks sane, and what the work laptop says.
+- **v2.20 ENDED (Nov 2):** PR #19 ready. Ellune's ping: the server (`ellune/`) is live and `/ellune` (core) pings
+  it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy check, cached
+  after), then 63-300 ms with one 734 spike: normal, no fix needed. The Cowork session that built it couldn't push;
+  a later chat applied the patch and pushed. Work laptop not tested and not needed (§1).
 - **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
   + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
   Next big direction (agreed, not started): Ellune as a blind relay + brain (`POCKET-HANDOVER.md` §11b).
