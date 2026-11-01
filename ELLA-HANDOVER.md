@@ -1,4 +1,4 @@
-# ELLA — Handover (idea stage)
+# ELLA — Handover (nothing built yet; direction agreed Nov 1 2026)
 
 Brief for a fresh chat. ELLA is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep ELLA notes
@@ -14,6 +14,8 @@ questions and wants to talk security **later**, as its own conversation. Don't b
 
 ## 2. Status
 - **Nothing exists yet.** No hosting account, no code, no repo or folder chosen.
+- Loomy is at **v2.19** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
+  `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
 - **First step he picked: a simple ping.** Loomy sends a request to ELLA, ELLA answers, Loomy shows that ELLA is up
   (and how long it took). That proves the whole path (hosting, deploy, Loomy talking to it) before any real features.
 - **Still open:** the full feature list (he hasn't decided), where ELLA's code lives (own repo vs a folder in
@@ -47,3 +49,35 @@ questions and wants to talk security **later**, as its own conversation. Don't b
   on the UI thread). Reuse it; call `ui_flush()` before the request so "Pinging ELLA..." shows first.
 - Keep Loomy tiny: the server does the heavy lifting, Loomy just makes small requests.
 - Nothing secret goes in the exe (anyone can read it). Real auth comes with the security conversation.
+
+## 6. What Pocket Loomy needs from ELLA (agreed with him, Nov 1 2026; not started)
+Background: Pocket Loomy (`pocket/`, Android) sends commands to Loomy on his PC over Bluetooth, end-to-end
+encrypted with Loomy's own protocol (`src/pocket.c`, spec in `POCKET-HANDOVER.md` §9). Two things need a server.
+Full context: `POCKET-HANDOVER.md` §11b.
+
+**A. Remote from anywhere: ELLA as a blind relay.** His goal: at work, open the app and tell the laptop at home to
+do something (e.g. open Steam so games update). Bluetooth can't reach that far.
+- ELLA only passes along the same encrypted pocket.c bytes. It can't read them, can't forge them (no keys) and
+  can't replay them (counter nonces). A fully hacked ELLA can block messages, never run anything on his PC.
+- The PC connects OUT to ELLA and waits (no open ports, no router changes). Only while remote is switched on.
+- Pairing stays Bluetooth-only and in person, with the PC-side confirm (phone name + ID, Enter). A phone can only
+  use the relay after that. Nobody can pair over the internet.
+- Hooks already in the code (v2.19): on the PC `PhoneLink` (loomy.h; `PHONE_BT` in phonebt.c, `LINKS[]` in phone.c);
+  in the app `Pipe` / `BluetoothPipe` (Link.kt). The relay = one more PhoneLink + one more Pipe. pocket.c stays as is.
+- Ideas for remote later (not decided): a smaller remote allowlist, every remote command shown on the PC with
+  "remotely", a remote on/off switch, a fingerprint lock in the app (he said not yet), a saved-apps launcher for
+  "open steam" (he said not yet). The laptop has to be awake.
+- Cloudflare note: a relay needs connections that stay open (WebSockets). Workers can do that with Durable Objects;
+  check what the free plan allows before choosing.
+
+**B. ELLA as the brain for his speech.** Android's recognizer struggles with his accent (Lebanese, often taken for
+Scandinavian), and he doesn't want to memorise exact commands.
+- Whisper (speech to text, good with accents) + a small LLM that maps what he said to one of Loomy's commands (and
+  fixes mishearings from context). Cloudflare Workers AI runs both with a free daily allowance (check limits).
+- The phone keeps listening for "Loomy" locally and sends only what follows, never his whole conversation.
+- The phone stays the only one with the keys: ELLA suggests the command, the phone sends it (over Bluetooth or the
+  relay). So the AI can never send anything to his PC on its own.
+- The app would need the INTERNET permission for this (today it has none). Tell him when that changes.
+
+**Order he agreed:** ELLA's ping first (§2: hosting, deploy, Loomy and the app reaching it), then A or B. The
+security conversation he wanted (§1) is still due: A's design above is the core of it, nothing else is decided.
