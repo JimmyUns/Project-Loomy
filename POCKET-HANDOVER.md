@@ -1,4 +1,4 @@
-# Pocket Loomy — Handover (PC side released in v2.17; Android app next, v2.18)
+# Pocket Loomy — Handover (PC side v2.17, Android app v2.18, pairing confirm + link split v2.19)
 
 Brief for a fresh chat. **Pocket Loomy** = an Android app that hears Jimmy's voice commands and sends them to Loomy on
 his PC over **Bluetooth**; Loomy runs them. Read Loomy's `HANDOVER.md` first (who Jimmy is, how he works, workflow,
@@ -176,6 +176,15 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   tag, unknown phone, failed decrypt, malformed message, data after pairing) or Windows refusing random bytes.
   Hangs up, burns the code, stops listening, saves `phone_locked = on` (survives restarts), prints the reason with
   the claimed name + address, tray balloon. Enter in `/phone` turns it back on.
+- **Pairing confirm (2.19, his idea):** after the right code (PK_EV_PAIRED on the PC) Loomy does NOT send its key yet.
+  `ask_confirm()` opens `/phone` with the phone's claimed name, address and **ID** (`pk_fingerprint` of the phone's
+  new public key: SHA-512 of "LoomyPocket1 id" + key, 40 bits, Crockford base32 "XXXX-XXXX"); the phone shows the
+  same ID (`pk_awaiting_pc` + JNI `phoneId`). Enter = `accept_pairing` (save trust, flush the held E_KEY_PC);
+  Esc / 60 s / phone hang-up = `refuse_pairing` (drop, nothing saved, no lockout; the code is spent anyway). No
+  protocol change: the PC just holds its last message. The phone waits up to 80 s for it.
+- **Links (2.19):** `PhoneLink` in loomy.h (listen/unlisten/listening/send/drop); `PHONE_BT` in phonebt.c is the only
+  one; phone.c keeps `LINKS[]` and remembers which link the connected phone came through (`g_via`). On the phone,
+  `Pipe` / `BluetoothPipe` in Link.kt. An internet relay = one more link/pipe, pocket.c untouched.
 - **Not** a shutdown (my call, he hasn't confirmed): a phone hanging up or stalling (10 s) mid-handshake. It gets
   cut and logged; if it had used the code, the code is still burned and Loomy says so.
 - If Windows ever fails to give random bytes, nothing made from them is sent (checked after every engine call).
@@ -240,6 +249,16 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
   (44 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
   android-35): `kotlinc -cp android.jar *.kt`.
+
+## 11b. Where it's heading (agreed Nov 1, not started)
+- **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **ELLA as a blind relay**: the same
+  end-to-end encrypted pocket.c bytes, Ella can't read, forge or replay them; the PC connects OUT to Ella (no open
+  ports). Pairing stays Bluetooth-only, in person, with the PC-side confirm. Extra for remote later: a smaller remote
+  allowlist, every remote command shown on the PC, a remote on/off switch, fingerprint lock in the app (he said not
+  yet), a saved-apps launcher for "open steam" (he said not yet). Laptop must be awake.
+- **Ella as the brain** for free speech / his accent: Whisper speech-to-text + a small LLM mapping what he said to a
+  command; the phone keeps detecting "Loomy" locally and sends only what follows. The phone stays the one holding
+  the keys, so the AI can suggest a command but never send one. Needs Ella first (its ping step).
 
 ## 12. His feedback after testing the first 2.18 build — DONE (Oct 31), all items below are built
 (Plus two he added: "screen on/off" in any wording -> `display off|on`, and talking like a human with a

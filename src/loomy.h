@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.18"
+#define LOOMY_VERSION L"2.19"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -154,7 +154,19 @@ void phone_startup(void);               // after the window exists: listen if a 
 void phone_feature_changed(void);       // /pkg turned it on or off
 void phone_tick(void);
 void phone_out_tap(int kind, const wchar_t *text);   // out() calls this: replies for the phone
-int  phone_on_accept(const wchar_t *addr);           // phonebt.c: a phone connected; 0 = turn it away
+// A "link" is a pipe the phone's encrypted bytes travel through. phone.c only talks to links, so the
+// security (pocket.c) never cares what the pipe is. Bluetooth is the only one today (phonebt.c); an internet
+// relay can be added later as a second link without touching pocket.c or the rules in phone.c.
+typedef struct PhoneLink {
+    const wchar_t *name;                          // "Bluetooth"
+    int  (*listen)(wchar_t *err, int cap);        // start taking connections (1 = ok, err says why not)
+    void (*unlisten)(void);
+    int  (*listening)(void);
+    int  (*send)(const unsigned char *p, int n);  // to the connected phone; 0 = failed
+    void (*drop)(void);                           // hang up on the connected phone
+} PhoneLink;
+extern const PhoneLink PHONE_BT;                  // phonebt.c
+int  phone_on_accept(const PhoneLink *via, const wchar_t *from);   // a phone connected; 0 = turn it away
 void phone_on_data(const unsigned char *p, int n);
 void phone_on_closed(void);
 int  phone_active(void);
@@ -166,12 +178,7 @@ int  phone_char(WPARAM ch);
 void phone_click(int x, int y, int dbl);
 void phone_wheel(int notches);
 
-// ---------- phonebt.c (Windows only: RFCOMM listener, SDP record, random, DPAPI, time) ----------
-int  bt_listen(wchar_t *err, int cap);  // 1 = listening (err says why not)
-void bt_unlisten(void);
-int  bt_listening(void);
-int  bt_send(const unsigned char *p, int n);   // to the connected phone; 0 = failed
-void bt_drop(void);                     // hang up on the connected phone
+// ---------- phonebt.c (Windows only: the Bluetooth link PHONE_BT, plus random, DPAPI, time) ----------
 void bt_event(WPARAM sock, LPARAM ev);  // WM_PHONE
 void bt_shutdown(void);                 // Loomy is closing: unregister and close everything
 int  os_random(void *p, int n);         // 1 = filled with secure random bytes

@@ -20,10 +20,11 @@ int feature_on(int f) { return 1; }
 void out(int k, const wchar_t *t) {} void outf(int k, const wchar_t *f, ...) {} void cmd_usage(const wchar_t *s) {}
 void complete_add(const wchar_t *a, const wchar_t *b) {} void cmd_run(wchar_t *l) {} int cmd_phone_ok(const wchar_t *w) { return 0; }
 static int listening;
-int bt_listen(wchar_t *e, int c) { listening = 1; return 1; } void bt_unlisten(void) { listening = 0; } int bt_listening(void) { return listening; }
+static int bt_listen(wchar_t *e, int c) { listening = 1; return 1; } static void bt_unlisten(void) { listening = 0; } static int bt_listening(void) { return listening; }
 static unsigned char toPhone[4096]; static int toPhoneN;
-int bt_send(const unsigned char *p, int n) { memcpy(toPhone + toPhoneN, p, n); toPhoneN += n; return 1; }
-void bt_drop(void) {} void bt_event(WPARAM s, LPARAM e) {} void bt_shutdown(void) {}
+static int bt_send(const unsigned char *p, int n) { memcpy(toPhone + toPhoneN, p, n); toPhoneN += n; return 1; }
+static void bt_drop(void) {} void bt_event(WPARAM s, LPARAM e) {} void bt_shutdown(void) {}
+const PhoneLink PHONE_BT = { L"Bluetooth", bt_listen, bt_unlisten, bt_listening, bt_send, bt_drop };
 static unsigned long long rs = 88172645463325252ull;
 int os_random(void *p, int n) { for (int i = 0; i < n; i++) { rs ^= rs << 13; rs ^= rs >> 7; rs ^= rs << 17; ((unsigned char *)p)[i] = (unsigned char)rs; } return 1; }
 int os_protect(const unsigned char *in, int n, unsigned char *out, int cap, int un) { if (n > cap) return 0; memcpy(out, in, n); return n; }
@@ -32,6 +33,8 @@ ULONGLONG os_now(void) { return clk; }
 void os_fmt_time(ULONGLONG s, wchar_t *b, int cap, int day) { if (day) s_cpy(b, L"Fri 6 Nov, 21:04", cap); else s_cpy(b, L"21:04", cap); }
 int os_pc_name(char *u, int cap) { memcpy(u, "JIMMY-PC", 8); return 8; }
 int phone_code_for_tests(char *out);
+int ui_panel_open(void) { return 0; } int ui_panel_char(wchar_t c) { return 0; } int ui_panel_key(WPARAM v, int s) { return 0; }
+void ui_panel_choices(wchar_t *b, int c) { b[0] = 0; } void ui_close_panels(void) {} void cmd_phone_help(wchar_t *b, int c) { b[0] = 0; }
 
 static HFONT mk(int px, int w) { return CreateFontW(-px, 0, 0, 0, w, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, FIXED_PITCH, L"Consolas"); }
 
@@ -53,11 +56,11 @@ static void shot(const char *file) {
 
 static void pair(const char *code, int finish) {
     PkConn ph; pk_init_phone(&ph, (const uint8_t *)code, 0, 0, 0, 0, (const uint8_t *)"Pixel 8", 7);
-    toPhoneN = 0; phone_on_accept(L"AA:BB:CC:DD:EE:01");
+    toPhoneN = 0; phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01");
     for (int r = 0; r < 6; r++) {
         int used, off = 0, n = toPhoneN; unsigned char b[4096]; memcpy(b, toPhone, n); toPhoneN = 0;
         while (off < n) { pk_feed(&ph, b + off, n - off, &used); off += used; }
-        if (ph.outlen) { unsigned char o[1100]; int k = ph.outlen; memcpy(o, ph.out, k); ph.outlen = 0; phone_on_data(o, finish || r < 1 ? k : 0); }
+        if (ph.outlen) { unsigned char o[1100]; int k = ph.outlen; memcpy(o, ph.out, k); ph.outlen = 0; phone_on_data(o, k); }
     }
     if (finish) phone_on_closed();
 }
@@ -67,11 +70,14 @@ int main(void) {
     phone_open();
     clk += 8; shot("phone_code.bmp");
     char code[9]; phone_code_for_tests(code);
-    pair(code, 1);
+    pair(code, 0);                                    // right code: Loomy asks before trusting it
+    shot("phone_confirm.bmp");
+    phone_key(VK_RETURN);                             // yes
+    phone_on_closed();
     phone_tick(); shot("phone_trusted.bmp");
     phone_char(L'f'); shot("phone_forget.bmp"); phone_char(L'x');
     unsigned char junk[] = { 0x02, 0x01 };
-    phone_on_accept(L"66:66:66:66:66:66"); phone_on_data(junk, 2);
+    phone_on_accept(&PHONE_BT, L"66:66:66:66:66:66"); phone_on_data(junk, 2);
     shot("phone_locked.bmp");
     return 0;
 }

@@ -1,5 +1,6 @@
 // phonebt.c - the Windows half of Pocket Loomy's plumbing (phone.c has the rules):
-//   - an RFCOMM Bluetooth listener, announced with an SDP record under Pocket Loomy's service UUID,
+//   - PHONE_BT, the Bluetooth link (see PhoneLink in loomy.h): an RFCOMM listener, announced with an SDP
+//     record under Pocket Loomy's service UUID,
 //     with socket events arriving through WSAAsyncSelect, so waiting costs nothing (no thread, no timer)
 //   - secure random (BCryptGenRandom), DPAPI for the trust file, the clock, this PC's name
 // bcrypt.dll and crypt32.dll are loaded from System32 only when the phone feature first needs them.
@@ -30,9 +31,9 @@ static int wsa_up(void) {
     return g_wsa;
 }
 
-int bt_listening(void) { return g_listen != INVALID_SOCKET; }
+static int bt_listening(void) { return g_listen != INVALID_SOCKET; }
 
-int bt_listen(wchar_t *err, int cap) {
+static int bt_listen(wchar_t *err, int cap) {
     if (g_listen != INVALID_SOCKET) return 1;
     if (!wsa_up()) { s_cpy(err, L"Windows networking didn't start.", cap); return 0; }
     SOCKET s = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
@@ -77,20 +78,20 @@ int bt_listen(wchar_t *err, int cap) {
     return 1;
 }
 
-void bt_unlisten(void) {
+static void bt_unlisten(void) {
     if (g_listen == INVALID_SOCKET) return;
     WSASetServiceW(&g_qs, RNRSERVICE_DELETE, 0);
     closesocket(g_listen);
     g_listen = INVALID_SOCKET;
 }
 
-void bt_drop(void) {
+static void bt_drop(void) {
     if (g_sock == INVALID_SOCKET) return;
     closesocket(g_sock);                       // graceful: anything already sent still goes out
     g_sock = INVALID_SOCKET;
 }
 
-int bt_send(const unsigned char *p, int n) {
+static int bt_send(const unsigned char *p, int n) {
     int tries = 0;
     while (n > 0 && g_sock != INVALID_SOCKET) {
         int k = send(g_sock, (const char *)p, n, 0);
@@ -125,7 +126,7 @@ void bt_event(WPARAM w, LPARAM lp) {
         addr_text(peer.btAddr, addr);
         WSAAsyncSelect(c, ui_hwnd(), WM_PHONE, FD_READ | FD_CLOSE);
         g_sock = c;
-        if (!phone_on_accept(addr) && g_sock == c) { closesocket(c); g_sock = INVALID_SOCKET; }
+        if (!phone_on_accept(&PHONE_BT, addr) && g_sock == c) { closesocket(c); g_sock = INVALID_SOCKET; }
         return;
     }
     if (g_sock == INVALID_SOCKET || s != g_sock) return;             // a socket we already closed
@@ -146,6 +147,8 @@ void bt_event(WPARAM w, LPARAM lp) {
         phone_on_closed();
     }
 }
+
+const PhoneLink PHONE_BT = { L"Bluetooth", bt_listen, bt_unlisten, bt_listening, bt_send, bt_drop };
 
 void bt_shutdown(void) {
     bt_drop();

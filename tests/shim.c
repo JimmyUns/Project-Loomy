@@ -133,11 +133,12 @@ void ui_set_timer(int id, int ms) { if (id == TIMER_PHONE) g_phoneTimer = ms; }
 HWND ui_hwnd(void) { return 0; }
 int g_btOk = 1, g_btListening, g_btDrops, g_btSendFail;
 unsigned char g_toPhone[8192]; int g_toPhoneN;
-int  bt_listen(wchar_t *err, int cap) { if (!g_btOk) { wcscpy(err, L"No Bluetooth on this PC, or it's turned off."); return 0; } g_btListening = 1; return 1; }
-void bt_unlisten(void) { g_btListening = 0; }
-int  bt_listening(void) { return g_btListening; }
-int  bt_send(const unsigned char *p, int n) { if (g_btSendFail) return 0; memcpy(g_toPhone + g_toPhoneN, p, n); g_toPhoneN += n; return 1; }
-void bt_drop(void) { g_btDrops++; }
+static int  bt_listen(wchar_t *err, int cap) { if (!g_btOk) { wcscpy(err, L"No Bluetooth on this PC, or it's turned off."); return 0; } g_btListening = 1; return 1; }
+static void bt_unlisten(void) { g_btListening = 0; }
+static int  bt_listening(void) { return g_btListening; }
+static int  bt_send(const unsigned char *p, int n) { if (g_btSendFail) return 0; memcpy(g_toPhone + g_toPhoneN, p, n); g_toPhoneN += n; return 1; }
+static void bt_drop(void) { g_btDrops++; }
+const PhoneLink PHONE_BT = { L"Bluetooth", bt_listen, bt_unlisten, bt_listening, bt_send, bt_drop };
 void bt_event(WPARAM s, LPARAM e) {}
 void bt_shutdown(void) {}
 int g_rngFail; static unsigned long long g_rs = 0x9E3779B97F4A7C15ull;

@@ -102,3 +102,11 @@ jboolean FN(sendNote)(JNIEnv *e, jclass k, jlong h, jbyteArray text) {
     return n >= 0 && pk_send_note(C(h), t, n) ? JNI_TRUE : JNI_FALSE;
 }
 jboolean FN(sendForget)(JNIEnv *e, jclass k, jlong h) { return pk_send_forget(C(h)) ? JNI_TRUE : JNI_FALSE; }
+
+// 2.19: pairing waits for Enter on the PC; meanwhile the phone shows its ID (the PC shows the same)
+jboolean FN(awaitingPc)(JNIEnv *e, jclass k, jlong h) { return pk_awaiting_pc(C(h)) ? JNI_TRUE : JNI_FALSE; }
+jstring FN(phoneId)(JNIEnv *e, jclass k, jlong h) {
+    char id[10];
+    pk_fingerprint(C(h)->my_pk, id);
+    return (*e)->NewStringUTF(e, id);
+}
