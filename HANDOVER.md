@@ -6,10 +6,10 @@ token (§2); don't ask for a zip. Read this first. Only open deeper files when t
 **This file lives in the repo, not in the chat project.** The project only holds `github-bot.txt` and a short
 pointer. Read `HANDOVER.md` from the newest open `claude/v*` branch if there is one (its PR has the latest
 notes), otherwise from `main`. **Keep it current:** every version branch updates this file (and
-`ELLA-HANDOVER.md` when ELLA changes) as part of its PR, so merging the version also merges the handover.
+`ELLUNE-HANDOVER.md` when Ellune changes) as part of its PR, so merging the version also merges the handover.
 The repo is **public**: never put secrets or anything private in here.
 
-**Sister project: ELLA** (the online/server side) has its own `ELLA-HANDOVER.md`. Keep ELLA notes there, not here.
+**Sister project: Ellune** (the online/server side) has its own `ELLUNE-HANDOVER.md`. Keep Ellune notes there, not here.
 **Pocket Loomy** (Android voice remote over Bluetooth, PC side = `/phone`) has its own `POCKET-HANDOVER.md`: the full
 agreed design and security rules. Read it before touching voice/phone work.
 
@@ -154,7 +154,7 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
 ## 6. Open items
 - **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
   + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
-  Next big direction (agreed, not started): ELLA as a blind relay + brain (`POCKET-HANDOVER.md` §11b).
+  Next big direction (agreed, not started): Ellune as a blind relay + brain (`POCKET-HANDOVER.md` §11b).
 - **v2.18 released (Oct 31).** He hasn't set up the APK signing secrets yet (so no APK on releases; he uses dev builds). The release APK only gets
   built if he has set up the signing secrets (`POCKET_KEYSTORE_B64`, `POCKET_KEYSTORE_PASSWORD`, alias `pocket`;
   steps were given in chat: PowerShell + keytool from a JDK); without them the release just has `loomy.exe` and he
@@ -250,7 +250,7 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   `web many` focus grab, batch tabs in one browser window, the remembered position.
 - **He declined (don't re-pitch unless he brings it up):** an ideas/suggestions note command; syncing saved sites
   through his GitHub (work-laptop data on personal GitHub may break company policy). Anything online now goes
-  through ELLA (see `ELLA-HANDOVER.md`).
+  through Ellune (see `ELLUNE-HANDOVER.md`).
 - **Floated, not decided:** `audio` output switch (needs the undocumented IPolicyConfig COM call), `timer 10m`,
   `pc lock|sleep|restart`, per-mode command sets for work, voice/AI later, `/vh` change-notes.
 - **Known small stuff from the 2.10 perf review (all fine for now):** `res/loomy.rc` version info still says 2.0

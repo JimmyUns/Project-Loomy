@@ -1,26 +1,27 @@
-# ELLA — Handover (nothing built yet; direction agreed Nov 1 2026)
+# Ellune — Handover (nothing built yet; direction agreed Nov 1 2026)
 
-Brief for a fresh chat. ELLA is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
-covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep ELLA notes
+Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
+covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
 here, not in Loomy's handover. This repo is public: nothing secret in here.
 
-## 1. What ELLA is
-**ELLA = Encrypted Locker for Loomy Accounts.** Loomy is the local assistant; ELLA is the hosted server side that
+## 1. What Ellune is
+**Ellune** (renamed from ELLA, "Encrypted Locker for Loomy Accounts", on Nov 1 2026: ELLA + *lune*, French for moon;
+the idea is that data goes up to the moon and comes back). Loomy is the local assistant; Ellune is the hosted server side that
 Loomy clients talk to. The long-term idea (not decided in detail yet): save, move and share files between Loomy
 clients, plus online saves of user data and presets, with an account and password per Loomy.
 
-Jimmy has no hardware to run a server at home, so ELLA runs on rented hosting. He knows there are security
+Jimmy has no hardware to run a server at home, so Ellune runs on rented hosting. He knows there are security
 questions and wants to talk security **later**, as its own conversation. Don't bake in security decisions without him.
 
 ## 2. Status
 - **Nothing exists yet.** No hosting account, no code, no repo or folder chosen.
 - Loomy is at **v2.19** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
-- **First step he picked: a simple ping.** Loomy sends a request to ELLA, ELLA answers, Loomy shows that ELLA is up
+- **First step he picked: a simple ping.** Loomy sends a request to Ellune, Ellune answers, Loomy shows that Ellune is up
   (and how long it took). That proves the whole path (hosting, deploy, Loomy talking to it) before any real features.
-- **Still open:** the full feature list (he hasn't decided), where ELLA's code lives (own repo vs a folder in
+- **Still open:** the full feature list (he hasn't decided), where Ellune's code lives (own repo vs a folder in
   Project-Loomy), the Loomy command name for the ping and which mode it lives in (core fits: it's Loomy upkeep),
-  and whether ELLA gets its own domain.
+  and whether Ellune gets its own domain.
 
 ## 3. Hosting (researched Oct 2026, recheck prices before deciding)
 - **Recommended to start: Cloudflare (serverless).** Write only the logic; Cloudflare runs, patches and keeps it up.
@@ -42,24 +43,24 @@ questions and wants to talk security **later**, as its own conversation. Don't b
 - **Work laptop:** company rules apply to moving files/data off it. Never help get around workplace security.
 - **Direct laptop-to-laptop without a server:** fine on the same wifi (but Windows' firewall prompt likely needs
   admin on the work laptop). Over the internet, routers block incoming connections, so a middle server is needed
-  anyway: that's why ELLA exists.
+  anyway: that's why Ellune exists.
 
 ## 5. Loomy-side notes for when the ping gets built
 - Loomy already does HTTPS with WinHTTP in `update.c` (`https_get`, with 5 s DNS/connect/send and 10 s read timeouts,
-  on the UI thread). Reuse it; call `ui_flush()` before the request so "Pinging ELLA..." shows first.
+  on the UI thread). Reuse it; call `ui_flush()` before the request so "Pinging Ellune..." shows first.
 - Keep Loomy tiny: the server does the heavy lifting, Loomy just makes small requests.
 - Nothing secret goes in the exe (anyone can read it). Real auth comes with the security conversation.
 
-## 6. What Pocket Loomy needs from ELLA (agreed with him, Nov 1 2026; not started)
+## 6. What Pocket Loomy needs from Ellune (agreed with him, Nov 1 2026; not started)
 Background: Pocket Loomy (`pocket/`, Android) sends commands to Loomy on his PC over Bluetooth, end-to-end
 encrypted with Loomy's own protocol (`src/pocket.c`, spec in `POCKET-HANDOVER.md` §9). Two things need a server.
 Full context: `POCKET-HANDOVER.md` §11b.
 
-**A. Remote from anywhere: ELLA as a blind relay.** His goal: at work, open the app and tell the laptop at home to
+**A. Remote from anywhere: Ellune as a blind relay.** His goal: at work, open the app and tell the laptop at home to
 do something (e.g. open Steam so games update). Bluetooth can't reach that far.
-- ELLA only passes along the same encrypted pocket.c bytes. It can't read them, can't forge them (no keys) and
-  can't replay them (counter nonces). A fully hacked ELLA can block messages, never run anything on his PC.
-- The PC connects OUT to ELLA and waits (no open ports, no router changes). Only while remote is switched on.
+- Ellune only passes along the same encrypted pocket.c bytes. It can't read them, can't forge them (no keys) and
+  can't replay them (counter nonces). A fully hacked Ellune can block messages, never run anything on his PC.
+- The PC connects OUT to Ellune and waits (no open ports, no router changes). Only while remote is switched on.
 - Pairing stays Bluetooth-only and in person, with the PC-side confirm (phone name + ID, Enter). A phone can only
   use the relay after that. Nobody can pair over the internet.
 - Hooks already in the code (v2.19): on the PC `PhoneLink` (loomy.h; `PHONE_BT` in phonebt.c, `LINKS[]` in phone.c);
@@ -70,14 +71,14 @@ do something (e.g. open Steam so games update). Bluetooth can't reach that far.
 - Cloudflare note: a relay needs connections that stay open (WebSockets). Workers can do that with Durable Objects;
   check what the free plan allows before choosing.
 
-**B. ELLA as the brain for his speech.** Android's recognizer struggles with his accent (Lebanese, often taken for
+**B. Ellune as the brain for his speech.** Android's recognizer struggles with his accent (Lebanese, often taken for
 Scandinavian), and he doesn't want to memorise exact commands.
 - Whisper (speech to text, good with accents) + a small LLM that maps what he said to one of Loomy's commands (and
   fixes mishearings from context). Cloudflare Workers AI runs both with a free daily allowance (check limits).
 - The phone keeps listening for "Loomy" locally and sends only what follows, never his whole conversation.
-- The phone stays the only one with the keys: ELLA suggests the command, the phone sends it (over Bluetooth or the
+- The phone stays the only one with the keys: Ellune suggests the command, the phone sends it (over Bluetooth or the
   relay). So the AI can never send anything to his PC on its own.
 - The app would need the INTERNET permission for this (today it has none). Tell him when that changes.
 
-**Order he agreed:** ELLA's ping first (§2: hosting, deploy, Loomy and the app reaching it), then A or B. The
+**Order he agreed:** Ellune's ping first (§2: hosting, deploy, Loomy and the app reaching it), then A or B. The
 security conversation he wanted (§1) is still due: A's design above is the core of it, nothing else is decided.

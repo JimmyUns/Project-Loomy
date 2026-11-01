@@ -14,7 +14,7 @@ always-on mic and +20–50 MB RAM in Loomy, plus Windows' speech engine is depre
 - **Transport: Bluetooth (RFCOMM), not Wi-Fi.** His apartment's Wi-Fi is shared, captive-portal, marked **Public**
   in Windows, and very likely has client isolation, so phone→PC over Wi-Fi wouldn't work there; marking it Private
   would be unsafe. Bluetooth works the same at home and in the apartment, isn't touched by Windows Firewall, and
-  neighbours on the Wi-Fi can't see it. Range ≈ one room, which fits "near my PC". (Later option: relay via ELLA for
+  neighbours on the Wi-Fi can't see it. Range ≈ one room, which fits "near my PC". (Later option: relay via Ellune for
   anywhere-access; not now.)
 - **PC side is a `/pkg` feature `phone`, OFF by default** (opt-in, unlike other features, which default on). Off =
   no Bluetooth listener at all. Never on the work laptop unless he decides so (company policy).
@@ -251,14 +251,14 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   android-35): `kotlinc -cp android.jar *.kt`.
 
 ## 11b. Where it's heading (agreed Nov 1, not started)
-- **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **ELLA as a blind relay**: the same
-  end-to-end encrypted pocket.c bytes, Ella can't read, forge or replay them; the PC connects OUT to Ella (no open
+- **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same
+  end-to-end encrypted pocket.c bytes, Ellune can't read, forge or replay them; the PC connects OUT to Ellune (no open
   ports). Pairing stays Bluetooth-only, in person, with the PC-side confirm. Extra for remote later: a smaller remote
   allowlist, every remote command shown on the PC, a remote on/off switch, fingerprint lock in the app (he said not
   yet), a saved-apps launcher for "open steam" (he said not yet). Laptop must be awake.
-- **Ella as the brain** for free speech / his accent: Whisper speech-to-text + a small LLM mapping what he said to a
+- **Ellune as the brain** for free speech / his accent: Whisper speech-to-text + a small LLM mapping what he said to a
   command; the phone keeps detecting "Loomy" locally and sends only what follows. The phone stays the one holding
-  the keys, so the AI can suggest a command but never send one. Needs Ella first (its ping step).
+  the keys, so the AI can suggest a command but never send one. Needs Ellune first (its ping step).
 
 ## 12. His feedback after testing the first 2.18 build — DONE (Oct 31), all items below are built
 (Plus two he added: "screen on/off" in any wording -> `display off|on`, and talking like a human with a
