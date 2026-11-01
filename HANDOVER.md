@@ -45,6 +45,11 @@ If something's unclear, ask (one question). When he asks "what do you think, don
   around it. Commit locally, `git format-patch` the work, **present the .patch file** (a file that isn't presented
   can't be downloaded), and tell him: start the chat inside the Loomy project, or add the repo as a source for the
   session. A chat that can push can apply the patch (`git am`) and push it (v2.13 was rescued that way).
+  **Cowork sessions (Nov 2026):** traffic to GitHub goes through a git proxy that only lets through repos in the
+  session's sources ("not in this session's authorized repository set"). It blocks even with the LoomyBot token in
+  the URL, and repos can't be added to a task after it starts: he has to start the task with the repo attached. He
+  installed the GitHub connector on Nov 1. There, `/mnt/project` doesn't exist: read `github-bot.txt` with the
+  Projects tool and keep the token in a scratch file, never in chat output. `gh` GraphQL is blocked; use REST.
 - **He creates the release** (GitHub UI "Draft a new release" with tag `vX.Y`, which also creates the tag). The workflow
   then builds and attaches `loomy.exe` (and renames it "Loomy vX.Y"). Builds are flaky: see §6.
 - **If he says "don't push until the version is done"**, keep commits local on `claude/vX.Y` (no branch push, no PR)
@@ -108,7 +113,7 @@ Monocypher 4.0.2, don't edit).
 ## 5. Current features
 Plain: `help` · `lp [folder]` · `web [alias|many]` · `display`/`dp [extend|second|pc|duplicate|off]` · `net` · `rb` · `exe`.
 Slash (all modes): `/mode` `/m` · `/pkg [add|remove <feature>]` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
-Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
+Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]` · `/ellune` (2.20).
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
 Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
 Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
@@ -152,9 +157,11 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.20 started (Nov 1): Ellune's ping.** So far only the server (`ellune/`, see `ELLUNE-HANDOVER.md` §2);
-  `LOOMY_VERSION`, README title and changelogs get bumped when `/ellune` lands in Loomy. This session couldn't push
-  (the git proxy didn't have the repo in the session's sources), so the work went to him as a patch.
+- **v2.20 in progress (Nov 1): Ellune's ping.** The server (`ellune/`) is live; `/ellune` (core) pings it. Details in
+  `ELLUNE-HANDOVER.md` §2. Version, README and both changelogs are bumped. This session couldn't push (the git proxy
+  didn't have the repo in the session's sources), so the work went to him as a patch + a test exe (he downloaded
+  the exe). Push `claude/v2.20` and open the draft PR first. Not run on Windows yet: ask him whether `/ellune`
+  says up, the ms looks sane, and what the work laptop says.
 - **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
   + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
   Next big direction (agreed, not started): Ellune as a blind relay + brain (`POCKET-HANDOVER.md` §11b).

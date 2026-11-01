@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.19"
+#define LOOMY_VERSION L"2.20"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -99,6 +99,7 @@ void cmd_greet(void);
 void cmd_update(wchar_t *args);
 void cmd_version(wchar_t *args);
 void cmd_versionhistory(wchar_t *args);
+void cmd_ellune(wchar_t *args);           // /ellune: ping Loomy's server (update.c)
 const wchar_t *folders_dir(void);                     // %APPDATA%\Loomy\Folders
 const wchar_t *cmd_typed(void);                       // the command word as typed, e.g. "/m"
 void cmd_usage(const wchar_t *shape);                 // prints "Usage: <typed> <shape>"
@@ -217,6 +218,7 @@ void web_wheel(int notches);
 enum { REL_OK, REL_NO_RELEASE, REL_BAD_AUTHOR, REL_BAD_ASSET, REL_NO_ASSET };
 int ver_gt(const wchar_t *a, const wchar_t *b);       // 1 if a is newer: 2.10 > 2.9c > 2.9b > 2.9
 int release_check(const char *json, const char *owner, char *tag, int tagCap, wchar_t *ver, int verCap);
+int ellune_check(const char *json, wchar_t *ver, int verCap);  // 1 if it's a real Ellune ping reply
 
 // ---------- settings.c (the config screen) ----------
 int  settings_active(void);

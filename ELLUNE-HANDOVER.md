@@ -1,4 +1,4 @@
-# Ellune — Handover (ping server written in `ellune/`, not deployed yet; Nov 1 2026)
+# Ellune — Handover (ping server live; `/ellune` in Loomy v2.20, not merged yet; Nov 1 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -16,13 +16,21 @@ questions and wants to talk security **later**, as its own conversation. Don't b
 ## 2. Status
 - **Decided Nov 1:** the code lives in **`ellune/`** in this repo (same bot + PR flow); the ping command is
   **`/ellune`** in **core** mode; **no domain** for now (the free `workers.dev` address).
-- **He made a Cloudflare account** (free plan). Nothing deployed yet.
+- **Live (Nov 1):** `https://ellune.loomybot.workers.dev/ping` (Worker `ellune`, account subdomain `loomybot`, free
+  plan). He deployed it through the dashboard (Create app → Start with Hello World → Edit code → paste
+  `src/index.js` → Deploy) and checked it in his browser. **The dashboard holds the deployed copy:** when
+  `ellune/src/index.js` changes, he has to paste and deploy it again (no GitHub hookup; he wasn't asked yet, and it
+  would give Cloudflare access to his GitHub: security-talk topic).
 - **`ellune/` (v2.20 branch):** the Worker (`src/index.js`, plain JS, no dependencies). `GET /ping` →
   `200 {"ok":true,"service":"ellune","version":"0.1"}`, `cache-control: no-store` so Loomy's timing is a real
   round trip; other methods on `/ping` → 405, other paths → 404. `node test.mjs` checks it locally. Deploy steps
   (dashboard or `wrangler`) are in `ellune/README.md`. He deploys; we never hold a Cloudflare token.
-- **Next:** he deploys and sends the `workers.dev` URL → build `/ellune` in Loomy (v2.20) with that URL baked in
-  (it's not a secret).
+- **Loomy side (v2.20):** `/ellune` (slash, core mode) in `update.c` next to `https_get`; host/path are
+  `ELLUNE_HOST` / `ELLUNE_PING` there. Shows "Pinging Ellune...", then "Ellune is up (v0.1, N ms)" (time includes
+  DNS + TLS, fresh connection each time), "Couldn't reach Ellune." (no internet / blocked), or "Something answered,
+  but it wasn't Ellune." The reply check `ellune_check()` is in `version.c` (needs `"ok":true` and
+  `"service":"ellune"`, so a captive portal's 200 doesn't count) and is unit-tested.
+- **Next:** he tests `/ellune` on his PC and the work laptop, then step 7 of the plan below.
 - Loomy is at **v2.19** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
 - **First step he picked: a simple ping.** Loomy sends a request to Ellune, Ellune answers, Loomy shows that Ellune is up

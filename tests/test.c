@@ -147,7 +147,8 @@ int main(void) {
     run(L"/verc v2.6");         EXPECT(saw(L"don't know '/verc'") && !saw(L"changelog_open"), "verc unknown in home");
     run(L"github");             EXPECT(saw(L"don't know 'github'") && g_nopened == 0, "github unknown in home");
     run(L"gh");                 EXPECT(saw(L"don't know 'gh'") && g_nopened == 0, "gh unknown in home");
-    run(L"help");               EXPECT(!saw(L"/update") && !saw(L"/verc"), "help hides core commands");
+    run(L"/ellune");            EXPECT(saw(L"don't know '/ellune'") && !saw(L"[ellune ran]"), "ellune unknown in home");
+    run(L"help");               EXPECT(!saw(L"/update") && !saw(L"/verc") && !saw(L"/ellune"), "help hides core commands");
     tab(L"/up", L"/up");
     tab(L"/verc ", L"/verc ");
     run(L"/m switch work");
@@ -157,8 +158,12 @@ int main(void) {
     run(L"/ver now");           EXPECT(saw(L"Usage: /ver (nothing"), "ver extra");
     run(L"/verc v2.6 extra");   EXPECT(saw(L"Usage: /verc [version]"), "verc extra");
     run(L"/verc v2.6");         EXPECT(saw(L"changelog_open 'v2.6'"), "verc ok");
-    run(L"help");               EXPECT(saw(L"/update") && saw(L"/verc") && saw(L"/mode  /m") && saw(L"core mode"), "help in core");
+    run(L"/ellune");            EXPECT(saw(L"[ellune ran]"), "ellune runs in core");
+    run(L"/ellune now");        EXPECT(saw(L"Usage: /ellune (nothing") && !saw(L"[ellune ran]"), "ellune extra");
+    run(L"ellune");             EXPECT(saw(L"'ellune' changes Loomy, so type /ellune.") && !saw(L"[ellune ran]"), "ellune needs the slash");
+    run(L"help");               EXPECT(saw(L"/update") && saw(L"/verc") && saw(L"/ellune") && saw(L"/mode  /m") && saw(L"core mode"), "help in core");
     tab(L"/up", L"/update ");
+    tab(L"/ell", L"/ellune ");
     g_hidden = 0;
     run(L"github");             EXPECT(g_nopened == 1 && !wcscmp(g_opened[0], L"https://github.com/JimmyUns/Project-Loomy") && g_hidden, "github opens the repo, hides");
     g_hidden = 0;
@@ -380,6 +385,21 @@ int main(void) {
         EXPECT(release_check("{}", "JimmyUns", tag, 32, ver, 32) == REL_NO_RELEASE, "empty json");
         EXPECT(release_check("{\"tag_name\":\"v3.0\",\"author\":{\"login\":\"JimmyUns\"},\"assets\":[{\"name\":\"loomy.exe\",\"uploader\":{\"login\":\"github-actions[bot]\"}}]}",
                                "JimmyUns", tag, 32, ver, 32) == REL_OK, "compact json (no spaces) works too");
+    }
+
+    wprintf(L"\n== ellune ping reply ==\n");
+    {
+        wchar_t ev[16];
+        EXPECT(ellune_check("{\"ok\":true,\"service\":\"ellune\",\"version\":\"0.1\"}", ev, 16) && !wcscmp(ev, L"0.1"), "real reply");
+        EXPECT(ellune_check("{ \"ok\" : true , \"service\": \"ellune\", \"version\": \"0.12b\" }", ev, 16) && !wcscmp(ev, L"0.12b"), "spaces fine");
+        EXPECT(!ellune_check("{\"ok\":false,\"error\":\"not found\"}", ev, 16), "404 body isn't up");
+        EXPECT(!ellune_check("{\"ok\":true,\"service\":\"other\",\"version\":\"0.1\"}", ev, 16), "someone else's ok");
+        EXPECT(!ellune_check("<html><body>Sign in to the wifi</body></html>", ev, 16), "captive portal page");
+        EXPECT(!ellune_check("{\"ok\":truthy,\"service\":\"ellune\"}", ev, 16), "ok must be true");
+        EXPECT(!ellune_check("", ev, 16) && !ellune_check(0, ev, 16), "empty / null");
+        EXPECT(ellune_check("{\"ok\":true,\"service\":\"ellune\"}", ev, 16) && !wcscmp(ev, L"?"), "no version = ?");
+        EXPECT(ellune_check("{\"ok\":true,\"service\":\"ellune\",\"version\":\"0.1&calc\"}", ev, 16) && !wcscmp(ev, L"?"), "weird version = ?");
+        EXPECT(ellune_check("{\"ok\":true,\"service\":\"ellune\",\"version\":\"123456789012345678901234567890\"}", ev, 4) && wcslen(ev) == 3, "long version clipped");
     }
 
 

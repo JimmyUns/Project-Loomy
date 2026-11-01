@@ -176,6 +176,36 @@ void cmd_version(wchar_t *args) {
     outf(OUT_ACCENT, L"A newer version is out: v%s. Type /update to get it.", latest);
 }
 
+// ---------------------------------------------------------------- /ellune
+// Pings Ellune, Loomy's server (ellune/ in the repo, a Cloudflare Worker). Just proves the
+// path works: Loomy -> internet -> Ellune -> back. The time includes DNS + the TLS handshake,
+// since each ping opens a fresh connection; that's the honest "how long did it take".
+#define ELLUNE_HOST L"ellune.loomybot.workers.dev"
+#define ELLUNE_PING L"/ping"
+
+void cmd_ellune(wchar_t *args) {
+    out(OUT_DIM, L"Pinging Ellune...");
+    ui_flush();
+
+    char reply[512];
+    DWORD got = 0, t0 = GetTickCount();
+    int ok = https_get(ELLUNE_HOST, ELLUNE_PING, L"application/json", reply, sizeof(reply), &got, 0);
+    DWORD ms = GetTickCount() - t0;
+
+    if (!ok || got == 0) {
+        out(OUT_ERR, L"Couldn't reach Ellune.");
+        out(OUT_DIM, L"No internet, or this network blocks workers.dev.");
+        return;
+    }
+    wchar_t ver[16];
+    if (!ellune_check(reply, ver, 16)) {
+        out(OUT_ERR, L"Something answered, but it wasn't Ellune.");
+        out(OUT_DIM, L"Maybe a wifi login page, or the network is rerouting it.");
+        return;
+    }
+    outf(OUT_OK, L"Ellune is up (v%s, %u ms).", ver, (unsigned)ms);
+}
+
 // ---------------------------------------------------------------- /versionhistory
 // does the string at a start with the n-char literal b? 1 = yes
 static int starts_n(const char *a, const char *b, int n) {

@@ -1,4 +1,4 @@
-# Loomy 2.19
+# Loomy 2.20
 A summon-anywhere console for Windows, written in plain C with no runtime.
 
 ## Use it
@@ -8,7 +8,7 @@ Type **help** to see every command. Commands that change Loomy itself (settings,
 
 In `lp` and `config`: ↑↓ choose, Enter picks, Esc goes back. In `lp`, → goes inside a folder and ← goes back out.
 
-Loomy has three modes, **home**, **work** and **core** — the current one shows in the header. Type `/m` to pick one (switching reloads Loomy fresh). **core** is for Loomy itself: `/update`, `/version`, `/vh`, `/verc` and `github` only exist there (anywhere else they're unknown commands). Saved websites (`web`, `/webconfig`) are kept separately per mode; `web many` keeps the list open so you can open several.
+Loomy has three modes, **home**, **work** and **core** — the current one shows in the header. Type `/m` to pick one (switching reloads Loomy fresh). **core** is for Loomy itself: `/update`, `/version`, `/vh`, `/verc`, `/ellune` and `github` only exist there (anywhere else they're unknown commands). Saved websites (`web`, `/webconfig`) are kept separately per mode; `web many` keeps the list open so you can open several.
 
 `/config` has two sections, **General** and **Customization** (Tab switches; `/config custom` jumps straight there). Turn on **Remember position** under General to have Loomy reappear where you last hid it. `/resetwindow` puts it back in the middle.
 
@@ -27,6 +27,8 @@ Every time Loomy hides, it comes back with a clean screen.
 **Pocket Loomy: commands from your phone (PC side).** `/pkg add phone`, then `/phone` shows an 8-digit code; say it in the Pocket Loomy Android app (`pocket/`, the APK comes with each release), check that the phone's ID on both screens matches, press Enter, and the phone is trusted for 7 days. After that you talk to it ("ayo Loomy, turn off the screen", "system info and next tab") and Loomy runs any normal command like you typed it, never a `/` command; `input back` / `input next tab` / `input enter` work its open screens. Pairing uses CPace (a password-authenticated key exchange), so a recorded pairing can't be brute-forced, and a code is used up by its first try. Every connection after that is encrypted and authenticated. Every attempt from the phone shows in Loomy, including ones it didn't understand. Any failed check shuts the listener down until you turn it back on in `/phone`, and Loomy tells you which device tried. With the feature off, nothing listens. Crypto: [Monocypher](https://monocypher.org) 4.0.2, vendored in `src/` (BSD-2 / CC0).
 
 Keys: **Tab** completes (commands, folder names after `lp`, site aliases, modes), **Up/Down** history, **Ctrl+L** clears, **Ctrl+Backspace** deletes a word, **Ctrl+Up/Down**, **PgUp/PgDn**, or the mouse wheel scrolls the chat.
+
+`/ellune` (core mode) pings **Ellune**, Loomy's online sister (`ellune/` in this repo, a small Cloudflare Worker), and tells you if it's up and how long the round trip took. That's all it does for now: it proves Loomy can reach its server before any online features get built.
 
 Settings and your folders live in `%APPDATA%\Loomy`.
 
