@@ -2,6 +2,10 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.19
+- **Pairing asks you first.** After a phone says the right code, Loomy shows its name and an ID like `K7P2-9QXD`, and the phone shows the same ID. It's only trusted once you press Enter on the PC; Esc, or a minute with no answer, says no. Someone who catches the code still can't pair without you seeing it.
+- Under the hood: the phone connection is split from the security on both sides (the PC and the app), so another way of connecting can be added later without touching the encryption.
+
 ## v2.18
 - **Pocket Loomy for Android** (first release of the app). Pair by saying the code, then tap Talk or type to run Loomy commands from your phone. The screen follows what's happening: setup steps until paired, then the live transcript, what was sent, and Loomy's answer.
 - **Talk like a person.** "Loomy, can you turn off the screen please" works ("yo/ayo Loomy" too). So do "show screen", "open system info and go to the next tab", "slash packages" and "recycle bin". Join commands with "and".

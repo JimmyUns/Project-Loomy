@@ -13,6 +13,11 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.19", L"2026-11-01", {
+        L"Pairing asks you first: the phone's name and ID show on the PC.",
+        L"The phone shows the same ID; Enter pairs, Esc or a minute says no.",
+        L"Phone connection split from the security (room for more ways in).",
+        0 } },
     { L"2.18", L"2026-10-31", {
         L"Pocket Loomy for Android: talk to Loomy (\u201CLoomy, show screen\u201D).",
         L"Any normal command from the phone, joined with \u201Cand\u201D; slash stays PC-only.",

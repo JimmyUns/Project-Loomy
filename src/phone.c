@@ -25,6 +25,7 @@
 #define HANDSHAKE_SECS 10          // a connection has this long to finish its handshake (or to hang up after pairing)
 #define IDLE_SECS      90          // a connected phone that says nothing for this long gets hung up on
 #define LOGN           5
+#define CONFIRM_SECS   60          // after the right code: this long to press Enter on the PC
 
 // ---------------------------------------------------------------- state
 typedef struct {
@@ -45,8 +46,23 @@ static wchar_t g_lockWhy[220];
 static wchar_t g_btErr[120];
 static int     g_rngBad;
 
+// every pipe a phone can come through (only Bluetooth today; a relay would be added here)
+static const PhoneLink *LINKS[] = { &PHONE_BT };
+#define NLINKS ((int)(sizeof LINKS / sizeof LINKS[0]))
+static const PhoneLink *g_via;                // the link the connected phone came through
+
+static int any_listening(void) {
+    for (int i = 0; i < NLINKS; i++) if (LINKS[i]->listening()) return 1;
+    return 0;
+}
+
 static PkConn    g_pk;
 static int       g_conn, g_wasReady;
+// 2.19: the right code isn't enough on its own. Loomy shows the phone's name and ID (the phone shows the
+// same ID) and holds back its last pairing message until you press Enter. Esc or a minute = no.
+static int       g_confirm;
+static ULONGLONG g_confirmUntil;
+static char      g_confirmId[10];
 static wchar_t   g_connAddr[20];
 static ULONGLONG g_connStart, g_lastSeen, g_lastSeenEver;
 
@@ -181,6 +197,7 @@ static void burn_code(int why) {
 static void end_conn(void) {
     pk_wipe(&g_pk);
     g_conn = g_wasReady = 0;
+    g_via = 0;
     g_connAddr[0] = 0;
     timer_update();
     ui_redraw();
@@ -188,7 +205,7 @@ static void end_conn(void) {
 
 static void drop_conn(void) {
     if (!g_conn) return;
-    bt_drop();
+    if (g_via) g_via->drop();
     end_conn();
 }
 
@@ -201,8 +218,11 @@ static void update_listener(void) {
     }
     if (g_codeLive && now() >= g_codeEnds) { burn_code(2); log_add(L"The pairing code ran out."); }
     int want = feature_on(FEAT_PHONE) && !g_cfg.phoneLocked && (g_trust.have || g_codeLive);
-    if (want && !bt_listening()) { if (bt_listen(g_btErr, 120)) g_btErr[0] = 0; }
-    if (!want && bt_listening()) bt_unlisten();
+    for (int i = 0; i < NLINKS; i++) {
+        const PhoneLink *l = LINKS[i];
+        if (want && !l->listening()) { if (l->listen(g_btErr, 120)) g_btErr[0] = 0; }
+        if (!want && l->listening()) l->unlisten();
+    }
     if (!want) g_btErr[0] = 0;
     timer_update();
     ui_redraw();
@@ -256,15 +276,16 @@ static void new_code(void) {
 static void flush(void) {
     if (g_rngBad) { lockout(L"Windows wouldn't give Loomy secure random numbers."); return; }
     if (!g_pk.outlen) return;
-    int ok = bt_send(g_pk.out, g_pk.outlen);
+    int ok = g_via && g_via->send(g_pk.out, g_pk.outlen);
     g_pk.outlen = 0;
     if (!ok) { log_add(L"Couldn't send to %s; hung up.", g_connAddr); drop_conn(); }
 }
 
-int phone_on_accept(const wchar_t *addr) {
+int phone_on_accept(const PhoneLink *via, const wchar_t *addr) {
     if (g_conn) { log_add(L"Turned away %s: already talking to a phone.", addr); return 0; }
     update_listener();
-    if (!bt_listening()) return 0;                       // nothing to listen for any more
+    if (!via->listening()) return 0;                     // nothing to listen for any more
+    g_via = via;
     uint8_t name[64];
     int nl = os_pc_name((char *)name, PK_NAMEMAX);
     g_rngBad = 0;
@@ -510,6 +531,41 @@ static void phone_forgot(void) {
     update_listener();
 }
 
+// ---------------------------------------------------------------- confirming a pairing on the PC
+static void ask_confirm(void) {
+    wchar_t nm[64], id[10];
+    g_confirm = 1;
+    g_confirmUntil = now() + CONFIRM_SECS;
+    pk_fingerprint(g_pk.peer_pk, g_confirmId);
+    for (int i = 0; i < 10; i++) id[i] = (wchar_t)g_confirmId[i];
+    name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
+    log_add(L"\"%s\" (%s) has the right code. Waiting for Enter.", nm, g_connAddr);
+    outf(OUT_OK, L"\"%s\" (%s) has the right code. Its ID is %s: if your phone shows the same, press Enter in /phone.",
+         nm, g_connAddr, id);
+    if (!phone_active()) phone_open();                   // the question has to be on screen
+    ui_show();
+    timer_update();
+    ui_redraw();
+}
+
+static void accept_pairing(void) {
+    g_confirm = 0;
+    paired();                                            // saves the trust
+    flush();                                             // the PC's key goes out only now: the phone is paired
+    g_connStart = now();                                 // it gets a moment to hang up by itself
+    update_listener();
+}
+
+static void refuse_pairing(const wchar_t *why) {
+    wchar_t nm[64];
+    name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
+    g_confirm = 0;
+    log_add(L"Didn't pair \"%s\": %s.", nm, why);
+    outf(OUT_ERR, L"Didn't pair \"%s\": %s. /phone, N for a new code.", nm, why);
+    drop_conn();                                         // its keys are wiped with the connection
+    update_listener();
+}
+
 void phone_on_data(const unsigned char *p, int n) {
     while (n > 0 && g_conn) {
         int used = 0, ev = pk_feed(&g_pk, p, n, &used);
@@ -524,11 +580,8 @@ void phone_on_data(const unsigned char *p, int n) {
             flush();
             update_listener();
             break;
-        case PK_EV_PAIRED:
-            paired();
-            flush();
-            g_connStart = now();                         // it gets a moment to hang up by itself
-            update_listener();
+        case PK_EV_PAIRED:                               // right code: now YOU confirm it's your phone
+            ask_confirm();
             break;
         case PK_EV_READY:
             g_wasReady = 1;
@@ -566,6 +619,7 @@ void phone_on_data(const unsigned char *p, int n) {
 
 void phone_on_closed(void) {
     if (!g_conn) return;
+    if (g_confirm) { refuse_pairing(L"the phone hung up before you confirmed it"); return; }
     if (pk_mid_pairing(&g_pk)) {
         log_add(L"Pairing from %s stopped halfway. That code is used up.", g_connAddr);
         out(OUT_ERR, L"A phone used the pairing code but hung up before finishing. /phone, N for a new code.");
@@ -579,7 +633,8 @@ void phone_on_closed(void) {
 void phone_tick(void) {
     ULONGLONG t = now();
     if (g_codeLive && t >= g_codeEnds) { burn_code(2); log_add(L"The pairing code ran out."); update_listener(); }
-    if (g_conn) {
+    if (g_confirm && t >= g_confirmUntil) refuse_pairing(L"nobody confirmed it within a minute");
+    else if (g_conn && !g_confirm) {
         int ready = pk_ready(&g_pk);
         if (!ready && t - g_connStart >= HANDSHAKE_SECS) {
             if (pk_mid_pairing(&g_pk)) out(OUT_ERR, L"A phone used the pairing code but stalled. /phone, N for a new code.");
@@ -646,7 +701,7 @@ void phone_open(void) {
     g_confirmForget = 0;
     if (!g_big) g_big = CreateFontW(-S(40), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS,
                                     CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Cascadia Mono");
-    if (!g_cfg.phoneLocked && !g_trust.have && !g_codeLive) new_code();   // opening it is the deliberate action
+    if (!g_cfg.phoneLocked && !g_trust.have && !g_codeLive && !g_confirm) new_code();   // opening it is the deliberate action
     update_listener();
     ui_set_input(L"");
     ui_redraw();
@@ -669,6 +724,11 @@ static void unlock(void) {
 }
 
 int phone_key(WPARAM vk) {
+    if (g_confirm) {                                     // the pairing question has the keys
+        if (vk == VK_RETURN) accept_pairing();
+        else if (vk == VK_ESCAPE) refuse_pairing(L"you said no");
+        return 1;
+    }
     if (vk == VK_ESCAPE) { phone_close(); return 1; }
     if (vk == VK_RETURN && g_cfg.phoneLocked) { unlock(); return 1; }
     return 1;
@@ -696,13 +756,32 @@ void phone_paint(HDC dc, RECT a) {
     int y = a.top, gap = g_lineH + S(6);
     int tw = ui_text(dc, a.left, y, L"Phone", g_accent);
     ui_text(dc, a.left + tw + S(12), y, L"Pocket Loomy over Bluetooth", C_DIM);
-    const wchar_t *st = g_cfg.phoneLocked ? L"shut down" : bt_listening() ? L"listening" : L"not listening";
+    const wchar_t *st = g_cfg.phoneLocked ? L"shut down" : any_listening() ? L"listening" : L"not listening";
     SIZE sz; GetTextExtentPoint32W(dc, st, s_len(st), &sz);
-    ui_text(dc, a.right - sz.cx, y, st, g_cfg.phoneLocked ? C_ERR : bt_listening() ? C_OK : C_DIM);
+    ui_text(dc, a.right - sz.cx, y, st, g_cfg.phoneLocked ? C_ERR : any_listening() ? C_OK : C_DIM);
     y += g_lineH + S(18);
 
     wchar_t line[260], t[48];
-    if (g_cfg.phoneLocked) {
+    if (g_confirm) {                                     // the right code came in: is it really your phone?
+        wchar_t nm[64], id[10];
+        name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
+        for (int i = 0; i < 10; i++) id[i] = (wchar_t)g_confirmId[i];
+        ui_text(dc, a.left, y, L"Pair with this phone?", g_accent); y += gap;
+        int x = a.left + ui_text(dc, a.left, y, nm, C_BRIGHT);
+        wsprintfW(line, L"   %s", g_connAddr);
+        ui_text(dc, x, y, line, C_DIM);
+        y += gap + S(4);
+        ui_text(dc, a.left, y, L"Its ID", C_DIM); y += g_lineH + S(2);
+        if (g_big) SelectObject(dc, g_big);
+        ui_text(dc, a.left, y, id, g_accent);
+        SIZE cs; GetTextExtentPoint32W(dc, id, s_len(id), &cs);
+        SelectObject(dc, g_font);
+        y += (cs.cy > g_lineH ? cs.cy : g_lineH) + S(6);
+        ui_text(dc, a.left, y, L"Your phone shows its ID too. Only say yes if they match.", C_TEXT); y += gap;
+        ULONGLONG left = g_confirmUntil > now() ? g_confirmUntil - now() : 0;
+        wsprintfW(line, L"Enter = yes, pair it    Esc = no    (%d s)", (int)left);
+        ui_text(dc, a.left, y, line, C_DIM); y += gap;
+    } else if (g_cfg.phoneLocked) {
         ui_text(dc, a.left, y, L"Listening is off: the last connection failed a check.", C_ERR); y += gap;
         if (g_lockWhy[0]) {
             RECT r = { a.left, y, a.right, y + 3 * g_lineH };
@@ -767,7 +846,8 @@ void phone_paint(HDC dc, RECT a) {
     }
 
     SelectObject(dc, g_fontSmall);
-    const wchar_t *keys = g_cfg.phoneLocked ? L"Enter turn listening back on    Esc close" :
+    const wchar_t *keys = g_confirm ? L"Enter yes    Esc no" :
+                          g_cfg.phoneLocked ? L"Enter turn listening back on    Esc close" :
                           g_trust.have ? L"F forget this phone    Esc close" :
                           L"N new code    Esc close";
     ui_text(dc, a.left, a.bottom - S(16), keys, C_DIM);

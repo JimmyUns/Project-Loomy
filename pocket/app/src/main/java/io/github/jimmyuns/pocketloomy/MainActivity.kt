@@ -54,6 +54,7 @@ class MainActivity : Activity() {
     private var answer = ""              // a problem or a note from the screen itself (pairing, forget)
     private var answerBad = false
     private var shownHistory = -1
+    private var confirmId: String? = null    // pairing: the code was right, the PC is asking (this phone's ID)
 
     // views
     private lateinit var chip: TextView
@@ -339,12 +340,19 @@ class MainActivity : Activity() {
             step2.text = when {
                 t != null -> "The pairing ran out after 7 days. On the PC type /phone, then tap below and say the 8 digits."
                 phase == Phase.LISTEN_CODE -> "Listening... say the 8 digits.  $transcript"
+                phase == Phase.PAIRING && confirmId != null ->
+                    "Right code. Now look at the PC: it shows this phone's ID. If it says $confirmId, press Enter on the PC."
                 phase == Phase.PAIRING -> "Pairing with ${store.pcLabel}..."
                 else -> "On the PC type /phone. Then tap below and say the 8 digits it shows."
             }
             codeBtn.isEnabled = store.pcLabel != null && phase == Phase.IDLE
             codeBtn.alpha = if (codeBtn.isEnabled) 1f else 0.4f
-            codeBtn.text = if (phase == Phase.LISTEN_CODE) "Listening..." else if (phase == Phase.PAIRING) "Pairing..." else "Say the code"
+            codeBtn.text = when {
+                phase == Phase.LISTEN_CODE -> "Listening..."
+                phase == Phase.PAIRING && confirmId != null -> "This phone's ID: $confirmId"
+                phase == Phase.PAIRING -> "Pairing..."
+                else -> "Say the code"
+            }
             step2.setTextColor(textC)
             if (answer.isNotEmpty() && phase == Phase.IDLE) {          // what went wrong (or a note), right where he looks
                 step2.text = answer
@@ -484,10 +492,12 @@ class MainActivity : Activity() {
         phase = Phase.PAIRING
         transcript = "${code.substring(0, 4)} ${code.substring(4)}"
         render()
-        Pocket.link.pair(device, code, Pocket.myName(this)) { result ->
+        confirmId = null
+        Pocket.link.pair(device, code, Pocket.myName(this), waiting = { id -> runOnUiThread { confirmId = id; render() } }) { result ->
             runOnUiThread {
                 phase = Phase.IDLE
                 transcript = ""
+                confirmId = null
                 result.onSuccess { t ->
                     store.save(t)
                     Pocket.mark(true)

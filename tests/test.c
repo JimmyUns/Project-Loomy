@@ -55,18 +55,21 @@ static void pump(void) {
 }
 static int ph_saw(int e) { for (int i = 0; i < ph_nev; i++) if (ph_ev[i] == e) return 1; return 0; }
 static uint8_t keep_sk[32], keep_pk[32], keep_pcpk[32];   // the phone's side of the pairing
+// how the PC answers the "pair with this phone?" question: 1 = Enter, 0 = Esc, -1 = nobody does anything
+static int g_confirmWith = 1;
 static int phone_pair(const char *code) {
     ph_nev = 0;
     pk_init_phone(&ph, (const uint8_t *)code, 0, 0, 0, 0, (const uint8_t *)"Pixel 8", 7);
-    if (!phone_on_accept(L"AA:BB:CC:DD:EE:01")) return 0;
+    if (!phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01")) return 0;
     pump();
+    if (pk_awaiting_pc(&ph) && g_confirmWith >= 0) { phone_key(g_confirmWith ? VK_RETURN : VK_ESCAPE); pump(); }
     if (ph_saw(PK_EV_PAIRED)) { memcpy(keep_sk, ph.my_sk, 32); memcpy(keep_pk, ph.my_pk, 32); memcpy(keep_pcpk, ph.peer_pk, 32); phone_on_closed(); return 1; }
     return 0;
 }
 static int phone_connect(void) {
     ph_nev = 0;
     pk_init_phone(&ph, 0, 1, keep_sk, keep_pk, keep_pcpk, (const uint8_t *)"Pixel 8", 7);
-    if (!phone_on_accept(L"AA:BB:CC:DD:EE:01")) return 0;
+    if (!phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01")) return 0;
     pump();
     return ph_saw(PK_EV_READY);
 }
@@ -576,8 +579,34 @@ int main(void) {
         EXPECT(saw(L"hung up before finishing") && !phone_code_for_tests(code) && !g_cfg.phoneLocked, "code burned by the try, no lockout for a hang-up");
         EXPECT(!g_btListening && !g_phoneTimer, "no code, no phone: listening stops, timer stops");
         phone_char(L'n');           EXPECT(phone_code_for_tests(code) && g_btListening, "N makes a new code");
+        // 2.19: the right code alone isn't enough: Loomy asks, showing the phone's name and ID
+        {
+            char want[10]; uint8_t sk[32];
+            g_confirmWith = -1; last_out = g_nout;
+            EXPECT(!phone_pair(code), "right code: not paired yet, waiting for Enter");
+            pk_fingerprint(ph.my_pk, want);
+            wchar_t ww[10]; for (int i = 0; i < 10; i++) ww[i] = (wchar_t)want[i];
+            wchar_t line[200]; swprintf(line, 200, L"Its ID is %ls", ww);
+            EXPECT(saw(L"\"Pixel 8\" (AA:BB:CC:DD:EE:01) has the right code") && saw(line), "Loomy shows the name, address and the phone's own ID");
+            EXPECT(phone_active() && pk_awaiting_pc(&ph) && g_toPhoneN == 0, "the question is on screen; the phone hasn't got the PC's key");
+            phone_key(VK_ESCAPE); pump(); (void)sk;
+            EXPECT(phone_active() && !g_btListening && !g_cfg.phoneLocked && saw(L"Didn't pair \"Pixel 8\": you said no"), "Esc: refused, no trust, no lockout");
+            FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); EXPECT(!f, "nothing saved"); if (f) fclose(f);
+            // a minute with nobody there
+            phone_char(L'n'); phone_code_for_tests(code); last_out = g_nout;
+            EXPECT(!phone_pair(code), "waiting again");
+            g_now += 61; phone_tick();
+            EXPECT(saw(L"nobody confirmed it within a minute") && !g_cfg.phoneLocked, "timeout: refused");
+            // the phone hangs up while asking
+            phone_char(L'n'); phone_code_for_tests(code); last_out = g_nout;
+            phone_pair(code); phone_on_closed();
+            EXPECT(saw(L"the phone hung up before you confirmed it"), "phone hang-up: refused");
+            // Esc goes to the question, not to closing the screen
+            g_confirmWith = 1;
+            phone_char(L'n'); phone_code_for_tests(code);
+        }
         last_out = g_nout;
-        EXPECT(phone_pair(code), "right code pairs");
+        EXPECT(phone_pair(code), "right code + Enter pairs");
         EXPECT(saw(L"Paired with \"Pixel 8\" (AA:BB:CC:DD:EE:01)"), "says who paired");
         EXPECT(!phone_code_for_tests(code) && g_btListening, "code gone, still listening for the trusted phone");
         EXPECT(!memcmp(ph.peer_name, "JIMMY-PC", 8), "phone got the PC's name");
@@ -641,7 +670,7 @@ int main(void) {
         EXPECT(!g_cfg.phoneLocked && g_balloons == 0, "all that was fine: no lockout");
 
         // second phone while busy
-        EXPECT(!phone_on_accept(L"11:22:33:44:55:66"), "one phone at a time");
+        EXPECT(!phone_on_accept(&PHONE_BT, L"11:22:33:44:55:66"), "one phone at a time");
         // idle hang-up
         int drops = g_btDrops;
         g_now += 91; phone_tick(); EXPECT(g_btDrops == drops + 1 && !g_phoneTimer, "silent for 90 s: hung up, timer off");
@@ -654,7 +683,7 @@ int main(void) {
         { unsigned char rest[600]; memset(rest, 0x41, sizeof rest); raw_to_pc(rest, 511); }
         EXPECT(g_cfg.phoneLocked && !g_btListening && g_balloons == 1, "a frame that fails its check: shut down + balloon");
         EXPECT(saw(L"Phone listener shut down") && saw(L"AA:BB:CC:DD:EE:01") && saw(L"Nothing got in"), "says what happened and from where");
-        EXPECT(!phone_on_accept(L"AA:BB:CC:DD:EE:01"), "nothing gets in while shut down");
+        EXPECT(!phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01"), "nothing gets in while shut down");
         cfg_load();                 EXPECT(g_cfg.phoneLocked, "shut down survives a restart");
         phone_startup();            EXPECT(!g_btListening, "and stays off after one");
         run(L"/phone");             EXPECT(phone_active() && !g_btListening, "/phone shows it, doesn't reopen by itself");
@@ -671,7 +700,7 @@ int main(void) {
             uint8_t sk[32], pk[32]; os_random(sk, 32); crypto_x25519_public_key(pk, sk);
             ph_nev = 0; last_out = g_nout;
             pk_init_phone(&ph, 0, 1, sk, pk, keep_pcpk, (const uint8_t *)"Evil", 4);
-            phone_on_accept(L"66:66:66:66:66:66"); pump();
+            phone_on_accept(&PHONE_BT, L"66:66:66:66:66:66"); pump();
             EXPECT(ph.fail == PK_F_AUTH, "the impostor can't verify the PC");
             unsigned char fake[35] = { 0, 33, 0x07 }; os_random(fake + 3, 32);
             raw_to_pc(fake, 35);
@@ -685,7 +714,7 @@ int main(void) {
             for (int i = 0; i < 300; i++) {
                 g_nopened = 0; g_cfg.phoneLocked = 0;
                 phone_open(); phone_close();
-                phone_on_accept(L"77:77:77:77:77:77"); g_toPhoneN = 0;
+                phone_on_accept(&PHONE_BT, L"77:77:77:77:77:77"); g_toPhoneN = 0;
                 unsigned char j[700]; int n = 3 + (int)(i * 7 % 690);
                 os_random(j, n); if (i % 2) { j[0] = 0; j[1] = (unsigned char)(n - 2 > 255 ? 255 : n - 2); }
                 raw_to_pc(j, n);
@@ -699,18 +728,18 @@ int main(void) {
         g_cfg.phoneLocked = 0; cfg_save(); phone_open(); phone_close();
 
         // handshake timeout: a phone that connects and says nothing
-        { int d = g_btDrops; phone_on_accept(L"88:88:88:88:88:88"); g_toPhoneN = 0;
+        { int d = g_btDrops; phone_on_accept(&PHONE_BT, L"88:88:88:88:88:88"); g_toPhoneN = 0;
           g_now += 11; phone_tick(); EXPECT(g_btDrops == d + 1 && !g_cfg.phoneLocked, "slow handshake: cut, no shutdown"); }
 
         // random numbers fail: nothing is sent
-        { g_rngFail = 1; g_toPhoneN = 0; EXPECT(!phone_on_accept(L"99:99:99:99:99:99") && g_toPhoneN == 0 && g_cfg.phoneLocked, "no secure random: nothing sent, shut down");
+        { g_rngFail = 1; g_toPhoneN = 0; EXPECT(!phone_on_accept(&PHONE_BT, L"99:99:99:99:99:99") && g_toPhoneN == 0 && g_cfg.phoneLocked, "no secure random: nothing sent, shut down");
           g_rngFail = 0; g_cfg.phoneLocked = 0; cfg_save(); phone_open(); phone_close(); }
 
         // trust runs out after 7 days
         EXPECT(phone_connect(), "still trusted");
         phone_on_closed();
         g_now += 7ull * 24 * 3600;
-        EXPECT(!phone_on_accept(L"AA:BB:CC:DD:EE:01") && !g_btListening && !g_cfg.phoneLocked, "after 7 days: turned away quietly, listening stops");
+        EXPECT(!phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01") && !g_btListening && !g_cfg.phoneLocked, "after 7 days: turned away quietly, listening stops");
         { FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); EXPECT(!f, "trust file deleted"); if (f) fclose(f); }
         run(L"/phone");             EXPECT(phone_code_for_tests(code), "/phone offers a new code");
         EXPECT(phone_pair(code), "pair again");

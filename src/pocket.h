@@ -85,6 +85,12 @@ int  pk_ready(const PkConn *c);
 int  pk_done(const PkConn *c);                             // pairing finished, nothing more expected
 int  pk_mid_pairing(const PkConn *c);                      // PC: the code was used and pairing isn't done
 const char *pk_fail_text(int fail);
+
+// The phone's ID, shown on both screens while pairing so you can check it's your phone: 8 characters
+// from its new public key, like "K7P2-9QXD" (Crockford base32, no I/L/O/U). out gets 10 bytes with the 0.
+void pk_fingerprint(const uint8_t pk[32], char out[10]);
+// phone: it has sent its key and is waiting for the PC to confirm (show the ID now: c->my_pk)
+int  pk_awaiting_pc(const PkConn *c);
 void pk_wipe(PkConn *c);
 
 // exposed for the tests (CPace test vectors from draft-irtf-cfrg-cpace)

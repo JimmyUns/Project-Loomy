@@ -50,4 +50,8 @@ object Native {
     @JvmStatic external fun sendNote(h: Long, text: ByteArray): Boolean
     /** "this phone forgot you": the PC drops the pairing too */
     @JvmStatic external fun sendForget(h: Long): Boolean
+    /** pairing: the right code went through and the PC is waiting for Enter (show phoneId now) */
+    @JvmStatic external fun awaitingPc(h: Long): Boolean
+    /** this phone's ID ("K7P2-9QXD"), the same one the PC shows while it asks */
+    @JvmStatic external fun phoneId(h: Long): String
 }

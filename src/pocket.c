@@ -542,6 +542,25 @@ int pk_send_forget(PkConn *c) {
     return 1;
 }
 
+void pk_fingerprint(const uint8_t pk[32], char out[10]) {
+    static const char B32[] = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    static const uint8_t LABEL[] = "LoomyPocket1 id";
+    uint8_t h[64];
+    crypto_sha512_ctx s;
+    crypto_sha512_init(&s);
+    crypto_sha512_update(&s, LABEL, sizeof(LABEL) - 1);
+    crypto_sha512_update(&s, pk, 32);
+    crypto_sha512_final(&s, h);
+    uint64_t v = 0;
+    for (int i = 0; i < 5; i++) v = v << 8 | h[i];                // 40 bits -> 8 characters
+    for (int i = 0, k = 0; i < 8; i++) {
+        if (i == 4) out[k++] = '-';
+        out[k++] = B32[(v >> (35 - 5 * i)) & 31];
+    }
+    out[9] = 0;
+}
+
+int  pk_awaiting_pc(const PkConn *c) { return c->role == PK_PHONE && c->state == ST_PAIR_KEY; }
 int  pk_ready(const PkConn *c)       { return c->state == ST_READY; }
 int  pk_done(const PkConn *c)        { return c->state == ST_DONE; }
 int  pk_mid_pairing(const PkConn *c) { return c->role == PK_PC && (c->state == ST_PAIR_C || c->state == ST_PAIR_KEY); }

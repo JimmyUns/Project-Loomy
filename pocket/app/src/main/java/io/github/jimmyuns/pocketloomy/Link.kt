@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -14,6 +16,34 @@ class PocketError(msg: String) : Exception(msg)
 
 enum class LinkState { IDLE, CONNECTING, CONNECTED }
 
+/**
+ * A pipe the encrypted bytes travel through. Link (and the security in pocket.c) never cares what it is:
+ * Bluetooth today; an internet relay can be another Pipe later without touching the protocol.
+ */
+interface Pipe {
+    val input: InputStream
+    val output: OutputStream
+    fun close()
+}
+
+/** the Bluetooth pipe: RFCOMM to Loomy's service on the PC */
+@SuppressLint("MissingPermission")
+class BluetoothPipe private constructor(private val s: BluetoothSocket) : Pipe {
+    override val input: InputStream get() = s.inputStream
+    override val output: OutputStream get() = s.outputStream
+    override fun close() { try { s.close() } catch (_: IOException) {} }
+
+    companion object {
+        /** connects (blocking); the watchdog closes it if that takes too long */
+        fun open(device: BluetoothDevice, watchdog: (Pipe) -> () -> Unit): BluetoothPipe {
+            val p = BluetoothPipe(device.createRfcommSocketToServiceRecord(Link.SERVICE))
+            val cancel = watchdog(p)
+            try { p.s.connect() } finally { cancel() }
+            return p
+        }
+    }
+}
+
 // Talks to Loomy over Bluetooth on one background thread (blocking sockets are fine there), so the
 // screen, the notification and the 5-minute ping never step on each other. One connection at a time.
 // After use it stays open for a minute (the PC hangs up after 90 s of silence), so quick follow-ups
@@ -22,15 +52,17 @@ enum class LinkState { IDLE, CONNECTING, CONNECTED }
 class Link {
     private val worker = Executors.newSingleThreadScheduledExecutor()
     private val watchdog = Executors.newSingleThreadScheduledExecutor()
-    private var sock: BluetoothSocket? = null
+    private var pipe: Pipe? = null
+    private var onAwait: (() -> Unit)? = null           // pairing: called once when the PC starts asking
     private var h = 0L
     private var idle: ScheduledFuture<*>? = null
 
     /** called on the worker thread whenever the connection changes */
     var onState: (LinkState) -> Unit = {}
 
-    fun pair(device: BluetoothDevice, code: String, myName: ByteArray, done: (Result<Trust>) -> Unit) {
-        worker.execute { done(runCatching { doPair(device, code, myName) }) }
+    /** waiting(id): the code was right and the PC now asks you to confirm; show this phone's ID */
+    fun pair(device: BluetoothDevice, code: String, myName: ByteArray, waiting: (String) -> Unit, done: (Result<Trust>) -> Unit) {
+        worker.execute { done(runCatching { doPair(device, code, myName, waiting) }) }
     }
 
     /** a command; the result is Loomy's answer */
@@ -79,21 +111,25 @@ class Link {
     fun close() { worker.execute { hangUp() } }
 
     // ------------------------------------------------------------------ pairing
-    private fun doPair(device: BluetoothDevice, code: String, name: ByteArray): Trust {
+    private fun doPair(device: BluetoothDevice, code: String, name: ByteArray, waiting: (String) -> Unit): Trust {
         hangUp()
         h = Native.create()
+        var asked = false
+        onAwait = { if (!asked && Native.awaitingPc(h)) { asked = true; waiting(Native.phoneId(h)) } }
         try {
             Native.initPhone(h, code.toByteArray(Charsets.US_ASCII), null, null, null, name)
             open(device)
-            pumpUntil(Native.EV_PAIRED, 20)
+            pumpUntil(Native.EV_PAIRED, 80)                  // includes up to a minute for Enter on the PC
             val keys = Native.myKeys(h)
             val t = Trust(keys.copyOfRange(0, 32), keys.copyOfRange(32, 64), Native.peerKey(h),
                           System.currentTimeMillis(), String(Native.peerName(h), Charsets.UTF_8))
             keys.fill(0)
             return t
         } catch (e: IOException) {
+            if (asked) throw PocketError("Loomy didn't confirm it (Esc on the PC, or a minute went by). Pair again with a new code.")
             throw PocketError(unreachable(device))
         } finally {
+            onAwait = null
             hangUp()                                    // pairing ends here; commands use a fresh connection
         }
     }
@@ -104,7 +140,7 @@ class Link {
     private fun <T> session(device: BluetoothDevice, trust: Trust, name: ByteArray, op: () -> T): T {
         idle?.cancel(false)
         for (attempt in 0..1) {
-            val fresh = h == 0L || sock == null || !Native.ready(h)
+            val fresh = h == 0L || pipe == null || !Native.ready(h)
             try {
                 if (fresh) connect(device, trust, name)
                 val r = op()
@@ -133,20 +169,21 @@ class Link {
     // ------------------------------------------------------------------ plumbing
     private fun open(device: BluetoothDevice) {
         onState(LinkState.CONNECTING)
-        val s = device.createRfcommSocketToServiceRecord(SERVICE)
-        val dog = watchdog.schedule({ quietClose(s) }, 15, TimeUnit.SECONDS)
-        try { s.connect() } finally { dog.cancel(false) }
-        sock = s
+        pipe = BluetoothPipe.open(device) { p ->
+            val dog = watchdog.schedule({ p.close() }, 15, TimeUnit.SECONDS)
+            val cancel: () -> Unit = { dog.cancel(false) }
+            cancel
+        }
     }
 
     // feed the engine whatever the PC sends until `wanted` shows up; send whatever the engine queues
     private fun pumpUntil(wanted: Int, secs: Long) {
-        val s = sock ?: throw IOException("not connected")
-        val dog = watchdog.schedule({ quietClose(s) }, secs, TimeUnit.SECONDS)
+        val s = pipe ?: throw IOException("not connected")
+        val dog = watchdog.schedule({ s.close() }, secs, TimeUnit.SECONDS)
         try {
             flushOut()
             val buf = ByteArray(600)
-            val input = s.inputStream
+            val input = s.input
             while (true) {
                 val n = input.read(buf)
                 if (n < 0) throw IOException("hung up")
@@ -159,6 +196,7 @@ class Link {
                     off += used
                     if (ev == Native.EV_FAIL) throw PocketError(failMessage(Native.fail(h)))
                     flushOut()
+                    onAwait?.invoke()
                     if (ev == wanted) hit = true
                     if (used <= 0) break
                 }
@@ -172,7 +210,7 @@ class Link {
     private fun flushOut() {
         val out = Native.takeOut(h)
         if (out.isEmpty()) return
-        val os = (sock ?: throw IOException("not connected")).outputStream
+        val os = (pipe ?: throw IOException("not connected")).output
         os.write(out)
         os.flush()
     }
@@ -180,14 +218,12 @@ class Link {
     private fun hangUp() {
         idle?.cancel(false)
         idle = null
-        val had = sock != null
-        sock?.let { quietClose(it) }
-        sock = null
+        val had = pipe != null
+        pipe?.close()
+        pipe = null
         if (h != 0L) { Native.destroy(h); h = 0L }
         if (had) onState(LinkState.IDLE)
     }
-
-    private fun quietClose(s: BluetoothSocket) { try { s.close() } catch (_: IOException) {} }
 
     private fun unreachable(device: BluetoothDevice) =
         "Couldn't reach Loomy on ${device.name ?: device.address}. Check that Bluetooth is on, the PC is close, " +

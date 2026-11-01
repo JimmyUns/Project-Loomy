@@ -149,6 +149,7 @@ static int pair(const uint8_t *pccode, const uint8_t *phcode, Trust *t, int *pcf
     EXPECT(pc.peer_namelen == 7 && !memcmp(pc.peer_name, "Pixel 8", 7), "PC sees the claimed name");
     e = deliver(&pc, &ph, &e2);                  // PAIR_B -> PAIR_C + KEY
     if (e == PK_EV_FAIL) { *phfail = ph.fail; return 0; }
+    EXPECT(pk_awaiting_pc(&ph) && !pk_awaiting_pc(&pc), "phone: key sent, waiting for the PC");
     e = deliver(&ph, &pc, &e2);                  // PAIR_C + KEY -> KEY
     if (e == PK_EV_FAIL || e2 == PK_EV_FAIL) { *pcfail = pc.fail; return 0; }
     EXPECT(e == PK_EV_PAIRED && pk_done(&pc), "PC paired");
@@ -156,6 +157,8 @@ static int pair(const uint8_t *pccode, const uint8_t *phcode, Trust *t, int *pcf
     EXPECT(e == PK_EV_PAIRED && pk_done(&ph), "phone paired");
     EXPECT(!memcmp(pc.peer_pk, ph.my_pk, 32) && !memcmp(ph.peer_pk, pc.my_pk, 32), "both hold each other's keys");
     EXPECT(ph.peer_namelen == 8 && !memcmp(ph.peer_name, "JIMMY-PC", 8), "phone sees the PC's name");
+    {   char a[10], b[10]; pk_fingerprint(pc.peer_pk, a); pk_fingerprint(ph.my_pk, b);
+        EXPECT(!strcmp(a, b) && strlen(a) == 9 && a[4] == '-', "both sides show the same phone ID"); }
     memcpy(t->pc_sk, pc.my_sk, 32); memcpy(t->pc_pk, pc.my_pk, 32);
     memcpy(t->ph_sk, ph.my_sk, 32); memcpy(t->ph_pk, ph.my_pk, 32);
     return 1;
@@ -454,6 +457,12 @@ int main(void) {
     vectors();
     engines();
     hostile();
+    {   // the ID: stable, and different keys give different IDs
+        uint8_t k1[32] = {1}, k2[32] = {2}; char a[10], b[10], c[10];
+        pk_fingerprint(k1, a); pk_fingerprint(k1, b); pk_fingerprint(k2, c);
+        printf("   phone ID example: %s\n", a);
+        EXPECT(!strcmp(a, b) && strcmp(a, c) && !strpbrk(a, "ILOU"), "phone ID: stable, distinct, no look-alike letters");
+    }
     printf("\n%d checks, %d failure(s)\n", checks, fails);
     return fails != 0;
 }
