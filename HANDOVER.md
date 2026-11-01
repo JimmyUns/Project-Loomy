@@ -159,10 +159,12 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.20 ENDED (Nov 2):** PR #19 ready. Ellune's ping: the server (`ellune/`) is live and `/ellune` (core) pings
-  it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy check, cached
-  after), then 63-300 ms with one 734 spike: normal, no fix needed. The Cowork session that built it couldn't push;
-  a later chat applied the patch and pushed. Work laptop not tested and not needed (§1).
+- **v2.20 in progress (Nov 2), PR #19 (back to draft):** Ellune's ping. The server (`ellune/`) is live and `/ellune`
+  (core) pings it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy
+  check, cached after), then 63-300 ms with one 734 spike: normal, no fix needed. Then he asked for the app to ping
+  too: **Ping Ellune** in Pocket Loomy (INTERNET permission, his OK; `POCKET-HANDOVER.md` §11). Not tested on his
+  phone yet: ask him. The Cowork session that started it couldn't push; a later chat applied the patch and pushed.
+  Work laptop not tested and not needed (§1).
 - **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
   + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
   Next big direction (agreed, not started): Ellune as a blind relay + brain (`POCKET-HANDOVER.md` §11b).

@@ -1,7 +1,8 @@
 # Pocket Loomy (Android)
 
 The phone half of Pocket Loomy: say "display extend" and Loomy on your PC does it, over Bluetooth.
-The PC half is Loomy's `/phone` (`/pkg add phone`). Plain Kotlin, no libraries, no internet permission.
+The PC half is Loomy's `/phone` (`/pkg add phone`). Plain Kotlin, no libraries. Commands only go over Bluetooth; the internet permission (2.20) is only for
+**Ping Ellune**, a tap-to-check that the phone can reach Loomy's server.
 The crypto and wire protocol are Loomy's own `src/pocket.c` + Monocypher, compiled through the NDK, so both
 sides run identical code. Design and protocol: `POCKET-HANDOVER.md`.
 

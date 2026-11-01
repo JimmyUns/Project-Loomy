@@ -206,7 +206,8 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
 
 ## 11. Android app (`pocket/`, v2.18, first cut)
 - Plain Kotlin, framework APIs only (no AndroidX, no libraries), minSdk 26, targetSdk/compileSdk 35, AGP 8.7.3,
-  Kotlin 2.0.21, Gradle 8.14.3, JDK 17. Package `io.github.jimmyuns.pocketloomy`. **No INTERNET permission**;
+  Kotlin 2.0.21, Gradle 8.14.3, JDK 17. Package `io.github.jimmyuns.pocketloomy`. **INTERNET permission since 2.20, only for `Ellune.kt`**
+  (tap-to-ping, one HTTPS GET, `usesCleartextTraffic="false"`; he OK'd it Nov 2); commands stay Bluetooth-only;
   backups and device transfer exclude everything (`res/xml/no_backup.xml`).
 - `cpp/pocket_jni.c` + `CMakeLists.txt` compile `src/pocket.c` + Monocypher (arm64 + armv7 only).
   `pk_random` = bionic `arc4random_buf`. `Native.kt` mirrors the JNI; event/failure numbers must match `pocket.h`.
@@ -249,6 +250,11 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   release) runs the app's real `Native.kt`/`Words.kt` + `pocket_jni.c` on a desktop JVM against a PC-role engine
   (44 checks). Type-check the app with kotlinc against an `android.jar` (e.g. github.com/Reginer/aosp-android-jar,
   android-35): `kotlinc -cp android.jar *.kt`.
+
+- **Ellune ping (2.20):** an "Ellune" box on the main screen (works unpaired): **Ping Ellune** → `Ellune.ping`
+  (own thread, `HttpsURLConnection`, 8 s timeouts, no redirects, reads ≤512 bytes) → same three answers as `/ellune`
+  on the PC. `Ellune.check` mirrors `ellune_check()` (needs `"ok":true` + `"service":"ellune"`, body must be a JSON
+  object) and is tested in `tests/jni` (plain Java, no Android classes; 176 checks now). Not on voice yet.
 
 ## 11b. Where it's heading (agreed Nov 1, not started)
 - **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same

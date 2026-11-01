@@ -5,6 +5,7 @@ All notable changes to Loomy, newest first.
 ## v2.20
 - **Meet Ellune**, Loomy's online sister: a small server (`ellune/`, a Cloudflare Worker) that future online features will go through.
 - **`/ellune`** (core mode) pings it and says whether it's up and how long the round trip took (that includes setting up the secure connection). A wifi login page or anything else answering doesn't count as up.
+- **Pocket Loomy can ping Ellune too:** Ellune box, **Ping Ellune**, same answer as on the PC. That's the app's first use of the internet (a new permission), only when you tap it. Commands to the PC still only go over Bluetooth.
 
 ## v2.19
 - **Pairing asks you first.** After a phone says the right code, Loomy shows its name and an ID like `K7P2-9QXD`, and the phone shows the same ID. It's only trusted once you press Enter on the PC; Esc, or a minute with no answer, says no. Someone who catches the code still can't pair without you seeing it.

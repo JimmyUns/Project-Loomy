@@ -83,6 +83,9 @@ class MainActivity : Activity() {
     private lateinit var swCard: Switch
     private lateinit var swSpeed: Switch
     private lateinit var swSolo: Switch
+    private lateinit var elluneLine: TextView
+    private lateinit var elluneBtn: Button
+    private var pinging = false
 
     private val onChange: () -> Unit = { render() }
 
@@ -276,6 +279,14 @@ class MainActivity : Activity() {
         }
         swNotif = n1; swKeep = n2; swCard = n3; swSpeed = n4; swSolo = n5
         content.addView(box(text("Settings", accent, 13f, true), n1, n1a, n2, n2a, n5, n5a, n3, n3a, n4, n4a),
+                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+
+        // Ellune, Loomy's online sister: a ping to check this phone can reach her (works without pairing)
+        elluneLine = text("", dim, 13f).apply { setPadding(0, dp(6), 0, 0); visibility = View.GONE }
+        elluneBtn = button("Ping Ellune", false) { pingEllune() }
+        content.addView(box(text("Ellune", accent, 13f, true),
+                            text("Loomy's online sister. Checks this phone can reach her. Only when you tap; nothing about you is sent.", dim, 12f),
+                            elluneLine, gap(10), elluneBtn),
                         LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
 
         // the rarely used buttons
@@ -569,6 +580,25 @@ class MainActivity : Activity() {
         phase = Phase.FORGETTING
         render()
         Pocket.link.forget(device, t, Pocket.myName(this)) { r -> runOnUiThread { done(r.isSuccess) } }
+    }
+
+    // ------------------------------------------------------------------ Ellune
+    private fun pingEllune() {
+        if (pinging) return
+        pinging = true
+        elluneBtn.isEnabled = false
+        elluneBtn.text = "Pinging Ellune..."
+        Ellune.ping { r ->
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                pinging = false
+                elluneBtn.isEnabled = true
+                elluneBtn.text = "Ping Ellune"
+                elluneLine.text = Ellune.message(r)
+                elluneLine.setTextColor(if (r is Ellune.Result.Up) ok else err)
+                elluneLine.visibility = View.VISIBLE
+            }
+        }
     }
 
     // ------------------------------------------------------------------ commands

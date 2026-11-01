@@ -1,4 +1,4 @@
-# Ellune — Handover (ping server live; `/ellune` in Loomy v2.20, tested, PR #19; Nov 2 2026)
+# Ellune — Handover (ping server live; `/ellune` in Loomy v2.20, tested on PC; app ping added; PR #19; Nov 2 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -31,15 +31,17 @@ questions and wants to talk security **later**, as its own conversation. Don't b
   but it wasn't Ellune." The reply check `ellune_check()` is in `version.c` (needs `"ok":true` and
   `"service":"ellune"`, so a captive portal's 200 doesn't count) and is unit-tested.
 - **Tested Nov 2 on his PC:** up, 63-300 ms after the first run (1735 ms: DNS + proxy check). v2.20 is PR #19.
-- **Next** in the plan below: optionally the app pinging Ellune (his call on the INTERNET permission).
+- **App ping (v2.20, Nov 2):** he said yes to the INTERNET permission. Pocket Loomy has an Ellune box with **Ping
+  Ellune** (`pocket/.../Ellune.kt`, `POCKET-HANDOVER.md` §11). Not tested on his phone yet.
+- **Next** in the plan below: the security talk.
 - Loomy is at **v2.20** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
 - **First step he picked: a simple ping.** Loomy sends a request to Ellune, Ellune answers, Loomy shows that Ellune is up
   (and how long it took). That proves the whole path (hosting, deploy, Loomy talking to it) before any real features.
 - **Still open:** the full feature list (he hasn't decided).
 - **Plan he agreed (Nov 1):** account → Worker → he deploys → `/ellune` in Loomy (v2.20) → he tests on his PC (done; the
-  work laptop is out of scope now) → optionally the app pings too (needs the INTERNET permission: his
-  call) → the security talk → then A or B from §6.
+  work laptop is out of scope now) → the app pings too (built in v2.20, he OK'd the INTERNET
+  permission) → the security talk → then A or B from §6.
 
 ## 3. Hosting (researched Oct 2026, recheck prices before deciding)
 - **Recommended to start: Cloudflare (serverless).** Write only the logic; Cloudflare runs, patches and keeps it up.

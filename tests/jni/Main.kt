@@ -1,5 +1,6 @@
 // Desktop JNI test: the app's real Native.kt + libpocket (pocket_jni.c) as the phone, TestPc as the PC,
 // bytes passed by hand. Catches JNI name/signature mistakes before they crash on a phone. Also Words.
+import io.github.jimmyuns.pocketloomy.Ellune
 import io.github.jimmyuns.pocketloomy.Native
 import io.github.jimmyuns.pocketloomy.Words
 
@@ -167,6 +168,21 @@ fun main() {
         check(Native.sendForget(p2) && toPc(pc2, Native.takeOut(p2)).contains(Native.EV_FORGET), "forget via JNI")
         check(!Native.sendCmd(p2, "rb".toByteArray()), "nothing after forget")
     }
+    // ---- Ellune's ping reply (same cases as ellune_check() in tests/test.c)
+    check(Ellune.check("{\"ok\":true,\"service\":\"ellune\",\"version\":\"0.1\"}") == "0.1", "ellune: real reply")
+    check(Ellune.check("{ \"ok\" : true , \"service\": \"ellune\", \"version\": \"0.12b\" }\n") == "0.12b", "ellune: spaces fine")
+    check(Ellune.check("{\"ok\":false,\"error\":\"not found\"}") == null, "ellune: 404 body isn't up")
+    check(Ellune.check("{\"ok\":true,\"service\":\"other\",\"version\":\"0.1\"}") == null, "ellune: someone else's ok")
+    check(Ellune.check("<html><body>Sign in to the wifi</body></html>") == null, "ellune: captive portal page")
+    check(Ellune.check("<html>{\"ok\":true,\"service\":\"ellune\"}</html>") == null, "ellune: json inside a page")
+    check(Ellune.check("{\"ok\":truthy,\"service\":\"ellune\"}") == null, "ellune: ok must be true")
+    check(Ellune.check("") == null && Ellune.check(null) == null, "ellune: empty / null")
+    check(Ellune.check("{\"ok\":true,\"service\":\"ellune\"}") == "?", "ellune: no version = ?")
+    check(Ellune.check("{\"ok\":true,\"service\":\"ellune\",\"version\":\"0.1&calc\"}") == "?", "ellune: weird version = ?")
+    check(Ellune.check("{\"ok\":true,\"service\":\"ellune\",\"version\":\"123456789012345678901234567890\"}") == "?", "ellune: long version = ?")
+    check(Ellune.message(Ellune.Result.Up("0.1", 63)) == "Ellune is up (v0.1, 63 ms).", "ellune: message")
+    check(Ellune.pingNow() == Ellune.Result.Unreachable || Ellune.pingNow() is Ellune.Result.Up, "ellune: ping fails cleanly here (or works)")
+
     println("$checks checks, $fails failure(s)")
     if (fails > 0) kotlin.system.exitProcess(1)
 }
