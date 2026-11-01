@@ -152,6 +152,9 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.20 started (Nov 1): Ellune's ping.** So far only the server (`ellune/`, see `ELLUNE-HANDOVER.md` §2);
+  `LOOMY_VERSION`, README title and changelogs get bumped when `/ellune` lands in Loomy. This session couldn't push
+  (the git proxy didn't have the repo in the session's sources), so the work went to him as a patch.
 - **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
   + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
   Next big direction (agreed, not started): Ellune as a blind relay + brain (`POCKET-HANDOVER.md` §11b).

@@ -1,4 +1,4 @@
-# Ellune — Handover (nothing built yet; direction agreed Nov 1 2026)
+# Ellune — Handover (ping server written in `ellune/`, not deployed yet; Nov 1 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -14,14 +14,23 @@ Jimmy has no hardware to run a server at home, so Ellune runs on rented hosting.
 questions and wants to talk security **later**, as its own conversation. Don't bake in security decisions without him.
 
 ## 2. Status
-- **Nothing exists yet.** No hosting account, no code, no repo or folder chosen.
+- **Decided Nov 1:** the code lives in **`ellune/`** in this repo (same bot + PR flow); the ping command is
+  **`/ellune`** in **core** mode; **no domain** for now (the free `workers.dev` address).
+- **He made a Cloudflare account** (free plan). Nothing deployed yet.
+- **`ellune/` (v2.20 branch):** the Worker (`src/index.js`, plain JS, no dependencies). `GET /ping` →
+  `200 {"ok":true,"service":"ellune","version":"0.1"}`, `cache-control: no-store` so Loomy's timing is a real
+  round trip; other methods on `/ping` → 405, other paths → 404. `node test.mjs` checks it locally. Deploy steps
+  (dashboard or `wrangler`) are in `ellune/README.md`. He deploys; we never hold a Cloudflare token.
+- **Next:** he deploys and sends the `workers.dev` URL → build `/ellune` in Loomy (v2.20) with that URL baked in
+  (it's not a secret).
 - Loomy is at **v2.19** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
 - **First step he picked: a simple ping.** Loomy sends a request to Ellune, Ellune answers, Loomy shows that Ellune is up
   (and how long it took). That proves the whole path (hosting, deploy, Loomy talking to it) before any real features.
-- **Still open:** the full feature list (he hasn't decided), where Ellune's code lives (own repo vs a folder in
-  Project-Loomy), the Loomy command name for the ping and which mode it lives in (core fits: it's Loomy upkeep),
-  and whether Ellune gets its own domain.
+- **Still open:** the full feature list (he hasn't decided).
+- **Plan he agreed (Nov 1):** account → Worker → he deploys → `/ellune` in Loomy (v2.20) → he tests on his PC and
+  the work laptop (its network may block it) → optionally the app pings too (needs the INTERNET permission: his
+  call) → the security talk → then A or B from §6.
 
 ## 3. Hosting (researched Oct 2026, recheck prices before deciding)
 - **Recommended to start: Cloudflare (serverless).** Write only the logic; Cloudflare runs, patches and keeps it up.
