@@ -17,6 +17,7 @@ static const Release RELEASES[] = {
         L"Pairing asks you first: the phone's name and ID show on the PC.",
         L"The phone shows the same ID; Enter pairs, Esc or a minute says no.",
         L"Phone connection split from the security (room for more ways in).",
+        L"/phone's list of what happened is now called Logs.",
         0 } },
     { L"2.18", L"2026-10-31", {
         L"Pocket Loomy for Android: talk to Loomy (\u201CLoomy, show screen\u201D).",

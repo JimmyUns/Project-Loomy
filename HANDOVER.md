@@ -1,4 +1,4 @@
-# Loomy — Handover (v2.19 in progress: pairing confirm + link split)
+# Loomy — Handover (v2.19 ended, waiting for him to merge + release)
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -152,7 +152,8 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.19 (draft PR, not ended):** pairing confirm on the PC + the link/pipe split (`POCKET-HANDOVER.md` §9.8).
+- **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
+  + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
   Next big direction (agreed, not started): ELLA as a blind relay + brain (`POCKET-HANDOVER.md` §11b).
 - **v2.18 released (Oct 31).** He hasn't set up the APK signing secrets yet (so no APK on releases; he uses dev builds). The release APK only gets
   built if he has set up the signing secrets (`POCKET_KEYSTORE_B64`, `POCKET_KEYSTORE_PASSWORD`, alias `pocket`;

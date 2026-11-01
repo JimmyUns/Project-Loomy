@@ -837,7 +837,7 @@ void phone_paint(HDC dc, RECT a) {
 
     if (g_nlog) {
         y += S(8);
-        ui_text(dc, a.left, y, L"Recent", C_DIM); y += g_lineH + S(4);
+        ui_text(dc, a.left, y, L"Logs", C_DIM); y += g_lineH + S(4);
         SelectObject(dc, g_fontSmall);
         for (int i = g_nlog - 1; i >= 0 && y < a.bottom - S(40); i--) {
             ui_text(dc, a.left, y, g_log[i], C_TEXT);
