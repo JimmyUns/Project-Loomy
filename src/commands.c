@@ -74,6 +74,7 @@ static void c_net(wchar_t *args)    { net_open(); }
 static void c_update(wchar_t *args)  { cmd_update(args); }
 static void c_version(wchar_t *args) { cmd_version(args); }
 static void c_vhist(wchar_t *args)   { cmd_versionhistory(args); }
+static void c_ellune(wchar_t *args)  { cmd_ellune(args); }
 static void c_verc(wchar_t *args)    { changelog_open(args); }
 static void c_mode(wchar_t *args)    { cmd_mode(args); }
 static void c_web(wchar_t *args)     { cmd_web(args); }
@@ -162,6 +163,7 @@ static const Command COMMANDS[] = {
     { L"Version",      L"show version + check for updates",   L"version",  L"ver",             1, CORE, 0,                                  0,         c_version },
     { L"Versions",     L"list all versions and dates",        L"vh",       L"versionhistory",  1, CORE, 0,                                  0,         c_vhist },
     { L"Changelog",    L"what changed in each version", L"verc",    L"versionchangelog", 1, CORE, L"[version]",                      1,         c_verc },
+    { L"Ellune",       L"ping Ellune, Loomy's server",        L"ellune",   0,                  1, CORE, 0,                                  0,         c_ellune },
     { L"Shutdown",     L"close Loomy completely",             L"shutdown", 0,                  1, ALL, 0,                                  0,         c_shutdown },
 };
 static const int NCOMMANDS = sizeof(COMMANDS) / sizeof(COMMANDS[0]);

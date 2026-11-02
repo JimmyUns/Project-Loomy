@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- No INTERNET permission: Pocket Loomy only ever talks Bluetooth to your PC. -->
+<!-- Commands to your PC only ever go over Bluetooth. INTERNET (v2.20) is only for "Ping Ellune" (Ellune.kt):
+     one HTTPS GET to Loomy's server when you tap it. No plain http (usesCleartextTraffic="false"). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -29,6 +31,7 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Pocket"
         android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:dataExtractionRules="@xml/no_backup"
         android:supportsRtl="true">
         <activity

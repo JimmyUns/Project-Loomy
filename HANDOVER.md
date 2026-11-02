@@ -17,7 +17,9 @@ agreed design and security rules. Read it before touching voice/phone work.
 A summon-anywhere command console for Windows (hotkey → dark overlay → short commands), built by the user,
 **Jimmy Younes**. It's one tiny C program with no runtime (~163 KB exe at 2.16; Pocket Loomy's PC side added ~43 KB in 2.17). Values: **as light as possible**, local-first,
 plum/purple theme with a halftone dot strip, accent themeable. Long-term: voice (SAPI) and optional AI, still light.
-He runs it on his personal PC and his work laptop (no admin there; never help get around workplace security).
+It started as a tool for his personal PC and his work laptop, but it's grown well past what the work laptop needed
+(Nov 2026): his **personal PC is the target**. Don't plan, test or ask around the work laptop unless he brings it
+up. If he does use it there: no admin, and never help get around workplace security.
 
 **How he likes to work:** straight-talking, concise, casual, no hype. Give real tradeoffs with a clear
 recommendation; he makes the calls. Say plainly what you could and couldn't test. A little "why" helps him learn.
@@ -45,6 +47,11 @@ If something's unclear, ask (one question). When he asks "what do you think, don
   around it. Commit locally, `git format-patch` the work, **present the .patch file** (a file that isn't presented
   can't be downloaded), and tell him: start the chat inside the Loomy project, or add the repo as a source for the
   session. A chat that can push can apply the patch (`git am`) and push it (v2.13 was rescued that way).
+  **Cowork sessions (Nov 2026):** traffic to GitHub goes through a git proxy that only lets through repos in the
+  session's sources ("not in this session's authorized repository set"). It blocks even with the LoomyBot token in
+  the URL, and repos can't be added to a task after it starts: he has to start the task with the repo attached. He
+  installed the GitHub connector on Nov 1. There, `/mnt/project` doesn't exist: read `github-bot.txt` with the
+  Projects tool and keep the token in a scratch file, never in chat output. `gh` GraphQL is blocked; use REST.
 - **He creates the release** (GitHub UI "Draft a new release" with tag `vX.Y`, which also creates the tag). The workflow
   then builds and attaches `loomy.exe` (and renames it "Loomy vX.Y"). Builds are flaky: see §6.
 - **If he says "don't push until the version is done"**, keep commits local on `claude/vX.Y` (no branch push, no PR)
@@ -108,7 +115,7 @@ Monocypher 4.0.2, don't edit).
 ## 5. Current features
 Plain: `help` · `lp [folder]` · `web [alias|many]` · `display`/`dp [extend|second|pc|duplicate|off]` · `net` · `rb` · `exe`.
 Slash (all modes): `/mode` `/m` · `/pkg [add|remove <feature>]` · `/webconfig` `/webc` · `/config` · `/clear` · `/hide` · `/reload` · `/resetwindow` · `/shutdown`.
-Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]`.
+Slash (**core only**): `/update` · `/version` `/ver` · `/vh` · `/verc [version]` · `/ellune` (2.20).
 Plain (**core only**, from 2.12): `github` `gh` (opens the repo page, hides Loomy).
 Plain (all modes, 2.13): `sysinfo` `si [general|cpu|gpu [n]]`.
 Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
@@ -152,6 +159,12 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.20 ENDED (Nov 2):** PR #19 ready. Ellune's ping, nothing else (he chose to end it there). The server (`ellune/`) is live and `/ellune`
+  (core) pings it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy
+  check, cached after), then 63-300 ms with one 734 spike: normal, no fix needed. Then he asked for the app to ping
+  too: **Ping Ellune** in Pocket Loomy (INTERNET permission, his OK; `POCKET-HANDOVER.md` §11). Tested on his phone
+  (Nov 2): works, 150-700 ms, usually ~400 (phone radio wake-up + fresh TLS each time: normal). The Cowork session that started it couldn't push; a later chat applied the patch and pushed.
+  Work laptop not tested and not needed (§1).
 - **v2.19 ENDED (Nov 1):** PR #17 ready (he tested it: works). Pairing confirm on the PC + the link/pipe split
   + `/phone` "Recent" renamed "Logs" (`POCKET-HANDOVER.md` §9.8).
   Next big direction (agreed, not started): Ellune as a blind relay + brain (`POCKET-HANDOVER.md` §11b).

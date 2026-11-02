@@ -112,3 +112,25 @@ int release_check(const char *json, const char *owner, char *tag, int tagCap, wc
     }
     return REL_NO_ASSET;
 }
+
+// ---------------------------------------------------------------- Ellune's ping reply
+// Ellune answers /ping with {"ok":true,"service":"ellune","version":"0.1"}. 1 if the reply
+// really is that (so a captive portal or some other page answering 200 doesn't count as "up").
+// Fills ver with Ellune's version, or "?" if it sent something odd there.
+int ellune_check(const char *json, wchar_t *ver, int verCap) {
+    char s[32];
+    ver[0] = 0;
+    if (!json) return 0;
+    const char *ok = find_key(json, "ok");
+    if (!ok) return 0;
+    while (is_ws(*ok)) ok++;
+    if (!(ok[0] == 't' && ok[1] == 'r' && ok[2] == 'u' && ok[3] == 'e')) return 0;
+    if (!read_str(find_key(json, "service"), s, sizeof(s)) || !a_eq(s, "ellune")) return 0;
+
+    int good = read_str(find_key(json, "version"), s, sizeof(s)) && s[0] && tag_ok(s);
+    const char *v = good ? s : "?";
+    int n = 0;
+    while (v[n] && n < verCap - 1) { ver[n] = (wchar_t)v[n]; n++; }
+    ver[n] = 0;
+    return 1;
+}

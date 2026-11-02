@@ -100,7 +100,7 @@ void out(int kind, const wchar_t *t) { phone_out_tap(kind, t); swprintf(g_out[g_
 void outf(int kind, const wchar_t *f, ...) { wchar_t b[1100]; va_list ap; va_start(ap, f); wvsprintfW(b, f, ap); va_end(ap); out(kind, b); }
 int settings_active(void){return 0;} int g_settingsSec = -1; void settings_open(int s){ g_settingsSec = s; } void settings_close(void){}
 void net_open(void){} void browser_open(const wchar_t *r){} void changelog_open(const wchar_t *a){ outf(OUT_TEXT, L"[changelog_open '%s']", a); }
-void cmd_update(wchar_t *a){} void cmd_version(wchar_t *a){ out(OUT_TEXT, L"[version ran]"); } void cmd_versionhistory(wchar_t *a){}
+void cmd_update(wchar_t *a){} void cmd_version(wchar_t *a){ out(OUT_TEXT, L"[version ran]"); } void cmd_versionhistory(wchar_t *a){} void cmd_ellune(wchar_t *a){ out(OUT_TEXT, L"[ellune ran]"); }
 
 // ---- sysinfo stand-ins: fake sensors (sysdata.c is Windows-only) and the window growing
 void browser_close(void){} void net_close(void){} void changelog_close(void){}
