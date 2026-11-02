@@ -11,7 +11,8 @@ Loomy clients talk to. The long-term idea (not decided in detail yet): save, mov
 clients, plus online saves of user data and presets, with an account and password per Loomy.
 
 Jimmy has no hardware to run a server at home, so Ellune runs on rented hosting. He knows there are security
-questions and wants to talk security **later**, as its own conversation. Don't bake in security decisions without him.
+questions and wanted a security talk as its own conversation: **done Nov 2 2026, decisions in §7.** Anything §7
+doesn't cover is still his call: don't bake it in without him.
 
 ## 2. Status
 - **Decided Nov 1:** the code lives in **`ellune/`** in this repo (same bot + PR flow); the ping command is
@@ -101,4 +102,34 @@ Scandinavian), and he doesn't want to memorise exact commands.
 - The app would need the INTERNET permission for this (today it has none). Tell him when that changes.
 
 **Order he agreed:** Ellune's ping first (§2: hosting, deploy, Loomy and the app reaching it), then A or B. The
-security conversation he wanted (§1) is still due: A's design above is the core of it, nothing else is decided.
+security conversation happened Nov 2 (§7). Still open: which of A or B comes first.
+
+## 7. Security decisions (the security talk, Nov 2 2026, all his calls)
+How it went: he wanted plain explanations (post office analogy: a hacked Ellune holds locked boxes it can't open
+or fake). He agreed these are the normal risks of any connected app. Told him honestly: pocket.c is our own
+protocol from standard parts (Monocypher, CPace), heavily tested but never reviewed by an outside expert.
+- **Accounts:** 2FA (Authy) is ON for both GitHub and Cloudflare (Nov 2). Told him: recovery codes off the phone,
+  Authy backups on, Authy "multi-device" off after setup. GitHub matters most (it controls what `/update` installs).
+- **Deploys stay manual:** he pastes `ellune/src/index.js` into the dashboard. No GitHub to Cloudflare auto-deploy,
+  no Cloudflare token held by us. Nothing changes on Ellune without him.
+- **Guest list:** Ellune only serves *his devices*, each with its own key from the in-person Bluetooth pairing. No
+  app-wide secret (the repo is public, APKs unpack). Strangers get turned away before anything reaches the PC.
+  `/ping` stays open to anyone. Even rejected requests count toward the free 100k/day (spam = Ellune down for the
+  day: annoying, not dangerous).
+- **A (relay):** as in §6. Remote commands = **the same as over Bluetooth** (today's set is mild: nothing deletes or
+  installs). Every remote command is marked "remotely" on the PC. **The on/off switch is on the PC**: the PC only
+  connects out to Ellune while remote is on.
+- **Junk (lockout):** junk = broken/fake *encrypted* messages, not words. Junk arriving over the relay **cuts off
+  everything** (Bluetooth too), same as today's lockout; he sorts it out when he's home. (I suggested remote-only;
+  he chose everything.) Speech that isn't a command is never junk: it stays a note.
+- **Solo mode over the internet: unchanged** (I suggested name-first over remote; he said solo is for when he's
+  alone, keep it).
+- **B (brain):** the phone **trusts Ellune's answer** and sends it; no second guessing on the phone (his call). The
+  PC's own command rules are the safety net (it refuses anything that isn't a real command). The app shows
+  "heard X -> sent Y".
+- **B, what goes up:** **if the phone has internet, send the audio clip** to Ellune (Whisper, for his accent), even
+  when the PC link is Bluetooth. **No internet: fall back to Android's local recognizer** and say so in the app
+  (less accurate, set phrases only, no free speech). My addition (tell him when building): also fall back if Ellune
+  doesn't answer within a few seconds. He's OK with the audio going to Cloudflare's AI.
+- **Risks named to him, not acted on yet:** a stolen unlocked phone can send commands for the 7-day pairing (remote
+  switch on the PC helps; fingerprint lock he said not yet); bugs in our code (hostile-input rules cover it).
