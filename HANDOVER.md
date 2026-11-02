@@ -159,11 +159,32 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.21 in progress (Nov 2), PR #20:** the security talk (decisions in `ELLUNE-HANDOVER.md` §7), then "the brain"
-  (Ellune understanding his speech; plan in `ELLUNE-HANDOVER.md` §2). Step 1 done: Ellune's guest list + the
-  phone's Ellune key. Deployed and tested by him: works. Steps 2+3 built (Worker 0.3 `/hear` + `/understand`, the app
-  records and sends audio, AI fallback for unknown phrases): deployed and tested by him: works.
-  The brain plan (steps 1-3) is done.
+- **v2.22 NEXT (agreed Nov 2, not started).** His list, in the order agreed (test each part before the next):
+  1. **The app, redesigned.** Today's layout (buttons on top, then the log, settings at the very bottom) he called
+     horrible. Wanted: a big mic in the middle with Loomy's halftone dots rippling out from its centre (calm idle,
+     moving with the voice while listening); a cog (top right) holding all settings + the PC/pairing stuff; the
+     latest log line at the top, tap it to open the whole log over the screen. His idea, we can rethink it to look
+     better. **The notification stays exactly as it is (he loves it).**
+  2. **One dropdown instead of the confusing switches:** **Say "Loomy"** (everything after her name is the command)
+     or **Solo** (everything said is a command, no name). In both a sentence ends on a pause **or "thank you"**;
+     "please" is just ignored, never an end ("can you please turn my screen on" / "... on please"). Told him the
+     limit: Whisper gets the clip after you stop, so "thank you" can't cut the recording instantly (the pause does);
+     it trims the command and ends it in the text. **The phone keeps listening for "Loomy"** (his OK: he isn't
+     worried about privacy, he mutes the mic himself, but it's free and doesn't use up Ellune's allowance; switch
+     if the phone keeps missing "Loomy" with his accent).
+  3. **Phone recognizer = a checkbox he ticks, no auto switching.** If Ellune fails while online: an error, not a
+     silent switch. Offline: the phone's recognizer is the only option, so use it.
+  4. **Registration with a master password** (his idea, I said it's sound): the password is a Cloudflare *Secret*;
+     "Add to guest list" asks for it once and Ellune stores the phone's key itself (KV or Durable Object storage)
+     instead of him pasting into `DEVICES` (keep `DEVICES` as a backup). 5 wrong tries → registration locked an
+     hour. Constant-time compare. Needs a removal path too.
+  5. **Remote (his call: in v2.22):** Bluetooth only for pairing, after that commands go through Ellune when
+     Bluetooth isn't there. Design in `ELLUNE-HANDOVER.md` §6 A + §7. Needs Durable Objects (free plan: SQLite-backed,
+     100k requests/day, WebSocket hibernation); probably can't be set up by pasting in the dashboard: likely a one-time
+     `npx wrangler deploy` from his PC (Node). Check for certain first and tell him.
+- **v2.21 ENDED (Nov 2):** PR #20 ready. The security talk (`ELLUNE-HANDOVER.md` §7) + "the brain": Ellune's guest
+  list, Ellune hears you (Whisper) + her AI for phrases the phone doesn't know. Worker 0.3, deployed with the `AI`
+  binding. All tested by him on his phone: works. (He first asked for more in 2.21, then moved it all to 2.22.)
 - **v2.20 ENDED (Nov 2):** PR #19 ready. Ellune's ping, nothing else (he chose to end it there). The server (`ellune/`) is live and `/ellune`
   (core) pings it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy
   check, cached after), then 63-300 ms with one 734 spike: normal, no fix needed. Then he asked for the app to ping

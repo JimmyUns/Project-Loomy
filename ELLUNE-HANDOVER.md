@@ -1,4 +1,4 @@
-# Ellune — Handover (live; security talk done §7; v2.21 "the brain": guest list live, listening built; Nov 2 2026)
+# Ellune — Handover (live, Worker 0.3; security talk §7; v2.21 "the brain" done; v2.22 next; Nov 2 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -48,7 +48,8 @@ doesn't cover is still his call: don't bake it in without him.
   "and"), else ""). Body read once with a size cap before the signature check (keys are public). Needs a **Workers
   AI binding named `AI`** (503 without it). `node test.mjs`: 58 checks with a stand-in AI. App side: `POCKET-HANDOVER.md`
   §11. **Deployed + tested by him Nov 2 (0.3 + the `AI` binding + the new APK): works.**
-- **Plan he OK'd for v2.21 (Nov 2), "the brain":** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
+- **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
+- **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
   so a 3 s command ≈ 2) → 3 the app sends audio when online, falls back to the local recognizer offline or if Ellune
   is slow. Catch told to him: Android's recognizer won't hand over audio, so the app records itself; in
