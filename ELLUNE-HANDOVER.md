@@ -1,4 +1,4 @@
-# Ellune — Handover (ping server live; `/ellune` in Loomy v2.20, tested on PC; app ping added; PR #19; Nov 2 2026)
+# Ellune — Handover (live; security talk done §7; v2.21 building "the brain": guest list done; Nov 2 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -34,7 +34,17 @@ doesn't cover is still his call: don't bake it in without him.
 - **Tested Nov 2 on his PC:** up, 63-300 ms after the first run (1735 ms: DNS + proxy check). v2.20 is PR #19.
 - **App ping (v2.20, Nov 2):** he said yes to the INTERNET permission. Pocket Loomy has an Ellune box with **Ping
   Ellune** (`pocket/.../Ellune.kt`, `POCKET-HANDOVER.md` §11). Tested Nov 2: works, 150-700 ms, usually ~400.
-- **Next** in the plan below: the security talk.
+- **v2.21, step 1 of the brain: the guest list** (Nov 2). Worker 0.2: `GET /me` checks a signed request against the
+  `DEVICES` variable (`name=base64url raw P-256 key`, one per line, set in the dashboard; `keep_vars` in
+  wrangler.toml). Signed text and headers documented at the top of `src/index.js`; 60 s clock window, no storage
+  (a replay inside 60 s would need TLS broken first). `node test.mjs`: 26 checks + the cross-check from tests/jni.
+  App side: `POCKET-HANDOVER.md` §11. **He has to paste the new `src/index.js` and add `DEVICES`** (not done yet).
+- **Plan he OK'd for v2.21 (Nov 2), "the brain":** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
+  Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
+  so a 3 s command ≈ 2) → 3 the app sends audio when online, falls back to the local recognizer offline or if Ellune
+  is slow. Catch told to him: Android's recognizer won't hand over audio, so the app records itself; in
+  keep-listening, "Loomy" + pause → audio goes up, "Loomy open steam" in one breath → the recognizer's text goes up
+  instead. Then v2.22: remote (reuses the guest list). I call them "remote" and "the brain" with him now, not A/B.
 - Loomy is at **v2.20** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
 - **First step he picked: a simple ping.** Loomy sends a request to Ellune, Ellune answers, Loomy shows that Ellune is up

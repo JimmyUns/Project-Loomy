@@ -13,3 +13,8 @@ ${KOTLINC:-kotlinc} -nowarn Main.kt $APP/java/io/github/jimmyuns/pocketloomy/Nat
     $APP/java/io/github/jimmyuns/pocketloomy/Ellune.kt \
     -include-runtime -d /tmp/jnitest.jar 2>&1 | grep -v "^warning" && exit 1 || true
 java -Djava.library.path=/tmp -cp /tmp/jnitest.jar MainKt
+# the phone's signed request, checked by Ellune's real Worker code
+if command -v node >/dev/null; then
+    node ../../ellune/test.mjs /tmp/ellune_cross.json > /tmp/ellune_out.txt || { cat /tmp/ellune_out.txt; exit 1; }
+    grep -v "^ok" /tmp/ellune_out.txt
+else echo "(no node: skipped the Ellune cross-check)"; fi

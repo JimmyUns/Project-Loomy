@@ -13,6 +13,10 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.21", L"2026-11-02", {
+        L"Ellune's guest list: she only serves devices you added.",
+        L"Pocket Loomy: Add to guest list, and Ping Ellune checks it.",
+        0 } },
     { L"2.20", L"2026-11-02", {
         L"Meet Ellune: Loomy's online sister, a small server for online features.",
         L"/ellune (core mode) pings it: up or not, and how long it took.",

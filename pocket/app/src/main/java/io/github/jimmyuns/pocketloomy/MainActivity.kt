@@ -84,6 +84,8 @@ class MainActivity : Activity() {
     private lateinit var swSpeed: Switch
     private lateinit var swSolo: Switch
     private lateinit var elluneLine: TextView
+    private lateinit var elluneGuest: TextView
+    private lateinit var elluneId: TextView
     private lateinit var elluneBtn: Button
     private var pinging = false
 
@@ -283,10 +285,18 @@ class MainActivity : Activity() {
 
         // Ellune, Loomy's online sister: a ping to check this phone can reach her (works without pairing)
         elluneLine = text("", dim, 13f).apply { setPadding(0, dp(6), 0, 0); visibility = View.GONE }
+        elluneGuest = text("", dim, 13f).apply { visibility = View.GONE }
+        elluneId = text("", dim, 12f).apply { setPadding(0, dp(6), 0, 0) }
+        showElluneId(ElluneKey.peek())
         elluneBtn = button("Ping Ellune", false) { pingEllune() }
         content.addView(box(text("Ellune", accent, 13f, true),
-                            text("Loomy's online sister. Checks this phone can reach her. Only when you tap; nothing about you is sent.", dim, 12f),
-                            elluneLine, gap(10), elluneBtn),
+                            text("Loomy's online sister. Ping checks this phone can reach her and whether it's on her guest list. Only when you tap.", dim, 12f),
+                            elluneId, elluneLine, elluneGuest, gap(10),
+                            LinearLayout(this).apply {
+                                addView(elluneBtn)
+                                addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(8), 1))
+                                addView(button("Add to guest list", false) { addToGuestList() })
+                            }),
                         LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
 
         // the rarely used buttons
@@ -583,22 +593,69 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------------ Ellune
+    private fun showElluneId(k: ElluneKey.Key?) {
+        elluneId.text = if (k != null) "This phone's Ellune ID: ${k.id}" else "This phone gets its Ellune ID the first time you tap."
+    }
+
     private fun pingEllune() {
         if (pinging) return
         pinging = true
         elluneBtn.isEnabled = false
-        elluneBtn.text = "Pinging Ellune..."
-        Ellune.ping { r ->
+        elluneBtn.text = "Pinging..."
+        elluneGuest.visibility = View.GONE
+        Thread({
+            val r = Ellune.pingNow()
+            val k = ElluneKey.get()
+            val me = when {
+                r !is Ellune.Result.Up -> null
+                k == null -> Ellune.Me.NotGuest("this phone couldn't make its key")
+                else -> Ellune.meNow(k.priv, k.pub)
+            }
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
                 pinging = false
                 elluneBtn.isEnabled = true
                 elluneBtn.text = "Ping Ellune"
+                showElluneId(k)
                 elluneLine.text = Ellune.message(r)
                 elluneLine.setTextColor(if (r is Ellune.Result.Up) ok else err)
                 elluneLine.visibility = View.VISIBLE
+                if (me != null) {
+                    elluneGuest.text = Ellune.meMessage(me)
+                    elluneGuest.setTextColor(if (me is Ellune.Me.Guest) ok else err)
+                    elluneGuest.visibility = View.VISIBLE
+                }
             }
-        }
+        }, "ellune-ping").start()
+    }
+
+    // Copies this phone's line for Ellune's DEVICES list and says where it goes. Only public data: the
+    // private half of the key can't leave the Keystore.
+    private fun addToGuestList() {
+        Thread({
+            val k = ElluneKey.get()
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                if (k == null) { problem("This phone couldn't make its Ellune key."); return@runOnUiThread }
+                showElluneId(k)
+                getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Ellune guest line", k.line))
+                AlertDialog.Builder(this)
+                    .setTitle("Copied ${k.id}")
+                    .setMessage("Put it on Ellune's guest list. The Cloudflare dashboard works in the phone's browser too, or tap Share to send the line to your PC.\n\n" +
+                        "Cloudflare dashboard \u2192 Workers & Pages \u2192 ellune \u2192 Settings \u2192 Variables and Secrets.\n\n" +
+                        "No DEVICES yet: Add, type Text, name DEVICES, paste as the value.\n" +
+                        "Already there: edit it and paste on a new line.\n\n" +
+                        "Deploy, then tap Ping Ellune here to check.\n\n" +
+                        "It's only the public half of this phone's key, nothing secret.")
+                    .setPositiveButton("OK", null)
+                    .setNeutralButton("Share") { _, _ ->
+                        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, k.line) }, "Send the guest line"))
+                    }
+                    .show()
+            }
+        }, "ellune-key").start()
     }
 
     // ------------------------------------------------------------------ commands

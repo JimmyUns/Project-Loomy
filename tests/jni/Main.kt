@@ -183,6 +183,40 @@ fun main() {
     check(Ellune.message(Ellune.Result.Up("0.1", 63)) == "Ellune is up (v0.1, 63 ms).", "ellune: message")
     check(Ellune.pingNow() == Ellune.Result.Unreachable || Ellune.pingNow() is Ellune.Result.Up, "ellune: ping fails cleanly here (or works)")
 
+    // ---- the guest list: the phone's real signing code (a software key here; on the phone it's the Keystore's)
+    run {
+        val g = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }
+        val kp = g.generateKeyPair()
+        val pub = Ellune.rawPublic(kp.public as java.security.interfaces.ECPublicKey)
+        check(pub.size == 65 && pub[0] == 4.toByte(), "ellune: raw public key is 65 bytes, 04 first")
+        val id = Ellune.deviceId(pub)
+        check(Regex("[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}").matches(id) && id == Ellune.deviceId(pub.copyOf()), "ellune: device id ($id)")
+        check(Ellune.guestLine(pub).startsWith("$id=") && !Ellune.guestLine(pub).contains("="+"=") && Regex("[A-Za-z0-9_=-]+").matches(Ellune.guestLine(pub)), "ellune: guest line")
+        // DER -> raw, including short r/s (leading zeros dropped) and junk
+        var shortOk = true
+        repeat(300) {
+            val der = java.security.Signature.getInstance("SHA256withECDSA").run { initSign(kp.private); update(byteArrayOf(it.toByte())); sign() }
+            val raw = Ellune.derToRaw(der)
+            if (raw == null || raw.size != 64) shortOk = false
+        }
+        check(shortOk, "ellune: 300 signatures convert to raw r||s")
+        val r1 = ByteArray(32) { 1 }; val s1 = ByteArray(31) { 2 }
+        val der1 = byteArrayOf(0x30, 68, 0x02, 33, 0) + r1 + byteArrayOf(0x02, 31) + s1
+        check(Ellune.derToRaw(der1)?.contentEquals(r1 + byteArrayOf(0) + s1) == true, "ellune: der with padded r, short s")
+        check(Ellune.derToRaw(ByteArray(0)) == null && Ellune.derToRaw(der1.copyOf(der1.size - 1)) == null &&
+              Ellune.derToRaw(der1 + byteArrayOf(0)) == null && Ellune.derToRaw(ByteArray(64) { 0x30 }) == null, "ellune: junk der refused")
+        val tooBig = byteArrayOf(0x30, 70, 0x02, 33, 9) + ByteArray(32) { 1 } + byteArrayOf(0x02, 33, 0) + ByteArray(32) { 2 }
+        check(Ellune.derToRaw(tooBig) == null, "ellune: r over 32 bytes refused")
+        // hand a signed request to ellune/test.mjs (run.sh runs it next)
+        val time = 1_793_600_000_000L
+        val h = Ellune.signedHeaders(kp.private, pub, "GET", "/me", time)
+        val bad = h.toMutableMap().apply { put("x-ellune-time", (time + 1).toString()) }
+        fun js(m: Map<String, String>) = m.entries.joinToString(",", "{", "}") { "\"${it.key}\":\"${it.value}\"" }
+        java.io.File("/tmp/ellune_cross.json").writeText(
+            "{\"name\":\"$id\",\"key\":\"${Ellune.guestLine(pub).substringAfter("=")}\",\"time\":$time,\"headers\":${js(h)},\"tampered\":${js(bad)}}")
+        check(Ellune.meMessage(Ellune.Me.NotGuest("not on the guest list")) == "This phone isn't on her guest list yet.", "ellune: guest message")
+    }
+
     println("$checks checks, $fails failure(s)")
     if (fails > 0) kotlin.system.exitProcess(1)
 }

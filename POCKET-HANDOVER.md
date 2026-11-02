@@ -257,6 +257,13 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   object) and is tested in `tests/jni` (plain Java, no Android classes; 176 checks now). Not on voice yet. He tested it
   (Nov 2): works, 150-700 ms, usually ~400.
 
+- **Ellune guest list (2.21):** `ElluneKey.kt` = this phone's own P-256 key in the Android Keystore (alias
+  `ellune_device`, sign only, made on first use, separate from the 7-day pairing keys). `Ellune.kt` signs requests
+  (`signedHeaders`: DER from Java turned into raw r||s by `derToRaw`), `deviceId` (40-bit Crockford like the pairing
+  ID), `guestLine` (`ID=base64url`), `meNow` (GET /me). Ellune box: the ID, **Ping Ellune** (ping, then /me: on the
+  list or not), **Add to guest list** (copies the line + a dialog saying where it goes, Share to send it to the PC).
+  tests/jni: 184 checks + a signed request handed to `ellune/test.mjs` (the Worker's real code verifies it).
+
 ## 11b. Where it's heading (agreed Nov 1, not started)
 - **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same
   end-to-end encrypted pocket.c bytes, Ellune can't read, forge or replay them; the PC connects OUT to Ellune (no open

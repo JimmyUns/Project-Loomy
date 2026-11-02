@@ -2,6 +2,9 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.21
+- **Ellune's guest list.** Ellune now only serves devices on her list. Pocket Loomy has its own Ellune key (kept in the phone's secure Keystore, it can't be copied out): **Add to guest list** copies the line you paste into Ellune's settings, and **Ping Ellune** now also says whether the phone is on the list. It's the groundwork for Ellune understanding your voice.
+
 ## v2.20
 - **Meet Ellune**, Loomy's online sister: a small server (`ellune/`, a Cloudflare Worker) that future online features will go through.
 - **`/ellune`** (core mode) pings it and says whether it's up and how long the round trip took (that includes setting up the secure connection). A wifi login page or anything else answering doesn't count as up.
