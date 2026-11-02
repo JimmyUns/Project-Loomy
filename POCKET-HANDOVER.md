@@ -254,7 +254,8 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
 - **Ellune ping (2.20):** an "Ellune" box on the main screen (works unpaired): **Ping Ellune** → `Ellune.ping`
   (own thread, `HttpsURLConnection`, 8 s timeouts, no redirects, reads ≤512 bytes) → same three answers as `/ellune`
   on the PC. `Ellune.check` mirrors `ellune_check()` (needs `"ok":true` + `"service":"ellune"`, body must be a JSON
-  object) and is tested in `tests/jni` (plain Java, no Android classes; 176 checks now). Not on voice yet.
+  object) and is tested in `tests/jni` (plain Java, no Android classes; 176 checks now). Not on voice yet. He tested it
+  (Nov 2): works, 150-700 ms, usually ~400.
 
 ## 11b. Where it's heading (agreed Nov 1, not started)
 - **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same

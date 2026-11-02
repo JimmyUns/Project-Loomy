@@ -32,7 +32,7 @@ questions and wants to talk security **later**, as its own conversation. Don't b
   `"service":"ellune"`, so a captive portal's 200 doesn't count) and is unit-tested.
 - **Tested Nov 2 on his PC:** up, 63-300 ms after the first run (1735 ms: DNS + proxy check). v2.20 is PR #19.
 - **App ping (v2.20, Nov 2):** he said yes to the INTERNET permission. Pocket Loomy has an Ellune box with **Ping
-  Ellune** (`pocket/.../Ellune.kt`, `POCKET-HANDOVER.md` §11). Not tested on his phone yet.
+  Ellune** (`pocket/.../Ellune.kt`, `POCKET-HANDOVER.md` §11). Tested Nov 2: works, 150-700 ms, usually ~400.
 - **Next** in the plan below: the security talk.
 - Loomy is at **v2.20** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
