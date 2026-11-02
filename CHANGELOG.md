@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.22
+- **Pocket Loomy, redesigned.** A big mic in the middle with Loomy's dots rippling out of it (they move with your voice), the latest thing said at the top (tap it for the whole history), and everything else behind the gear: your PC and the On switch, Listening, Ellune and the app settings.
+- **Two ways to listen**, picked right under the mic: **Say "Loomy"** (everything after her name is the command; tapping the mic counts as saying it) or **Solo** (everything you say is a command). In both, a pause or "thank you" ends the sentence; "please" can go anywhere.
+- **No more silent switching:** if Ellune doesn't answer, Pocket Loomy says so and nothing is sent. Want only the phone's recognizer? Tick **Use the phone's recognizer**. With no internet it's the only option, and it tells you.
+
 ## v2.21
 - **Ellune's guest list.** Ellune now only serves devices on her list. Pocket Loomy has its own Ellune key (kept in the phone's secure Keystore, it can't be copied out): **Add to guest list** copies the line you paste into Ellune's settings, and **Ping Ellune** now also says whether the phone is on the list. It's the groundwork for Ellune understanding your voice.
 - **Ellune hears you** (Pocket Loomy, setting **Understand me through Ellune**, on by default). With internet and the phone on her guest list, a Talk tap, "Loomy" + a pause, and solo mode record what you say and Ellune turns it into text with Whisper (much better with accents). Waiting for "Loomy" still happens on the phone, so what isn't said to Loomy never leaves it.

@@ -7,26 +7,22 @@ import android.os.SystemClock
 
 // Listening, in one place, run by PocketService (so it keeps going while you use the phone, with the
 // microphone shown as in use). The app screen, the Talk card and the notification only show its state.
-//   once:  listen for one command, send it, done. Her name in front is optional.
-//   keep:  listen again after every result until stopped, and only act on what's said TO Loomy: her name
-//          opening the sentence ("Loomy show screen", "okay Lumi system info", "ayo Loomy ..."). Everything
-//          else it hears is dropped on the spot: never shown, never sent.
-//   the name on its own ("Loomy" ... pause ... "show"): the recognizer often cuts there, so she takes the
-//          next thing said (within 8 s) as the command. Works for a single Talk tap too.
+// Two modes (2.22, the Listening dropdown; Store.solo):
+//   Say "Loomy": only what's said TO Loomy counts: her name opening the sentence ("Loomy show screen", "okay Lumi
+//          system info", "ayo Loomy ..."). Everything else is dropped on the spot: never shown, never sent.
+//          Her name on its own ("Loomy" ... pause ... "show"): the next thing said (within 8 s) is the command.
+//          Tapping the mic counts as saying her name for the first sentence.
+//   Solo:  everything said is a command, no name needed (for when he's alone).
+//   In both a sentence ends on a pause or "thank you" (what comes after it is dropped); "please" is just a filler.
 //   input mode ("Loomy input mode"): bare key words work ("next tab", "back", "ok", "down three").
-//   solo mode (setting, or "Loomy solo mode"): say "Loomy" once and it's awake: everything said is a command,
-//          no name needed, until "ok thank you" / "thanks" / "stop listening" (then her name wakes it again).
-//   Both end with "... mode off" / "disable ... mode" (name optional), or by stopping.
-//   Key words with the name work any time: "Loomy down", "Loomy ok".
-//   "turn off the mic" / "stop listening" (outside solo) = mic off until Talk; "stop the connection" = Loomy off.
+//   By voice: "solo mode" / "solo mode off", "input mode" / "input mode off" (name optional).
+//   "turn off the mic" / "stop listening" = mic off until Talk; "stop the connection" = Loomy off.
 //   What means what is in Phrases.kt.
-//   Ellune (2.21, setting "Understand me through Ellune", on by default): with internet and the phone on her
-//          guest list, a Talk tap, "Loomy" + pause, and solo mode while awake record the clip and ask Ellune
-//          (Whisper) what was said (ElluneEar). Waiting for "Loomy" in keep-listening stays on Android's
-//          recognizer, so what isn't said to Loomy never leaves the phone. When the phone's rules don't know
-//          a command, the words go to Ellune's AI (/understand) and its answer is sent as is (his call: no
-//          second guessing; the PC refuses anything that isn't a real command). Offline, or Ellune down:
-//          Android's recognizer, and the screen says so.
+// Who hears (2.22): the checkbox "Use the phone's recognizer" (Store.phoneEar) = only Android's recognizer and the
+//   phone's rules. Unticked (default): the command itself goes to Ellune (ElluneEar records it, Whisper), and
+//   phrases the rules don't know go to her AI (/understand), sent as is (his call; the PC refuses anything that
+//   isn't a real command). Waiting for "Loomy" always stays on the phone. No silent switching: if Ellune fails,
+//   it says so and tries her again next time. Offline the phone's recognizer is the only option, and it says so.
 object Voice {
     enum class State { OFF, LISTENING }
 
@@ -39,7 +35,6 @@ object Voice {
     @Volatile var level = 0f
     @Volatile var armed = false            // heard just "ayo Loomy": the next thing said is the command
     @Volatile var inputMode = false        // "Loomy input mode": bare key words (next, back, ok...) work
-    @Volatile var soloAwake = false        // solo mode: woken by her name, asleep again after "ok thank you"
     @Volatile var lastAt = 0L              // when the last answer came (the notification shows it for a while)
     @Volatile var viaEllune = false        // this listen is going to Ellune (the screens show it)
     val history = mutableListOf<Entry>()  // touched on the main thread only
@@ -50,8 +45,8 @@ object Voice {
     private val main = Handler(Looper.getMainLooper())
     private var ear: Ear? = null
     private var eEar: ElluneEar? = null
-    private var elluneDownUntil = 0L      // Ellune didn't answer: the phone's own recognizer until then
     private var elluneKey: ElluneKey.Key? = null
+    private var phoneEar = false
     private lateinit var ctx: Context
     private var armedUntil = 0L
     private var followUp = false
@@ -64,15 +59,17 @@ object Voice {
         ctx = c
         keep = keepListening
         errors = 0
-        elluneKey = if (Store(c).elluneSpeech) ElluneKey.peek() else null
+        val st = Store(c)
+        phoneEar = st.phoneEar
+        elluneKey = if (!phoneEar) ElluneKey.peek() else null
         if (state == State.LISTENING) { changed(); return }
+        if (keep && !st.solo) { armed = true; armedUntil = SystemClock.elapsedRealtime() + 8000 }   // the tap = her name
         listenNow()
     }
 
     /** main thread */
     fun stop() {
         keep = false
-        soloAwake = false
         followUp = false
         armed = false
         inputMode = false
@@ -96,14 +93,14 @@ object Voice {
     }
 
     // ---- which ear: Ellune's (better, online) or Android's (on the phone)
-    /** Ellune can listen right now: the setting, a key, internet, and she hasn't just failed */
-    private fun elluneUp() = elluneKey != null && SystemClock.elapsedRealtime() > elluneDownUntil && ElluneEar.online(ctx)
+    /** Ellune can listen right now: the checkbox unticked, a key, internet */
+    private fun elluneUp() = !phoneEar && elluneKey != null && ElluneEar.online(ctx)
 
     /** this listen goes to Ellune: never while waiting for "Loomy" (that stays on the phone) or in input mode */
     private fun wantEllune(): Boolean {
         if (inputMode || !elluneUp()) return false
         val armedNow = armed && SystemClock.elapsedRealtime() < armedUntil
-        return !keep || armedNow || (Store(ctx).solo && soloAwake)
+        return !keep || armedNow || Store(ctx).solo
     }
 
     private fun startEar() {
@@ -128,22 +125,27 @@ object Voice {
             level = { level = it; Pocket.changed() },
             heard = { heard(it) },
             missed = { missed(it) }).also { ear = it }
-        // Ellune is wanted but can't listen: say so (the phone's recognizer only knows set phrases)
-        if (partial.isEmpty() && elluneKey != null && (!keep || armed || soloAwake) && !inputMode)
-            partial = if (!ElluneEar.online(ctx)) "Offline: the phone's recognizer, set phrases only"
-                      else "Ellune unavailable: the phone's recognizer, set phrases only"
+        // Ellune would hear this one but can't: say why (the phone's recognizer only knows set phrases)
+        val armedNow = armed && SystemClock.elapsedRealtime() < armedUntil
+        if (partial.isEmpty() && !phoneEar && !inputMode && (!keep || armedNow || Store(ctx).solo))
+            partial = when {
+                !ElluneEar.online(ctx) -> "Offline: the phone's recognizer, set phrases only"
+                elluneKey == null -> "Not on Ellune's guest list yet: the phone's recognizer"
+                else -> ""
+            }
         Pocket.changed()
         e.start()
     }
 
+    // Ellune didn't answer: say so, nothing sent, and keep listening (she's tried again next time; no switching)
     private fun elluneFailed(a: Ellune.Answer.Down) {
-        elluneDownUntil = SystemClock.elapsedRealtime() + if (a.notGuest) 10 * 60_000L else 2 * 60_000L
         viaEllune = false
-        add("(Ellune)", if (a.notGuest) "Ellune didn't let this phone in (${a.why}). Using the phone's recognizer; check the Ellune box in the app."
-                        else "Ellune didn't answer (${a.why}). Using the phone's recognizer for a bit: say it again.", true)
+        add("(Ellune)", if (a.notGuest) "Ellune didn't let this phone in (${a.why}). Check the Ellune part of the settings."
+                        else "Ellune didn't answer (${a.why}). Nothing was sent: say it again.", true)
         if (state != State.LISTENING) return
-        partial = "Say it again"
-        main.postDelayed({ if (state == State.LISTENING) startEar() }, 100)
+        if (!keep) { next(100); return }
+        partial = ""
+        main.postDelayed({ if (state == State.LISTENING) startEar() }, 300)
     }
 
     // after a result: keep mode listens again, once mode is done (unless her name came alone: then once more)
@@ -159,26 +161,28 @@ object Voice {
         main.postDelayed({ if (keep && state == State.LISTENING) startEar() }, delayMs)
     }
 
-    private fun heard(all: List<String>) {
+    private fun heard(raw: List<String>) {
         errors = 0
         val now = SystemClock.elapsedRealtime()
-        val first = all.firstOrNull() ?: ""
         val solo = Store(ctx).solo
+        // "thank you" ends the sentence: keep what came before it
+        val cut = raw.map { Words.untilThanks(it) }
+        val all = cut.map { it.first }
+        val first = all.firstOrNull() ?: ""
+        if (cut.any { it.second } && all.all { (Words.addressed(it) ?: it).isBlank() }) { next(100); return }  // just "thank you"
 
         // the modes, by voice (name optional: you might be mid-flow)
         val plain = all.map { Words.plain(it) }
         if (plain.any { Words.isInputModeOff(it) }) { switchInputMode(false); next(100); return }
         if (plain.any { Words.isSoloOff(it) }) { switchSolo(false); next(100); return }
         if (plain.any { Words.isInputModeOn(it) }) { keep = true; switchInputMode(true); next(100); return }
-        if (plain.any { Words.isSoloOn(it) }) { keep = true; switchSolo(true); soloAwake = true; changed(); next(100); return }
+        if (plain.any { Words.isSoloOn(it) }) { keep = true; switchSolo(true); next(100); return }
 
-        // was it said to Loomy? her name; or, without it: a follow-up after her name alone, solo mode once
-        // she's been woken, or a Talk tap (once). Mute / stop connection need that too, except in input
-        // mode, so "that's it" from a friend can't mute you.
+        // was it said to Loomy? her name; or, without it: right after her name alone (or a mic tap), solo mode,
+        // or a single Talk. Mute / stop connection need that too, except in input mode.
         var said: String? = all.firstNotNullOfOrNull { Words.addressed(it) }
-        if (said != null && solo && !soloAwake) { soloAwake = true; changed() }     // solo: her name wakes it
         val following = armed && now < armedUntil
-        if (said == null && (following || (solo && soloAwake) || !keep)) said = first
+        if (said == null && (following || solo || !keep)) said = first
         if (said == null) {
             // not for Loomy... unless it's bare keys (or mute / stop connection) in input mode
             if (inputMode && all.any { control(it) }) return
@@ -188,20 +192,13 @@ object Voice {
             return
         }
         if (said.isBlank()) {                                       // just her name: the command is coming
-            if (solo && keep) { add("Loomy", "I'm listening. No need to say Loomy until \u201Cok thank you\u201D.", false); next(100); return }
+            if (solo && keep) { next(100); return }                 // solo doesn't need it
             arm()
             if (!keep) followUp = true
             next(100)
             return
         }
         armed = false
-        // solo mode: "ok thank you" / "stop listening" -> back to waiting for her name (mic stays on)
-        if (solo && keep && Words.isSleep(Words.plain(said))) {
-            soloAwake = false
-            add("thank you", "Okay. Say \u201CLoomy\u201D when you need me.", false)
-            next(100)
-            return
-        }
         if (control(said)) return
 
         // a key word ("down", "ok", "next tab") goes to the PC's open screen
@@ -212,7 +209,7 @@ object Voice {
         // the rules don't know it: ask Ellune's AI (only what was said TO Loomy gets here)
         val k = elluneKey
         if (!Words.knows(cmd) && k != null && elluneUp()) {
-            understand(k, said, cmd)
+            understand(k, said)
             next(150)
             return
         }
@@ -226,20 +223,15 @@ object Voice {
         Pocket.reportMiss(ctx, said)                                // the PC shows misses too
     }
 
-    // Ellune's AI picks the command; it's sent as is ("heard -> sent" in the history). If she can't answer,
-    // it goes on exactly as before 2.21: the rules' best guess, or a miss.
-    private fun understand(k: ElluneKey.Key, said: String, fallback: String) {
+    // Ellune's AI picks the command; it's sent as is ("said -> sent" in the history). If she can't answer,
+    // it says so and nothing is sent (no falling back to the rules' guess: his call, 2.22).
+    private fun understand(k: ElluneKey.Key, said: String) {
         Thread({
             val a = Ellune.understandNow(k.priv, k.pub, said)
             main.post {
-                when {
-                    a is Ellune.Answer.Ok && a.text.isNotEmpty() -> send(a.text, "$said \u2192 ${a.text}")
-                    a is Ellune.Answer.Down -> {
-                        elluneDownUntil = SystemClock.elapsedRealtime() + if (a.notGuest) 10 * 60_000L else 2 * 60_000L
-                        if (fallback.isNotEmpty()) send(fallback) else miss(said)
-                    }
-                    fallback.isNotEmpty() -> send(fallback)
-                    else -> miss(said)
+                when (a) {
+                    is Ellune.Answer.Ok -> if (a.text.isNotEmpty()) send(a.text, "$said \u2192 ${a.text}") else miss(said)
+                    is Ellune.Answer.Down -> add(said, "Ellune couldn't answer (${a.why}). Nothing was sent.", true)
                 }
             }
         }, "ellune-understand").start()
@@ -271,11 +263,10 @@ object Voice {
 
     private fun switchSolo(on: Boolean) {
         Store(ctx).solo = on
-        soloAwake = on
         armed = false
         add(if (on) "solo mode" else "solo mode off",
-            if (on) "Solo mode on: I'm listening, no need to say Loomy. \u201COk thank you\u201D and I'll wait for my name again. \u201CSolo mode off\u201D ends it."
-            else "Solo mode off: start with \u201CLoomy\u201D again.", false)
+            if (on) "Solo: everything you say is a command, no need to say Loomy. \u201CSolo mode off\u201D ends it."
+            else "Say \u201CLoomy\u201D mode: start with her name again.", false)
     }
 
     private fun missed(error: Int) {

@@ -198,6 +198,15 @@ object Words {
         }
     }
 
+    private val THANKS = Regex("\\b(thank you|thank u|thanks|thx)\\b", RegexOption.IGNORE_CASE)
+
+    /** 2.22: "thank you" ends a sentence. What came before it, and whether it was there at all.
+     *  "turn off the screens thank you" -> ("turn off the screens", true). "please" is never an end. */
+    fun untilThanks(heard: String): Pair<String, Boolean> {
+        val m = THANKS.find(heard) ?: return heard to false
+        return heard.substring(0, m.range.first).trim().trimEnd(',', '.', '!', '?').trim() to true
+    }
+
     /** the switches and controls are matched on the cleaned phrase, before any "and" splitting */
     fun plain(heard: String): String {
         var w = words(heard)

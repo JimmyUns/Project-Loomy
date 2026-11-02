@@ -272,6 +272,18 @@ fun main() {
         check(!Words.knows("make the screens go dark") && !Words.knows("") && !Words.knows("si and dance"), "knows: everything else")
     }
 
+    // ---- 2.22: "thank you" ends a sentence, "please" never does
+    run {
+        check(Words.untilThanks("turn off the screens thank you") == ("turn off the screens" to true), "thanks: at the end")
+        check(Words.untilThanks("Loomy, open YouTube. Thank you!") == ("Loomy, open YouTube" to true), "thanks: punctuation")
+        check(Words.untilThanks("system info thanks and next tab") == ("system info" to true), "thanks: what follows is dropped")
+        check(Words.untilThanks("thank you") == ("" to true) && Words.untilThanks("thanks loomy").first == "", "thanks: alone")
+        check(Words.untilThanks("turn off the screens") == ("turn off the screens" to false), "thanks: none")
+        check(!Words.untilThanks("open thanksgiving recipes").second, "thanks: only the whole word")
+        check(Words.command(Words.untilThanks("can you please turn my screen on thank you").first) == "display on", "please + thanks: screen on")
+        check(Words.command("can you turn on my screen please") == "display on", "please at the end isn't an end")
+    }
+
     println("$checks checks, $fails failure(s)")
     if (fails > 0) kotlin.system.exitProcess(1)
 }

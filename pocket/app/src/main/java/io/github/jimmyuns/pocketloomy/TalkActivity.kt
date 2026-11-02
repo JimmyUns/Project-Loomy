@@ -83,7 +83,7 @@ class TalkActivity : Activity() {
             show("Microphone", "Allow the microphone, then tap here.", dim)
             return
         }
-        val why = Pocket.talk(this, Store(this).keepListening)
+        val why = Pocket.talk(this, true)
         if (why != null) {
             if (!card) { Notes.off(this, why); finish(); return }
             show("Can't talk yet", why, err)
@@ -111,8 +111,7 @@ class TalkActivity : Activity() {
 
     private fun head() = when {
         Voice.inputMode -> "Input mode"
-        Voice.keep && Store(this).solo && Voice.soloAwake -> "Solo mode: listening"
-        Voice.keep && Store(this).solo -> "Solo mode: say \u201CLoomy\u201D"
+        Voice.keep && Store(this).solo -> "Solo mode: listening"
         Voice.keep -> "Listening for \u201CLoomy\u201D"
         else -> "Listening..."
     }
@@ -134,8 +133,7 @@ class TalkActivity : Activity() {
             }
             listening -> show(head(), when {
                                   Voice.inputMode -> "Say next, back, ok, up, down..."
-                                  Voice.keep && Store(this).solo && Voice.soloAwake -> "Just talk. \u201COk thank you\u201D when you're done."
-                                  Voice.keep && Store(this).solo -> "Say \u201CLoomy\u201D to start"
+                                  Voice.keep && Store(this).solo -> "Just talk. A pause or \u201Cthank you\u201D ends a sentence."
                                   Voice.keep -> "Say \u201CLoomy\u201D and a command"
                                   else -> "Say a command" }, accent)
             sawListening -> closeSoon(1500)

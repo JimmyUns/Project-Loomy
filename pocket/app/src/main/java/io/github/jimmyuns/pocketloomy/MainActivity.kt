@@ -6,6 +6,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -15,13 +16,17 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -29,11 +34,13 @@ import android.widget.TextView
 import java.text.DateFormat
 import java.util.Date
 
-// The app screen. It's drawn from state every time something changes (render()): setup steps until
-// the phone is paired, then the PC, the On switch, a big Talk button that shows what it's doing
-// (listening with the live transcript and mic level, talking to Loomy, the answer), typing, history,
-// and settings. Listening itself runs in PocketService (Voice), so it can carry on outside the app.
-@SuppressLint("MissingPermission", "UseSwitchCompatOrMaterialCode")
+// The app screen (redesigned in 2.22, his brief): a big mic in the middle with Loomy's halftone dots rippling
+// out of it (MicView), the latest line of the history at the top (tap it: the whole history over the screen),
+// the Listening mode right under the mic, typing at the bottom, and everything else behind the gear (your PC
+// and the On switch, Listening, Ellune, app settings). Until the phone is paired, the two setup steps sit over
+// the mic. Drawn from state every time something changes (render()). Listening itself runs in PocketService
+// (Voice), so it carries on outside the app. The notification is untouched (he loves it).
+@SuppressLint("MissingPermission", "UseSwitchCompatOrMaterialCode", "SetTextI18n")
 class MainActivity : Activity() {
     private val bg = Color.rgb(0x13, 0x09, 0x1C)
     private val card = Color.rgb(0x1A, 0x0E, 0x27)
@@ -56,34 +63,37 @@ class MainActivity : Activity() {
     private var shownHistory = -1
     private var confirmId: String? = null    // pairing: the code was right, the PC is asking (this phone's ID)
 
-    // views
+    // the main screen
     private lateinit var chip: TextView
-    private lateinit var setup: LinearLayout
+    private lateinit var pill: LinearLayout
+    private lateinit var pillCmd: TextView
+    private lateinit var pillAns: TextView
+    private lateinit var mic: MicView
+    private lateinit var live: TextView
+    private lateinit var modeBtn: TextView
+    private lateinit var typing: LinearLayout
+    private lateinit var input: EditText
+    private lateinit var setup: ScrollView
     private lateinit var step1: TextView
     private lateinit var step2: TextView
     private lateinit var codeBtn: Button
-    private lateinit var paired: LinearLayout
+    // the layers over it
+    private lateinit var logLayer: View
+    private lateinit var log: LinearLayout
+    private lateinit var settingsLayer: View
+    // settings
+    private var settingSwitch = false
     private lateinit var pcName: TextView
     private lateinit var pcSub: TextView
     private lateinit var onSwitch: Switch
     private lateinit var onLine: TextView
-    private lateinit var talk: Button
-    private lateinit var talkBg: GradientDrawable
-    private lateinit var live: TextView
-    private lateinit var answerBox: TextView
-    private lateinit var input: EditText
-    private lateinit var log: LinearLayout
-    private lateinit var scroll: ScrollView
-    private lateinit var footer: View
-    private lateinit var historyLabel: View
-    private lateinit var stopBtn: Button
-    private var settingSwitch = false
+    private lateinit var pcButtons: LinearLayout
+    private lateinit var modeSolo: CheckBox
+    private lateinit var modeName: CheckBox
+    private lateinit var cbPhone: CheckBox
     private lateinit var swNotif: Switch
-    private lateinit var swKeep: Switch
     private lateinit var swCard: Switch
     private lateinit var swSpeed: Switch
-    private lateinit var swSolo: Switch
-    private lateinit var swEllune: Switch
     private lateinit var elluneLine: TextView
     private lateinit var elluneGuest: TextView
     private lateinit var elluneId: TextView
@@ -111,6 +121,15 @@ class MainActivity : Activity() {
     override fun onResume() { super.onResume(); Pocket.listen(onChange); Pocket.fixStaleOn(this); render() }
     override fun onPause() { Pocket.unlisten(onChange); super.onPause() }
     override fun onDestroy() { ear.destroy(); super.onDestroy() }
+
+    @Deprecated("still called with targetSdk 35 (no predictive back opt-in)")
+    override fun onBackPressed() {
+        when {
+            settingsLayer.visibility == View.VISIBLE -> { settingsLayer.visibility = View.GONE; render() }
+            logLayer.visibility == View.VISIBLE -> { logLayer.visibility = View.GONE; render() }
+            else -> @Suppress("DEPRECATION") super.onBackPressed()
+        }
+    }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
         Notes.syncOff(this)
@@ -150,71 +169,107 @@ class MainActivity : Activity() {
     }
 
     private fun gap(h: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(h)) }
+    private fun row(vararg views: View) = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; for (v in views) addView(v) }
+    private fun space(w: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(w), 1) }
+    private fun heading(s: String) = text(s, accent, 13f, true).apply { setPadding(0, 0, 0, dp(6)) }
 
-    // switches: purple when on, grey when off (the dark theme's own colours made "off" look on)
+    // switches and checkboxes: purple when on, grey when off (the dark theme's own colours made "off" look on)
+    private val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
     private fun tint(sw: Switch) {
-        val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-        sw.thumbTintList = android.content.res.ColorStateList(states, intArrayOf(accent, Color.rgb(0x9A, 0x8C, 0xA8)))
-        sw.trackTintList = android.content.res.ColorStateList(states, intArrayOf(accentDim, Color.rgb(0x3A, 0x30, 0x44)))
+        sw.thumbTintList = ColorStateList(states, intArrayOf(accent, Color.rgb(0x9A, 0x8C, 0xA8)))
+        sw.trackTintList = ColorStateList(states, intArrayOf(accentDim, Color.rgb(0x3A, 0x30, 0x44)))
+    }
+    private fun check(label: String, onFlip: (Boolean) -> Unit) = CheckBox(this).apply {
+        text = label
+        setTextColor(textC)
+        typeface = Typeface.MONOSPACE
+        buttonTintList = ColorStateList(states, intArrayOf(accent, dim))
+        setOnCheckedChangeListener { _, on -> if (!settingSwitch) onFlip(on) }
     }
 
-    private fun buildUi(): View {
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg) }
-        root.setOnApplyWindowInsetsListener { v, insets ->   // Android 15 draws under the bars: keep clear (and of the keyboard)
+    /** a full-screen layer over the main screen: a title, a close button, and its content scrolling */
+    private fun layer(title: String, close: String, content: View, onClose: () -> Unit): View {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(row(text(title, accent, 20f, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) },
+                        button(close, false) { onClose() }))
+        col.addView(gap(12))
+        col.addView(ScrollView(this).apply { addView(content); isFillViewport = true }, LinearLayout.LayoutParams(-1, 0, 1f))
+        return FrameLayout(this).apply {
+            setBackgroundColor(bg)
+            visibility = View.GONE
+            isClickable = true                       // nothing under it gets touched
+            addView(col)
+            insetsPadding(col)
+        }
+    }
+
+    // Android 15 draws under the bars: keep clear of them (and of the keyboard)
+    private fun insetsPadding(v: View) {
+        v.setOnApplyWindowInsetsListener { view, insets ->
             val (t, b) = if (Build.VERSION.SDK_INT >= 30) {
                 val i = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime()); i.top to i.bottom
             } else @Suppress("DEPRECATION") (insets.systemWindowInsetTop to insets.systemWindowInsetBottom)
-            v.setPadding(dp(18), t + dp(14), dp(18), b + dp(12))
+            view.setPadding(dp(18), t + dp(12), dp(18), b + dp(12))
             insets
         }
+    }
 
-        // header: name + a chip saying what's going on (stays put; the rest scrolls)
+    private fun buildUi(): View {
+        val root = FrameLayout(this).apply { setBackgroundColor(bg) }
+        val main = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        insetsPadding(main)
+        root.addView(main)
+
+        // top: name, what's going on, the gear
         chip = text("", dim, 12f).apply { setPadding(dp(10), dp(4), dp(10), dp(4)) }
-        root.addView(LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            addView(text("Pocket Loomy", accent, 24f, true), LinearLayout.LayoutParams(0, -2, 1f))
-            addView(chip)
-        })
-        root.addView(gap(14))
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll = ScrollView(this).apply { addView(content); isFillViewport = true }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val gear = GearView(this, textC).apply { setOnClickListener { openSettings() } }
+        main.addView(row(text("Pocket Loomy", accent, 20f, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) },
+                         chip, space(6), gear.apply { layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)) }))
+        main.addView(gap(10))
 
-        // setup: two steps, shown until the phone is paired
+        // the latest line of the history; tap: all of it
+        pillCmd = text("", accent, 13f).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_HORIZONTAL }
+        pillAns = text("", textC, 13f).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_HORIZONTAL }
+        pill = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(card, accentDim, 16)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            addView(pillCmd); addView(pillAns)
+            setOnClickListener { if (Voice.history.isNotEmpty()) { logLayer.visibility = View.VISIBLE; renderHistory(true); render() } }
+        }
+        main.addView(pill, LinearLayout.LayoutParams(-1, -2))
+
+        // the middle: the mic (or, until paired, the setup steps over it)
+        mic = MicView(this, accent, card, bright).apply { onTap = { talkPressed() } }
         step1 = text("", textC)
         step2 = text("", textC)
         codeBtn = button("Say the code", true) { startPairing() }
-        setup = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(box(text("1  Your PC", accent, 13f, true), gap(6), step1, gap(10), button("Choose PC", false) { choosePc() }))
-            addView(gap(12))
-            addView(box(text("2  Pair", accent, 13f, true), gap(6), step2, gap(10), codeBtn))
+        setup = ScrollView(this).apply {
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(box(text("1  Your PC", accent, 13f, true), gap(6), step1, gap(10), button("Choose PC", false) { choosePc() }))
+                addView(gap(12))
+                addView(box(text("2  Pair", accent, 13f, true), gap(6), step2, gap(10), codeBtn))
+            })
+            isFillViewport = true
         }
-        content.addView(setup)
+        main.addView(FrameLayout(this).apply {
+            addView(mic, FrameLayout.LayoutParams(-1, -1))
+            addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        }, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        // paired: PC + On switch, Talk, live text, answer, typing
-        pcName = text("", bright, 17f, true)
-        pcSub = text("", dim, 12f)
-        onSwitch = Switch(this).apply {
-            text = "On  "
-            setTextColor(textC)
-            typeface = Typeface.MONOSPACE
-            setOnCheckedChangeListener { _, checked -> if (!settingSwitch) toggleOn(checked) }
+        // under the mic: what's happening, and the mode
+        live = text("", accent, 15f).apply { gravity = Gravity.CENTER_HORIZONTAL; minLines = 2; maxLines = 3 }
+        main.addView(live, LinearLayout.LayoutParams(-1, -2))
+        modeBtn = text("", textC, 13f).apply {
+            background = rounded(card, accentDim, 20)
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener { chooseMode() }
         }
-        tint(onSwitch)
-        onLine = text("", dim, 12f)
-        talkBg = rounded(accent, radius = 20)
-        talk = Button(this).apply {
-            isAllCaps = false
-            textSize = 22f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            background = talkBg
-            setOnClickListener { talkPressed() }
-        }
-        stopBtn = button("Stop listening", false) { Pocket.stopTalking(this) }
-        live = text("", accent, 16f).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(10), 0, 0) }
-        answerBox = text("", textC, 17f).apply { background = rounded(card); setPadding(dp(14), dp(12), dp(14), dp(12)) }
+        main.addView(modeBtn, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8) })
+
+        // typing
         input = EditText(this).apply {
             hint = "or type a command"
             setHintTextColor(dim)
@@ -227,38 +282,67 @@ class MainActivity : Activity() {
             setPadding(dp(12), dp(10), dp(12), dp(10))
             setOnEditorActionListener { _, action, _ -> if (action == EditorInfo.IME_ACTION_SEND) { sendTyped(); true } else false }
         }
-        paired = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(box(
-                LinearLayout(this@MainActivity).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        addView(pcName); addView(pcSub)
-                    }, LinearLayout.LayoutParams(0, -2, 1f))
-                    addView(onSwitch)
-                },
-                gap(6), onLine))
-            addView(talk, LinearLayout.LayoutParams(-1, dp(110)).apply { topMargin = dp(16) })
-            addView(stopBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-            addView(live)
-            addView(answerBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-            addView(LinearLayout(this@MainActivity).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                addView(input, LinearLayout.LayoutParams(0, -2, 1f))
-                addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(8), 1))
-                addView(button("Send", false) { sendTyped() })
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-        }
-        content.addView(paired)
+        typing = row(input.apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }, space(8), button("Send", false) { sendTyped() })
+        main.addView(typing, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
 
-        // history (what was said and what Loomy answered)
-        historyLabel = text("History", dim, 12f).apply { setPadding(0, dp(14), 0, dp(2)) }
+        // the history, over everything
         log = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        content.addView(historyLabel)
-        content.addView(log)
+        logLayer = layer("History", "Close", log) { logLayer.visibility = View.GONE; render() }
+        root.addView(logLayer, FrameLayout.LayoutParams(-1, -1))
 
-        // settings (always there: the speed meter works without pairing)
+        // the settings, over everything
+        settingsLayer = layer("Settings", "Done", buildSettings()) { settingsLayer.visibility = View.GONE; render() }
+        root.addView(settingsLayer, FrameLayout.LayoutParams(-1, -1))
+        return root
+    }
+
+    private fun buildSettings(): View {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun section(v: View) = col.addView(v, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+
+        // your PC: the pairing, the On switch, change / forget
+        pcName = text("", bright, 17f, true)
+        pcSub = text("", dim, 12f)
+        onSwitch = Switch(this).apply {
+            text = "On  "
+            setTextColor(textC)
+            typeface = Typeface.MONOSPACE
+            setOnCheckedChangeListener { _, checked -> if (!settingSwitch) toggleOn(checked) }
+        }
+        tint(onSwitch)
+        onLine = text("", dim, 12f)
+        pcButtons = row(button("Change PC", false) { choosePc() }, space(8), button("Forget", false) { confirmForget() })
+        section(box(heading("Your PC"),
+                    row(LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                        addView(pcName); addView(pcSub)
+                    }, onSwitch),
+                    gap(6), onLine, gap(10), pcButtons))
+
+        // listening: the mode (same as the button under the mic) and who hears you
+        modeName = check("Say \u201CLoomy\u201D") { if (it) setMode(false) else render() }
+        modeSolo = check("Solo") { if (it) setMode(true) else render() }
+        cbPhone = check("Use the phone's recognizer") { store.phoneEar = it; render() }
+        section(box(heading("Listening"),
+                    modeName, text("Everything you say after her name is the command. Tapping the mic counts as saying it once.", dim, 12f),
+                    gap(6), modeSolo, text("For when you're alone: everything you say is a command, no name needed.", dim, 12f),
+                    gap(4), text("In both, a pause or \u201Cthank you\u201D ends the sentence. \u201CPlease\u201D is fine anywhere.", dim, 12f),
+                    gap(12), cbPhone,
+                    text("Off (normal): Ellune hears what you say to Loomy (much better with accents) and her AI understands phrases the phone doesn't know. Listening for \u201CLoomy\u201D stays on the phone. With no internet the phone's recognizer is the only option.\nOn: only the phone's recognizer and its set phrases.", dim, 12f)))
+
+        // Ellune
+        elluneLine = text("", dim, 13f).apply { setPadding(0, dp(6), 0, 0); visibility = View.GONE }
+        elluneGuest = text("", dim, 13f).apply { visibility = View.GONE }
+        elluneId = text("", dim, 12f).apply { setPadding(0, dp(6), 0, 0) }
+        showElluneId(ElluneKey.peek())
+        elluneBtn = button("Ping Ellune", false) { pingEllune() }
+        section(box(heading("Ellune"),
+                    text("Loomy's online sister. Ping checks this phone can reach her and is on her guest list.", dim, 12f),
+                    elluneId, elluneLine, elluneGuest, gap(10),
+                    row(elluneBtn, space(8), button("Add to guest list", false) { addToGuestList() })))
+
+        // the app itself
         fun setting(label: String, about: String, onFlip: (Boolean) -> Unit) = Switch(this).apply {
             text = label
             setTextColor(textC)
@@ -269,10 +353,6 @@ class MainActivity : Activity() {
         } to text(about, dim, 12f)
         val (n1, n1a) = setting("Notification", "Pocket Loomy in your notifications. Off: none while it's off, and a tucked-away one while it runs.") {
             store.showNotif = it; Pocket.sync(this) }
-        val (n2, n2a) = setting("Keep listening", "After Talk, keep listening until you stop it. Only acts on what starts with \u201CLoomy ...\u201D and ignores everything else.") {
-            store.keepListening = it; render() }
-        val (n5, n5a) = setting("Solo mode", "For when you're alone: say \u201CLoomy\u201D once, then just talk, every sentence is a command. \u201COk thank you\u201D and she waits for her name again. By voice: \u201CLoomy solo mode\u201D / \u201Csolo mode off\u201D.") {
-            store.solo = it; render() }
         val (n3, n3a) = setting("Talk card", "The small card when you Talk from the notification. Off: it just listens, answers show in the notification.") {
             store.talkCard = it }
         val (n4, n4a) = setting("Net speed", "Your phone's down/up speed in the status bar, like a speed meter app. Works with Pocket Loomy off, paused while the screen is off.") {
@@ -280,39 +360,27 @@ class MainActivity : Activity() {
             if (!Pocket.sync(this)) { store.netSpeed = false; problem("Android didn't let the speed meter start.") }
             render()
         }
-        swNotif = n1; swKeep = n2; swCard = n3; swSpeed = n4; swSolo = n5
-        content.addView(box(text("Settings", accent, 13f, true), n1, n1a, n2, n2a, n5, n5a, n3, n3a, n4, n4a),
-                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+        swNotif = n1; swCard = n3; swSpeed = n4
+        section(box(heading("App"), n1, n1a, n3, n3a, n4, n4a))
+        return col
+    }
 
-        // Ellune, Loomy's online sister: a ping to check this phone can reach her (works without pairing)
-        elluneLine = text("", dim, 13f).apply { setPadding(0, dp(6), 0, 0); visibility = View.GONE }
-        elluneGuest = text("", dim, 13f).apply { visibility = View.GONE }
-        elluneId = text("", dim, 12f).apply { setPadding(0, dp(6), 0, 0) }
-        showElluneId(ElluneKey.peek())
-        elluneBtn = button("Ping Ellune", false) { pingEllune() }
-        val (ne, nea) = setting("Understand me through Ellune", "With internet and this phone on her guest list: Talk, \u201CLoomy\u201D + a pause, and solo mode send your voice to Ellune (Whisper, much better with accents), and phrases the phone doesn't know go to her AI. Waiting for \u201CLoomy\u201D stays on the phone. Offline: the phone's own recognizer, set phrases only.") {
-            store.elluneSpeech = it }
-        swEllune = ne
-        content.addView(box(text("Ellune", accent, 13f, true),
-                            text("Loomy's online sister. Ping checks this phone can reach her and whether it's on her guest list.", dim, 12f),
-                            elluneId, elluneLine, elluneGuest, ne, nea, gap(10),
-                            LinearLayout(this).apply {
-                                addView(elluneBtn)
-                                addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(8), 1))
-                                addView(button("Add to guest list", false) { addToGuestList() })
-                            }),
-                        LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+    private fun openSettings() { settingsLayer.visibility = View.VISIBLE; render() }
 
-        // the rarely used buttons
-        footer = LinearLayout(this).apply {
-            gravity = Gravity.END
-            setPadding(0, dp(12), 0, 0)
-            addView(button("Change PC", false) { choosePc() })
-            addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(8), 1))
-            addView(button("Forget", false) { confirmForget() })
-        }
-        content.addView(footer)
-        return root
+    // ------------------------------------------------------------------ the mode
+    private fun modeName(solo: Boolean) = if (solo) "Solo" else "Say \u201CLoomy\u201D"
+
+    private fun chooseMode() {
+        val items = arrayOf("Say \u201CLoomy\u201D: what you say after her name", "Solo: everything you say (when you're alone)")
+        AlertDialog.Builder(this)
+            .setTitle("Listening")
+            .setSingleChoiceItems(items, if (store.solo) 1 else 0) { d, i -> setMode(i == 1); d.dismiss() }
+            .show()
+    }
+
+    private fun setMode(solo: Boolean) {
+        store.solo = solo
+        render()
     }
 
     // ------------------------------------------------------------------ drawing from state
@@ -321,19 +389,15 @@ class MainActivity : Activity() {
         val isPaired = t != null && t.valid()
         val listening = Voice.state == Voice.State.LISTENING
 
-        setup.visibility = if (isPaired) View.GONE else View.VISIBLE
-        paired.visibility = if (isPaired) View.VISIBLE else View.GONE
-        footer.visibility = if (t != null) View.VISIBLE else View.GONE
-
         settingSwitch = true
         onSwitch.text = if (store.on) "On  " else "Off  "
+        onSwitch.isChecked = store.on
         swNotif.isChecked = store.showNotif
-        swKeep.isChecked = store.keepListening
         swCard.isChecked = store.talkCard
         swSpeed.isChecked = store.netSpeed
-        swSolo.isChecked = store.solo
-        swEllune.isChecked = store.elluneSpeech
-        onSwitch.isChecked = store.on
+        modeName.isChecked = !store.solo
+        modeSolo.isChecked = store.solo
+        cbPhone.isChecked = store.phoneEar
         settingSwitch = false
 
         // chip
@@ -343,8 +407,8 @@ class MainActivity : Activity() {
             phase == Phase.FORGETTING -> "forgetting" to accent
             Voice.sending -> "talking to Loomy" to accent
             listening && Voice.inputMode -> "input mode" to accent
-            listening && store.solo && Voice.keep && Voice.soloAwake -> "solo: listening" to accent
-            listening && store.solo && Voice.keep -> "solo: say Loomy" to accent
+            listening && Voice.viaEllune -> "Ellune is listening" to accent
+            listening && Voice.keep && store.solo -> "solo" to accent
             listening && Voice.keep -> "listening for Loomy" to accent
             listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
@@ -358,9 +422,44 @@ class MainActivity : Activity() {
         chip.setTextColor(chipColor)
         chip.background = rounded(card, chipColor, 20)
 
-        renderHistory()
+        // the pill: the latest line of the history
+        val last = Voice.last()
+        if (last == null) {
+            pillCmd.text = "History"
+            pillCmd.setTextColor(dim)
+            pillAns.text = "What you say and what Loomy answers shows here."
+            pillAns.setTextColor(dim)
+        } else {
+            pillCmd.text = "\u203A ${last.cmd}"
+            pillCmd.setTextColor(accent)
+            pillAns.text = last.answer
+            pillAns.setTextColor(if (last.bad) err else textC)
+        }
+        renderHistory(false)
+
+        // settings: your PC
+        if (t != null) {
+            pcName.text = t.pcName
+            pcSub.text = if (isPaired) "paired until " + DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(t.expiresAt))
+                         else "the pairing ran out: pair again"
+        } else {
+            pcName.text = store.pcLabel ?: "No PC yet"
+            pcSub.text = "not paired"
+        }
+        val seen = if (Pocket.lastSeen > 0) " Last answer from the PC at " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(Pocket.lastSeen)) + "." else ""
+        onLine.text = if (store.on) "On: Talk is in your notifications and the Loomy tile, and it checks in every 5 minutes.$seen"
+                      else "Off: turn on to Talk from the notification or the Loomy quick-settings tile.$seen"
+        onSwitch.visibility = if (isPaired) View.VISIBLE else View.GONE
+        pcButtons.visibility = if (t != null) View.VISIBLE else View.GONE
+
+        modeBtn.text = "${modeName(store.solo)}  \u25BE"
 
         if (!isPaired) {
+            setup.visibility = View.VISIBLE
+            mic.visibility = View.INVISIBLE
+            typing.visibility = View.GONE
+            modeBtn.visibility = View.GONE
+            live.text = ""
             step1.text = store.pcLabel?.let { "\u2713 $it" } ?: "Pick your PC from the phone's Bluetooth devices. (Pair it in Android's Bluetooth settings first.)"
             step1.setTextColor(if (store.pcLabel != null) ok else textC)
             step2.text = when {
@@ -387,64 +486,50 @@ class MainActivity : Activity() {
             return
         }
 
-        pcName.text = t!!.pcName
-        pcSub.text = "paired until " + DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(t.expiresAt))
-        val seen = if (Pocket.lastSeen > 0) " Last answer from the PC at " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(Pocket.lastSeen)) + "." else ""
-        onLine.text = if (store.on) "On: Talk is in your notifications and the Loomy tile, and it checks in every 5 minutes.$seen"
-                      else "Off: turn on to Talk from the notification or the Loomy quick-settings tile.$seen"
-
-        val last = Voice.last()
-        live.text = when {
-            listening && Voice.partial.isNotEmpty() -> Voice.partial
-            listening && Voice.inputMode -> "input mode: say next, back, ok, up, down... (\u201Cinput mode off\u201D to stop)"
-            listening && store.solo && Voice.keep && Voice.soloAwake -> "solo mode: just talk (\u201Cok thank you\u201D when you're done)"
-            listening && store.solo && Voice.keep -> "solo mode: say \u201CLoomy\u201D to start"
-            listening && Voice.keep -> "say \u201CLoomy\u201D and a command"
-            listening -> "say a command"
-            last != null -> "\u203A ${last.cmd}"
-            else -> "try \u201CLoomy, turn off the screen\u201D or \u201CLoomy system info and next tab\u201D"
+        setup.visibility = View.GONE
+        mic.visibility = View.VISIBLE
+        typing.visibility = View.VISIBLE
+        modeBtn.visibility = View.VISIBLE
+        mic.mode = when {
+            Voice.sending && !listening -> MicView.Mode.SENDING
+            listening -> MicView.Mode.LISTENING
+            else -> MicView.Mode.IDLE
         }
-        live.setTextColor(if (listening || last != null) accent else dim)
-        val showMine = answer.isNotEmpty()
-        val text = if (showMine) answer else last?.answer ?: ""
-        answerBox.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
-        answerBox.text = text
-        answerBox.setTextColor(if (showMine && answerBad || !showMine && last?.bad == true) err else bright)
-        stopBtn.visibility = if (listening && Voice.keep) View.VISIBLE else View.GONE
-        renderTalk()
+        mic.level = Voice.level
+        mic.running = settingsLayer.visibility != View.VISIBLE && logLayer.visibility != View.VISIBLE
+
+        val (liveText, liveColor) = when {
+            listening && Voice.partial.isNotEmpty() -> Voice.partial to accent
+            listening && Voice.inputMode -> "input mode: say next, back, ok, up, down... (\u201Cinput mode off\u201D to stop)" to accent
+            listening && Voice.armed && !store.solo -> "Go ahead, I'm listening." to accent
+            listening && store.solo -> "Just talk. A pause or \u201Cthank you\u201D ends a sentence. Tap the mic to stop." to accent
+            listening -> "Say \u201CLoomy\u201D and a command. Tap the mic to stop." to accent
+            Voice.sending -> "Talking to Loomy..." to accent
+            answer.isNotEmpty() -> answer to (if (answerBad) err else ok)
+            store.solo -> "Tap the mic and just talk." to dim
+            else -> "Tap the mic and talk, or say \u201CLoomy ...\u201D while it listens." to dim
+        }
+        live.text = liveText
+        live.setTextColor(liveColor)
     }
 
-    private fun renderTalk() {
-        val listening = Voice.state == Voice.State.LISTENING
-        talk.text = when {
-            Voice.sending -> "Talking to Loomy..."
-            listening -> "Listening...  (tap to stop)"
-            store.keepListening -> "Talk (keeps listening)"
-            else -> "Talk"
-        }
-        // while listening the button glows with your voice
-        val k = if (listening) (Voice.level.coerceIn(0f, 10f) / 10f) else 0f
-        talkBg.setColor(if (Voice.sending && !listening) accentDim else blend(accent, Color.WHITE, k * 0.35f))
-        talkBg.setStroke(dp(if (listening) 3 else 0), bright)
-    }
-
-    private fun blend(a: Int, b: Int, k: Float) = Color.rgb(
-        (Color.red(a) + (Color.red(b) - Color.red(a)) * k).toInt(),
-        (Color.green(a) + (Color.green(b) - Color.green(a)) * k).toInt(),
-        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).toInt())
-
-    // the history comes from Voice (it also holds what was said from the notification); rebuilt when it grows
-    private fun renderHistory() {
+    // the full history (newest first), rebuilt when it changes and only while it's being looked at
+    private fun renderHistory(force: Boolean) {
+        if (!force && logLayer.visibility != View.VISIBLE) return
         val h = Voice.history
         val sig = h.size * 31 + (h.lastOrNull()?.answer?.length ?: 0)
-        if (sig == shownHistory) return
+        if (sig == shownHistory && !force) return
         shownHistory = sig
         log.removeAllViews()
-        for (e in h.takeLast(30)) {
-            log.addView(text("\u203A ${e.cmd}", accent, 13f).apply { setPadding(0, dp(4), 0, 0) })
-            log.addView(text(e.answer, if (e.bad) err else textC, 13f))
+        for (e in h.asReversed()) {
+            log.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(card)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                addView(text("\u203A ${e.cmd}", accent, 13f))
+                addView(text(e.answer, if (e.bad) err else textC, 13f))
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         }
-        historyLabel.visibility = if (h.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun problem(s: String) { answer = s; answerBad = true; render() }
@@ -667,7 +752,7 @@ class MainActivity : Activity() {
     private fun talkPressed() {
         answer = ""
         if (Voice.state != Voice.State.OFF) { Pocket.stopTalking(this); return }
-        Pocket.talk(this, store.keepListening)?.let { problem(it) }
+        Pocket.talk(this, true)?.let { problem(it) }
     }
 
     private fun sendTyped() {
