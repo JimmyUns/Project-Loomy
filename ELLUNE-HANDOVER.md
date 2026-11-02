@@ -47,7 +47,7 @@ doesn't cover is still his call: don't bake it in without him.
   + examples; `cleanCommand` only lets out commands matching a fixed pattern (no slash commands, max 4 joined with
   "and"), else ""). Body read once with a size cap before the signature check (keys are public). Needs a **Workers
   AI binding named `AI`** (503 without it). `node test.mjs`: 58 checks with a stand-in AI. App side: `POCKET-HANDOVER.md`
-  §11. **He has to paste 0.3 and add the binding; not tried on a phone yet.**
+  §11. **Deployed + tested by him Nov 2 (0.3 + the `AI` binding + the new APK): works.**
 - **Plan he OK'd for v2.21 (Nov 2), "the brain":** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
   so a 3 s command ≈ 2) → 3 the app sends audio when online, falls back to the local recognizer offline or if Ellune

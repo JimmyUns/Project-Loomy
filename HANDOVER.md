@@ -162,7 +162,8 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
 - **v2.21 in progress (Nov 2), PR #20:** the security talk (decisions in `ELLUNE-HANDOVER.md` §7), then "the brain"
   (Ellune understanding his speech; plan in `ELLUNE-HANDOVER.md` §2). Step 1 done: Ellune's guest list + the
   phone's Ellune key. Deployed and tested by him: works. Steps 2+3 built (Worker 0.3 `/hear` + `/understand`, the app
-  records and sends audio, AI fallback for unknown phrases): he has to deploy 0.3 + add the AI binding, then test.
+  records and sends audio, AI fallback for unknown phrases): deployed and tested by him: works.
+  The brain plan (steps 1-3) is done.
 - **v2.20 ENDED (Nov 2):** PR #19 ready. Ellune's ping, nothing else (he chose to end it there). The server (`ellune/`) is live and `/ellune`
   (core) pings it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy
   check, cached after), then 63-300 ms with one 734 spike: normal, no fix needed. Then he asked for the app to ping

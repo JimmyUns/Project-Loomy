@@ -276,7 +276,7 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   ("say it again"). Offline/unavailable is shown in `partial`. **AI fallback:** `Words.knows(cmd)` false (first
   word of a part isn't a Loomy word) → `Ellune.understandNow(said)` → sent as is, history shows "said → sent";
   if she can't answer, the old behaviour (rules' guess or a miss). tests/jni: 203 checks (WAV, Vad, JSON, knows)
-  + the phone's /hear and /understand requests checked by the Worker's code. **Not run on a real phone yet.**
+  + the phone's /hear and /understand requests checked by the Worker's code. **He tested it on his phone (Nov 2): works.**
 
 ## 11b. Where it's heading (agreed Nov 1, not started)
 - **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same
