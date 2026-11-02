@@ -159,7 +159,7 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.20 in progress (Nov 2), PR #19 (back to draft):** Ellune's ping. The server (`ellune/`) is live and `/ellune`
+- **v2.20 ENDED (Nov 2):** PR #19 ready. Ellune's ping, nothing else (he chose to end it there). The server (`ellune/`) is live and `/ellune`
   (core) pings it (`ELLUNE-HANDOVER.md` §2). He tested it on his PC: up, first run 1735 ms (DNS + Windows' proxy
   check, cached after), then 63-300 ms with one 734 spike: normal, no fix needed. Then he asked for the app to ping
   too: **Ping Ellune** in Pocket Loomy (INTERNET permission, his OK; `POCKET-HANDOVER.md` §11). Tested on his phone
