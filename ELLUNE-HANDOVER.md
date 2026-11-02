@@ -38,7 +38,9 @@ doesn't cover is still his call: don't bake it in without him.
   `DEVICES` variable (`name=base64url raw P-256 key`, one per line, set in the dashboard; `keep_vars` in
   wrangler.toml). Signed text and headers documented at the top of `src/index.js`; 60 s clock window, no storage
   (a replay inside 60 s would need TLS broken first). `node test.mjs`: 26 checks + the cross-check from tests/jni.
-  App side: `POCKET-HANDOVER.md` §11. **He has to paste the new `src/index.js` and add `DEVICES`** (not done yet).
+  App side: `POCKET-HANDOVER.md` §11. **Deployed + tested Nov 2:** he pasted 0.2 and added `DEVICES` (a plain Text variable, not
+  Secret, so he can see/edit it); the app says the phone is on her guest list. (First try he saved it empty, and he
+  asked whether to copy only the ID from the dialog title: the button already copies the whole line.)
 - **Plan he OK'd for v2.21 (Nov 2), "the brain":** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
   so a 3 s command ≈ 2) → 3 the app sends audio when online, falls back to the local recognizer offline or if Ellune
