@@ -159,8 +159,8 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.22 in progress (Nov 2), branch `claude/v2.22`.** Part 1 (items 1-3 below: redesign, modes, checkbox) built,
-  not tried on his phone yet (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
+- **v2.22 in progress (Nov 2), branch `claude/v2.22`.** Part 1 (items 1-3 below: redesign, modes, checkbox) built;
+  he tried it, feedback round 1 done (`POCKET-HANDOVER.md` §11), round 2 not tried yet (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
   1. **The app, redesigned.** Today's layout (buttons on top, then the log, settings at the very bottom) he called
      horrible. Wanted: a big mic in the middle with Loomy's halftone dots rippling out from its centre (calm idle,
      moving with the voice while listening); a cog (top right) holding all settings + the PC/pairing stuff; the

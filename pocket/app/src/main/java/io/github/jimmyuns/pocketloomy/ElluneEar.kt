@@ -22,7 +22,8 @@ class ElluneEar(
     private val level: (Float) -> Unit,
     private val heard: (List<String>) -> Unit,
     private val missed: (Int) -> Unit,
-    private val failed: (Ellune.Answer.Down) -> Unit,      // Ellune didn't answer: Voice falls back to Ear
+    private val failed: (Ellune.Answer.Down) -> Unit,      // Ellune didn't answer: Voice says so
+    private val busy: (Boolean) -> Unit = {},               // the mic is off and Ellune is working it out
 ) {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var run = 0                          // bumped by cancel(): an old thread's results are dropped
@@ -69,7 +70,7 @@ class ElluneEar(
                     val lv = Sound.level(rms)
                     post(me) { level(lv) }
                     when (vad.push(rms)) {
-                        Vad.Event.STARTED -> post(me) { partial("Ellune is listening...") }
+                        Vad.Event.STARTED -> post(me) { partial("Loomy is listening...") }
                         Vad.Event.TIMEOUT -> { post(me) { missed(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }; return@Thread }
                         Vad.Event.ENDED -> { ended = true; break }
                         Vad.Event.NONE -> {}
@@ -84,19 +85,20 @@ class ElluneEar(
             }
             if (run != me) return@Thread
             if (!ended) { post(me) { missed(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }; return@Thread }
-            post(me) { partial("Asking Ellune..."); level(-2f) }
+            post(me) { partial("Ellune is understanding..."); level(-2f); busy(true) }
             val clip = Sound.wav(pcm, vad.start * Sound.FRAME, minOf(vad.end * Sound.FRAME, n))
             when (val a = Ellune.hearNow(key.priv, key.pub, clip)) {
                 is Ellune.Answer.Ok ->
-                    post(me) { if (a.text.isBlank()) missed(SpeechRecognizer.ERROR_NO_MATCH) else heard(listOf(a.text)) }
-                is Ellune.Answer.Down -> post(me) { failed(a) }
+                    post(me) { busy(false); if (a.text.isBlank()) missed(SpeechRecognizer.ERROR_NO_MATCH) else heard(listOf(a.text)) }
+                is Ellune.Answer.Down -> post(me) { busy(false); failed(a) }
             }
         }, "ellune-ear").start()
     }
 
     private fun post(me: Int, f: () -> Unit) { main.post { if (run == me) f() } }
 
-    fun cancel() { run++ }
+    /** main thread. An upload still running is dropped, and the "working on it" state with it. */
+    fun cancel() { run++; busy(false) }
     fun destroy() = cancel()
 
     companion object {

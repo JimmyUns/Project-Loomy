@@ -15,6 +15,8 @@ typedef struct {
 static const Release RELEASES[] = {
     { L"2.22", L"2026-11-02", {
         L"Pocket Loomy redesigned: a mic with Loomy's dots, settings behind a gear.",
+        L"The mic shows what's happening: waiting, listening, thinking, done.",
+        L"Her name is caught better: lumi, lumie, loomino and friends count.",
         L"Two ways to listen: Say \"Loomy\" or Solo; \"thank you\" ends a sentence.",
         L"No silent switching: tick Use the phone's recognizer if you want it.",
         0 } },

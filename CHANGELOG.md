@@ -4,6 +4,8 @@ All notable changes to Loomy, newest first.
 
 ## v2.22
 - **Pocket Loomy, redesigned.** A big mic in the middle with Loomy's dots rippling out of it (they move with your voice), the latest thing said at the top (tap it for the whole history), and everything else behind the gear: your PC and the On switch, Listening, Ellune and the app settings.
+- **You can see what it's doing**: the mic breathes while it waits for "Loomy", turns purple when it's taking your command, shows a spinning ring while Ellune works it out (the mic is off then), and flashes green or red when the answer comes back. A faint grid sits behind it all.
+- **"Loomy" is heard better**: "lumi", "lumie", "loomino", "lou me" and other ways the phone writes her name now count.
 - **Two ways to listen**, picked right under the mic: **Say "Loomy"** (everything after her name is the command; tapping the mic counts as saying it) or **Solo** (everything you say is a command). In both, a pause or "thank you" ends the sentence; "please" can go anywhere.
 - **No more silent switching:** if Ellune doesn't answer, Pocket Loomy says so and nothing is sent. Want only the phone's recognizer? Tick **Use the phone's recognizer**. With no internet it's the only option, and it tells you.
 

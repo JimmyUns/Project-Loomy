@@ -18,11 +18,16 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 // The middle of the app (2.22): a round mic button with Loomy's halftone dots rippling out from it, biggest
-// next to the mic and fading out (like the app icon and the dot strip on the PC). Calm and slow while idle,
-// faster and swelling with your voice while listening, a quick pulse while talking to the PC. Only the
-// circle itself is the button. Animates only while it's on screen.
+// next to the mic and fading out (like the app icon and the dot strip on the PC). It shows what's going on
+// without reading anything (his ask):
+//   IDLE       dark mic, dots drifting slowly                       (not listening)
+//   WAITING    dark mic, its ring breathing, dots a bit livelier     (listening for "Loomy")
+//   LISTENING  purple mic, white ring, dots fast and swelling with the voice   (taking the command)
+//   THINKING   mic dimmed, a ring spinning round it, dots still      (Ellune working it out / sending to the PC)
+//   flash()    the ring goes green (done) or red (didn't work) for a moment, with a ripple
+// Only the circle itself is the button. Animates only while it's on screen and not covered.
 class MicView(ctx: Context, private val accent: Int, private val card: Int, private val bright: Int) : View(ctx) {
-    enum class Mode { IDLE, LISTENING, SENDING, DISABLED }
+    enum class Mode { IDLE, WAITING, LISTENING, THINKING, DISABLED }
 
     var mode = Mode.IDLE
         set(v) { if (field != v) { field = v; invalidate() } }
@@ -41,6 +46,14 @@ class MicView(ctx: Context, private val accent: Int, private val card: Int, priv
     private val box = RectF()
 
     private var phase = 0.0          // 0..1: how far the rings have moved out by one step
+    private var spin = 0f            // the loading ring's angle
+    private var flashColor = 0
+    private var flashAt = 0L
+    private val okC = Color.rgb(0x8E, 0xE3, 0xB8)
+    private val errC = Color.rgb(0xFF, 0x7C, 0x96)
+
+    /** a moment of green (it worked) or red (it didn't) */
+    fun flash(good: Boolean) { flashColor = if (good) okC else errC; flashAt = SystemClock.uptimeMillis(); invalidate() }
     private var smooth = 0f          // the level, smoothed so the dots don't jitter
     private var lastT = 0L
     private var radius = 0f
@@ -66,12 +79,15 @@ class MicView(ctx: Context, private val accent: Int, private val card: Int, priv
         val lv = if (mode == Mode.LISTENING) (level.coerceIn(0f, 10f) / 10f) else 0f
         smooth += (lv - smooth) * min(1f, dt * 8f)
         val speed = when (mode) {
-            Mode.IDLE -> 0.12
-            Mode.LISTENING -> 0.35 + smooth * 0.9
-            Mode.SENDING -> 0.9
-            Mode.DISABLED -> 0.0
+            Mode.IDLE -> 0.10
+            Mode.WAITING -> 0.22
+            Mode.LISTENING -> 0.45 + smooth * 1.0
+            Mode.THINKING, Mode.DISABLED -> 0.0
         }
         phase = (phase + dt * speed) % 1.0
+        spin = (spin + dt * 300f) % 360f
+        val sinceFlash = now - flashAt
+        val flashK = if (flashAt == 0L || sinceFlash > 1100) 0f else 1f - sinceFlash / 1100f
 
         val cx = width / 2f
         val cy = height / 2f
@@ -79,8 +95,10 @@ class MicView(ctx: Context, private val accent: Int, private val card: Int, priv
         val step = radius * 0.42f                         // distance between rings
         val far = min(width, height) * 0.5f               // where the dots are gone
         val rings = ((far - radius) / step).toInt() + 2
-        val maxDot = radius * 0.11f * (1f + smooth * 0.5f)
+        val maxDot = radius * 0.11f * (1f + smooth * 0.5f) * (if (mode == Mode.LISTENING) 1.15f else 1f)
         val dim = if (mode == Mode.DISABLED) 0.35f else 1f
+        val dotsDim = when (mode) { Mode.THINKING -> 0.35f; Mode.IDLE -> 0.7f; else -> 1f } * dim
+        dot.color = accent
 
         // the dots: rings moving outward, each a little smaller and fainter, staggered like a halftone
         for (k in 0 until rings) {
@@ -90,7 +108,7 @@ class MicView(ctx: Context, private val accent: Int, private val card: Int, priv
             val size = maxDot * (1f - t).pow(1.3f)
             if (size < 0.6f) continue
             val fadeIn = ((r - radius - step * 0.5f) / step).coerceIn(0f, 1f)   // new rings appear softly
-            dot.alpha = (255 * dim * fadeIn * (1f - t).pow(0.8f)).toInt().coerceIn(0, 255)
+            dot.alpha = (255 * dotsDim * fadeIn * (1f - t).pow(0.8f)).toInt().coerceIn(0, 255)
             val n = max(6, (2 * PI * r / (step * 0.62f)).toInt())
             val off = if (k % 2 == 0) 0.0 else PI / n                          // halftone stagger
             for (i in 0 until n) {
@@ -101,23 +119,43 @@ class MicView(ctx: Context, private val accent: Int, private val card: Int, priv
 
         // the button
         val listening = mode == Mode.LISTENING
-        val swell = radius * (1f + smooth * 0.06f)
+        val breathe = if (mode == Mode.WAITING) (0.5f + 0.5f * sin(now / 450.0).toFloat()) else 0f
+        val swell = radius * (1f + smooth * 0.06f + flashK * 0.05f)
         fill.color = when (mode) {
-            Mode.LISTENING, Mode.SENDING -> accent
+            Mode.LISTENING -> accent
+            Mode.THINKING -> blend(card, accent, 0.35f)
             else -> card
         }
         fill.alpha = (255 * dim).toInt()
         c.drawCircle(cx, cy, swell, fill)
-        ring.color = if (listening) bright else accent
-        ring.strokeWidth = radius * (if (listening) 0.05f else 0.035f)
-        ring.alpha = (255 * dim).toInt()
+        ring.color = when {
+            flashK > 0f -> flashColor
+            listening -> bright
+            else -> accent
+        }
+        ring.strokeWidth = radius * (if (listening || flashK > 0f) 0.055f else 0.035f + breathe * 0.03f)
+        ring.alpha = (255 * dim * (if (mode == Mode.WAITING) 0.55f + breathe * 0.45f else 1f)).toInt()
         c.drawCircle(cx, cy, swell, ring)
+        if (flashK > 0f) {                                   // a ripple going out with the flash
+            ring.alpha = (180 * flashK).toInt()
+            ring.strokeWidth = radius * 0.03f
+            c.drawCircle(cx, cy, swell * (1.1f + (1f - flashK) * 0.6f), ring)
+        }
+        if (mode == Mode.THINKING) {                         // the loading ring
+            ring.color = bright
+            ring.alpha = 255
+            ring.strokeWidth = radius * 0.06f
+            box.set(cx - swell * 1.18f, cy - swell * 1.18f, cx + swell * 1.18f, cy + swell * 1.18f)
+            c.drawArc(box, spin, 90f, false, ring)
+            ring.alpha = 90
+            c.drawArc(box, spin + 180f, 60f, false, ring)
+        }
 
         // the mic: a capsule, the cradle under it, the stand
         val u = radius * 0.1f
         glyph.strokeWidth = u * 0.95f
-        glyph.color = if (listening || mode == Mode.SENDING) Color.WHITE else bright
-        glyph.alpha = (255 * dim).toInt()
+        glyph.color = if (listening) Color.WHITE else bright
+        glyph.alpha = (255 * dim * (if (mode == Mode.THINKING) 0.45f else 1f)).toInt()
         box.set(cx - u * 1.9f, cy - u * 4.6f, cx + u * 1.9f, cy + u * 1.4f)
         c.drawRoundRect(box, u * 1.9f, u * 1.9f, glyph)
         path.reset()
@@ -129,6 +167,11 @@ class MicView(ctx: Context, private val accent: Int, private val card: Int, priv
 
         if (mode != Mode.DISABLED && running && isShown) postInvalidateOnAnimation()
     }
+
+    private fun blend(a: Int, b: Int, k: Float) = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * k).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * k).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).toInt())
 
     override fun onVisibilityChanged(v: View, visibility: Int) {
         super.onVisibilityChanged(v, visibility)
@@ -162,4 +205,27 @@ class GearView(ctx: Context, private val color: Int) : View(ctx) {
         c.drawPath(path, p)
         c.drawCircle(cx, cy, r * 0.42f, p)
     }
+}
+
+// The background (2.22, his ask): faint grid lines, like graph paper in the dark, fading out towards the edges
+class GridDrawable(private val line: Int, private val bg: Int, private val cell: Float) : android.graphics.drawable.Drawable() {
+    private val p = Paint().apply { color = line; strokeWidth = 1f }
+    private val fade = Paint()
+    override fun draw(c: Canvas) {
+        val b = bounds
+        c.drawColor(bg)
+        var x = b.left + (b.width() % cell) / 2f
+        while (x <= b.right) { c.drawLine(x, b.top.toFloat(), x, b.bottom.toFloat(), p); x += cell }
+        var y = b.top + (b.height() % cell) / 2f
+        while (y <= b.bottom) { c.drawLine(b.left.toFloat(), y, b.right.toFloat(), y, p); y += cell }
+        val r = max(b.width(), b.height()) * 0.72f
+        fade.shader = android.graphics.RadialGradient(b.exactCenterX(), b.exactCenterY() * 0.9f, r,
+            intArrayOf(Color.TRANSPARENT, Color.argb(120, Color.red(bg), Color.green(bg), Color.blue(bg)), bg),
+            floatArrayOf(0f, 0.6f, 1f), android.graphics.Shader.TileMode.CLAMP)
+        c.drawRect(b, fade)
+    }
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(cf: android.graphics.ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = android.graphics.PixelFormat.OPAQUE
 }

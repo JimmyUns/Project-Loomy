@@ -88,8 +88,9 @@ class MainActivity : Activity() {
     private lateinit var onSwitch: Switch
     private lateinit var onLine: TextView
     private lateinit var pcButtons: LinearLayout
-    private lateinit var modeSolo: CheckBox
-    private lateinit var modeName: CheckBox
+    private lateinit var modeBtn2: TextView
+    private var onProblem = ""             // why the On switch couldn't turn on (shown right under it)
+    private var flashSeen: String? = null  // the history line the mic last reacted to (null = not drawn yet)
     private lateinit var cbPhone: CheckBox
     private lateinit var swNotif: Switch
     private lateinit var swCard: Switch
@@ -195,13 +196,15 @@ class MainActivity : Activity() {
         col.addView(gap(12))
         col.addView(ScrollView(this).apply { addView(content); isFillViewport = true }, LinearLayout.LayoutParams(-1, 0, 1f))
         return FrameLayout(this).apply {
-            setBackgroundColor(bg)
+            background = grid()
             visibility = View.GONE
             isClickable = true                       // nothing under it gets touched
             addView(col)
             insetsPadding(col)
         }
     }
+
+    private fun grid() = GridDrawable(Color.argb(22, Color.red(accent), Color.green(accent), Color.blue(accent)), bg, dp(26).toFloat())
 
     // Android 15 draws under the bars: keep clear of them (and of the keyboard)
     private fun insetsPadding(v: View) {
@@ -215,7 +218,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi(): View {
-        val root = FrameLayout(this).apply { setBackgroundColor(bg) }
+        val root = FrameLayout(this).apply { background = grid() }
         val main = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         insetsPadding(main)
         root.addView(main)
@@ -321,13 +324,15 @@ class MainActivity : Activity() {
                     gap(6), onLine, gap(10), pcButtons))
 
         // listening: the mode (same as the button under the mic) and who hears you
-        modeName = check("Say \u201CLoomy\u201D") { if (it) setMode(false) else render() }
-        modeSolo = check("Solo") { if (it) setMode(true) else render() }
+        modeBtn2 = text("", textC, 13f).apply {
+            background = rounded(card, accentDim, 20)
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener { chooseMode() }
+        }
         cbPhone = check("Use the phone's recognizer") { store.phoneEar = it; render() }
         section(box(heading("Listening"),
-                    modeName, text("Everything you say after her name is the command. Tapping the mic counts as saying it once.", dim, 12f),
-                    gap(6), modeSolo, text("For when you're alone: everything you say is a command, no name needed.", dim, 12f),
-                    gap(4), text("In both, a pause or \u201Cthank you\u201D ends the sentence. \u201CPlease\u201D is fine anywhere.", dim, 12f),
+                    row(modeBtn2), gap(6),
+                    text("Say \u201CLoomy\u201D: everything you say after her name is the command (tapping the mic counts as saying it). Solo: everything you say is a command. A pause or \u201Cthank you\u201D ends the sentence.", dim, 12f),
                     gap(12), cbPhone,
                     text("Off (normal): Ellune hears what you say to Loomy (much better with accents) and her AI understands phrases the phone doesn't know. Listening for \u201CLoomy\u201D stays on the phone. With no internet the phone's recognizer is the only option.\nOn: only the phone's recognizer and its set phrases.", dim, 12f)))
 
@@ -395,8 +400,6 @@ class MainActivity : Activity() {
         swNotif.isChecked = store.showNotif
         swCard.isChecked = store.talkCard
         swSpeed.isChecked = store.netSpeed
-        modeName.isChecked = !store.solo
-        modeSolo.isChecked = store.solo
         cbPhone.isChecked = store.phoneEar
         settingSwitch = false
 
@@ -407,9 +410,9 @@ class MainActivity : Activity() {
             phase == Phase.FORGETTING -> "forgetting" to accent
             Voice.sending -> "talking to Loomy" to accent
             listening && Voice.inputMode -> "input mode" to accent
-            listening && Voice.viaEllune -> "Ellune is listening" to accent
-            listening && Voice.keep && store.solo -> "solo" to accent
-            listening && Voice.keep -> "listening for Loomy" to accent
+            Voice.thinking -> "Ellune is understanding" to accent
+            listening && Voice.takingCommand(this) -> "Loomy is listening" to accent
+            listening && Voice.keep -> "waiting for \u201CLoomy\u201D" to accent
             listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
             Pocket.linkState == LinkState.CONNECTING -> "connecting" to accent
@@ -447,12 +450,18 @@ class MainActivity : Activity() {
             pcSub.text = "not paired"
         }
         val seen = if (Pocket.lastSeen > 0) " Last answer from the PC at " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(Pocket.lastSeen)) + "." else ""
-        onLine.text = if (store.on) "On: Talk is in your notifications and the Loomy tile, and it checks in every 5 minutes.$seen"
-                      else "Off: turn on to Talk from the notification or the Loomy quick-settings tile.$seen"
+        if (store.on) onProblem = ""
+        onLine.text = when {
+            onProblem.isNotEmpty() -> "Couldn't turn on: $onProblem"
+            store.on -> "On: Talk is in your notifications and the Loomy tile, and it checks in with the PC every 5 minutes.$seen"
+            else -> "Off: turn on to Talk from the notification or the Loomy quick-settings tile.$seen"
+        }
+        onLine.setTextColor(if (onProblem.isNotEmpty()) err else dim)
         onSwitch.visibility = if (isPaired) View.VISIBLE else View.GONE
         pcButtons.visibility = if (t != null) View.VISIBLE else View.GONE
 
         modeBtn.text = "${modeName(store.solo)}  \u25BE"
+        modeBtn2.text = modeBtn.text
 
         if (!isPaired) {
             setup.visibility = View.VISIBLE
@@ -490,24 +499,31 @@ class MainActivity : Activity() {
         mic.visibility = View.VISIBLE
         typing.visibility = View.VISIBLE
         modeBtn.visibility = View.VISIBLE
+        val taking = Voice.takingCommand(this)
         mic.mode = when {
-            Voice.sending && !listening -> MicView.Mode.SENDING
-            listening -> MicView.Mode.LISTENING
+            Voice.thinking || Voice.sending -> MicView.Mode.THINKING
+            listening && taking -> MicView.Mode.LISTENING
+            listening -> MicView.Mode.WAITING
             else -> MicView.Mode.IDLE
         }
         mic.level = Voice.level
         mic.running = settingsLayer.visibility != View.VISIBLE && logLayer.visibility != View.VISIBLE
+        // a flash when an answer comes back: green it worked, red it didn't
+        val lineKey = last?.let { "${System.identityHashCode(it)}|${it.answer}" } ?: ""
+        if (flashSeen != null && lineKey != flashSeen && last != null && last.answer != "...") mic.flash(!last.bad)
+        flashSeen = lineKey                     // first draw: just remember, nothing to flash
 
+        // a few words at most: the mic shows the rest
+        val heardWords = Voice.partial.takeIf { listening && taking && it.isNotEmpty() && !it.endsWith("...") && it != "Yes?" }
         val (liveText, liveColor) = when {
-            listening && Voice.partial.isNotEmpty() -> Voice.partial to accent
-            listening && Voice.inputMode -> "input mode: say next, back, ok, up, down... (\u201Cinput mode off\u201D to stop)" to accent
-            listening && Voice.armed && !store.solo -> "Go ahead, I'm listening." to accent
-            listening && store.solo -> "Just talk. A pause or \u201Cthank you\u201D ends a sentence. Tap the mic to stop." to accent
-            listening -> "Say \u201CLoomy\u201D and a command. Tap the mic to stop." to accent
-            Voice.sending -> "Talking to Loomy..." to accent
+            Voice.thinking -> "Ellune is understanding\u2026" to accent
+            Voice.sending -> "Sending to your PC\u2026" to accent
+            heardWords != null -> "\u201C$heardWords\u201D" to textC
+            listening && Voice.inputMode -> "Input mode" to accent
+            listening && taking -> "Loomy is listening" to accent
+            listening -> "Say \u201CLoomy\u201D" to dim
             answer.isNotEmpty() -> answer to (if (answerBad) err else ok)
-            store.solo -> "Tap the mic and just talk." to dim
-            else -> "Tap the mic and talk, or say \u201CLoomy ...\u201D while it listens." to dim
+            else -> "Tap the mic" to dim
         }
         live.text = liveText
         live.setTextColor(liveColor)
@@ -631,9 +647,15 @@ class MainActivity : Activity() {
     }
 
     private fun toggleOn(want: Boolean) {
+        onProblem = ""
         if (!want) { Pocket.turnOff(this); render(); return }
         val why = Pocket.turnOn(this)
-        if (why != null) { problem(why); return }
+        if (why != null) {                       // say why where he's looking (it used to land behind the settings)
+            onProblem = why
+            android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_LONG).show()
+            render()
+            return
+        }
         askBatteryOnce()
         render()
     }

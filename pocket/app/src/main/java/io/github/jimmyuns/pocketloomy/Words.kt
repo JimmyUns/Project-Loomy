@@ -28,10 +28,26 @@ object Words {
     private val FILL = setOf("okay", "ok", "um", "uh", "so", "and", "oh", "alright", "right", "hey", "yo")
 
     // words, keeping things like "youtube.com" or "c:/games" whole but dropping sentence punctuation
-    private fun words(s: String) = s.lowercase().replace('\u2019', '\'').split(Regex("[^a-z0-9/'._:-]+"))
-        .map { it.trim('.', ':', '-', '_', '\'') }.filter { it.isNotEmpty() }
+    private fun words(s: String) = joinName(s.lowercase().replace('\u2019', '\'').split(Regex("[^a-z0-9/'._:-]+"))
+        .map { it.trim('.', ':', '-', '_', '\'') }.filter { it.isNotEmpty() })
 
-    private fun isName(x: String) = x in NAME || (x.startsWith("yo") && x.drop(2) in NAME) || (x.startsWith("ayo") && x.drop(3) in NAME)
+    // 2.22: the recognizer writes her name a hundred ways with his accent ("lumi", "lumie", "loomino", "lou me").
+    // Anything shaped like l + oo/u/ou/o + m + a short ending counts, and "lou me" / "lu me" said as two words.
+    private val NAMEISH = Regex("^(?:yo|ayo)?l(?:oo|ou|u|o|ew)m{1,2}(?:y|i|ie|ee|ey|ay|e|ia|io|ino|ina|inos|is|ies|i's|y's|ie's|a|ah)?$")
+    private val FIRST = setOf("lou", "lu", "loo", "lew", "luu")
+    private val SECOND = setOf("me", "mi", "mee", "may", "my", "mie")
+    private fun joinName(w: List<String>): List<String> {
+        val out = ArrayList<String>(w.size)
+        var i = 0
+        while (i < w.size) {
+            if (i + 1 < w.size && w[i] in FIRST && w[i + 1] in SECOND) { out += "loomy"; i += 2; continue }
+            out += w[i]; i++
+        }
+        return out
+    }
+
+    private fun isName(x: String) = x in NAME || (x.startsWith("yo") && x.drop(2) in NAME) || (x.startsWith("ayo") && x.drop(3) in NAME) ||
+        (NAMEISH.matches(x) && x != "loom" && x != "lome")
 
     /**
      * Was this said TO Loomy? Her name has to open what was said ("Loomy show screen", "okay Lumi, system

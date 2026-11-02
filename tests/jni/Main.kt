@@ -282,6 +282,13 @@ fun main() {
         check(!Words.untilThanks("open thanksgiving recipes").second, "thanks: only the whole word")
         check(Words.command(Words.untilThanks("can you please turn my screen on thank you").first) == "display on", "please + thanks: screen on")
         check(Words.command("can you turn on my screen please") == "display on", "please at the end isn't an end")
+        // her name, however the recognizer writes it with his accent
+        for (n in listOf("Lumi", "Lumie", "Loomino", "Lumino", "Loomy's", "Lummy", "Lomi", "Lumia", "Loomie", "lumee"))
+            check(Words.addressed("$n turn off the screen") == "turn off the screen", "name: $n")
+        check(Words.addressed("lou me open youtube") == "open youtube" && Words.addressed("lu mi system info") == "system info", "name: two words")
+        check(Words.addressed("okay lumino, system info") == "system info" && Words.addressed("ayo lumie show") == "show", "name: after a greeting")
+        check(Words.addressed("loom is broken") == null && Words.addressed("luminous paint") == null && Words.addressed("lemon tea") == null, "name: not words like it")
+        check(Words.addressed("I told lumi about it") == null, "name: not in the middle")
     }
 
     println("$checks checks, $fails failure(s)")

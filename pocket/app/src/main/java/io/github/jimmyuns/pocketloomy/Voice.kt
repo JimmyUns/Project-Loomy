@@ -36,7 +36,8 @@ object Voice {
     @Volatile var armed = false            // heard just "ayo Loomy": the next thing said is the command
     @Volatile var inputMode = false        // "Loomy input mode": bare key words (next, back, ok...) work
     @Volatile var lastAt = 0L              // when the last answer came (the notification shows it for a while)
-    @Volatile var viaEllune = false        // this listen is going to Ellune (the screens show it)
+    @Volatile var viaEllune = false        // this listen is going to Ellune
+    @Volatile var thinking = false         // the mic is paused while Ellune works out what was said / meant
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
     /** PocketService hears about start/stop here, to add or drop the microphone */
@@ -53,6 +54,10 @@ object Voice {
     private var errors = 0
 
     fun last(): Entry? = history.lastOrNull()
+
+    /** listening for the command itself right now (after her name, a mic tap, or in Solo), not for her name */
+    fun takingCommand(c: Context): Boolean =
+        state == State.LISTENING && (inputMode || !keep || (armed && SystemClock.elapsedRealtime() < armedUntil) || Store(c).solo)
 
     /** main thread */
     fun start(c: Context, keepListening: Boolean) {
@@ -80,6 +85,7 @@ object Voice {
         eEar?.destroy()
         eEar = null
         viaEllune = false
+        thinking = false
         if (state != State.OFF) { state = State.OFF; partial = ""; level = 0f; changed() }
     }
 
@@ -112,8 +118,9 @@ object Voice {
                 level = { level = it; Pocket.changed() },
                 heard = { heard(it) },
                 missed = { missed(it) },
-                failed = { elluneFailed(it) }).also { eEar = it }
-            if (partial.isEmpty()) partial = "Listening (Ellune)..."
+                failed = { elluneFailed(it) },
+                busy = { thinking = it; Pocket.changed() }).also { eEar = it }
+            if (partial.isEmpty()) partial = "Loomy is listening..."
             Pocket.changed()
             e.start()
             return
@@ -209,8 +216,7 @@ object Voice {
         // the rules don't know it: ask Ellune's AI (only what was said TO Loomy gets here)
         val k = elluneKey
         if (!Words.knows(cmd) && k != null && elluneUp()) {
-            understand(k, said)
-            next(150)
+            understand(k, said)                                     // listening resumes when she's answered
             return
         }
         if (cmd.isEmpty()) { miss(said); next(150); return }
@@ -226,9 +232,17 @@ object Voice {
     // Ellune's AI picks the command; it's sent as is ("said -> sent" in the history). If she can't answer,
     // it says so and nothing is sent (no falling back to the rules' guess: his call, 2.22).
     private fun understand(k: ElluneKey.Key, said: String) {
+        // the mic is off meanwhile (his ask: a loading sign, then back to how it was)
+        ear?.cancel(); eEar?.cancel()
+        thinking = true
+        partial = "Ellune is understanding..."
+        changed()
         Thread({
             val a = Ellune.understandNow(k.priv, k.pub, said)
             main.post {
+                thinking = false
+                partial = ""
+                if (state == State.LISTENING) next(150) else changed()
                 when (a) {
                     is Ellune.Answer.Ok -> if (a.text.isNotEmpty()) send(a.text, "$said \u2192 ${a.text}") else miss(said)
                     is Ellune.Answer.Down -> add(said, "Ellune couldn't answer (${a.why}). Nothing was sent.", true)

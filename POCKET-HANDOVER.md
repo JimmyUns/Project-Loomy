@@ -287,6 +287,21 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   "thanks" (whole words): before it is the command, after it is dropped, a bare "thank you" does nothing. "please"
   is only a filler (LEAD/TAIL), never an end. Told him: the pause is what ends the recording ("thank you" can't
   cut it instantly, Whisper gets the clip after you stop). By voice "solo mode" / "solo mode off" still switch.
+- **2.22 part 1, his feedback round 1 (Nov 2):** (1) settings had checkboxes for the mode while the main screen
+  had a dropdown → Settings uses the same mode button. (2) Wording: "Loomy is listening", Ellune only named while
+  she works ("Ellune is understanding"), and then the mic is **off with a loading ring** (`Voice.thinking`: set by
+  `ElluneEar`'s `busy` callback during /hear, and by `understand()`, which now waits for her answer before
+  listening again). (3) "The connection switch is buggy": turning On failed and the reason was printed on the main
+  screen, hidden behind Settings, so the switch just flipped back → the reason now shows in red under the switch
+  + a toast (`onProblem`). If it still won't stay on, get that message from him. (4) Background: faint grid lines
+  fading out to the edges (`GridDrawable` in MicView.kt, accent at alpha 22, 26 dp cells). (5) **His main issue:
+  Say "Loomy" didn't catch her name** (the recognizer writes "lumi", "lumie", "loomino"...): `Words.isName` now
+  also takes anything shaped like l+oo/u/ou/o+m+a short ending (`NAMEISH`, not "loom"/"lome"), and "lou me" /
+  "lu mi" as two words (`joinName`). And **the state must be visible, not read**: MicView modes IDLE (dark, slow),
+  WAITING (dark, ring breathing = listening for her name), LISTENING (purple, white ring, dots swell with the voice
+  = taking the command), THINKING (dimmed, spinning ring = Ellune / sending), plus `flash()` green/red ring + ripple
+  when an answer comes back. `Voice.takingCommand()` decides WAITING vs LISTENING. Live text is 2-3 words; partial
+  transcripts only show while taking the command (no more random words while waiting). 225 checks.
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").
