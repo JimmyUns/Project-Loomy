@@ -257,6 +257,31 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   object) and is tested in `tests/jni` (plain Java, no Android classes; 176 checks now). Not on voice yet. He tested it
   (Nov 2): works, 150-700 ms, usually ~400.
 
+- **Ellune guest list (2.21):** `ElluneKey.kt` = this phone's own P-256 key in the Android Keystore (alias
+  `ellune_device`, sign only, made on first use, separate from the 7-day pairing keys). `Ellune.kt` signs requests
+  (`signedHeaders`: DER from Java turned into raw r||s by `derToRaw`), `deviceId` (40-bit Crockford like the pairing
+  ID), `guestLine` (`ID=base64url`), `meNow` (GET /me). Ellune box: the ID, **Ping Ellune** (ping, then /me: on the
+  list or not), **Add to guest list** (copies the line + a dialog saying where it goes, Share to send it to the PC).
+  tests/jni: 184 checks + a signed request handed to `ellune/test.mjs` (the Worker's real code verifies it).
+
+- **Ellune listening (2.21), setting "Understand me through Ellune" (`Store.elluneSpeech`, default on):**
+  `ElluneEar.kt` records itself (AudioRecord, VOICE_RECOGNITION source, 16 kHz mono; 4 tries if the recognizer
+  still holds the mic), `Vad` in `Sound.kt` finds start/end (noise floor, 60 ms to start, 1 s quiet ends, 6 s
+  wait, 10 s max, 300 ms kept each side), `Sound.wav` → `Ellune.hearNow` → `heard(listOf(text))`: the same pipeline
+  as Android's recognizer, so names, solo, keys, controls all work unchanged. **Which ear** (`Voice.wantEllune`):
+  Ellune only for a Talk tap (once), "Loomy" + pause (armed), solo while awake; never while waiting for "Loomy"
+  in keep-listening and never in input mode (what isn't said to Loomy stays on the phone, as promised him).
+  Needs the setting, a key, `ElluneEar.online` (validated internet; ACCESS_NETWORK_STATE) and no recent failure
+  (`elluneDownUntil`: 2 min, 10 min if refused by the guest list). On failure: a history note, then Android's ear
+  ("say it again"). Offline/unavailable is shown in `partial`. **AI fallback:** `Words.knows(cmd)` false (first
+  word of a part isn't a Loomy word) → `Ellune.understandNow(said)` → sent as is, history shows "said → sent";
+  if she can't answer, the old behaviour (rules' guess or a miss). tests/jni: 203 checks (WAV, Vad, JSON, knows)
+  + the phone's /hear and /understand requests checked by the Worker's code. **He tested it on his phone (Nov 2): works.**
+
+- **v2.22 (agreed, not started):** the app gets redesigned, one Listening dropdown (Say "Loomy" / Solo, "thank you"
+  ends a sentence), a phone-recognizer checkbox instead of auto switching, password registration, remote. Full list
+  in `HANDOVER.md` §6. The notification stays as it is.
+
 ## 11b. Where it's heading (agreed Nov 1, not started)
 - **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same
   end-to-end encrypted pocket.c bytes, Ellune can't read, forge or replay them; the PC connects OUT to Ellune (no open

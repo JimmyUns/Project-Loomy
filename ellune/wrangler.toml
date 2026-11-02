@@ -3,3 +3,4 @@ name = "ellune"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+keep_vars = true   # never wipe the DEVICES list set in the dashboard

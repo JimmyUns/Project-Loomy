@@ -1,4 +1,4 @@
-# Ellune — Handover (ping server live; `/ellune` in Loomy v2.20, tested on PC; app ping added; PR #19; Nov 2 2026)
+# Ellune — Handover (live, Worker 0.3; security talk §7; v2.21 "the brain" done; v2.22 next; Nov 2 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -11,7 +11,8 @@ Loomy clients talk to. The long-term idea (not decided in detail yet): save, mov
 clients, plus online saves of user data and presets, with an account and password per Loomy.
 
 Jimmy has no hardware to run a server at home, so Ellune runs on rented hosting. He knows there are security
-questions and wants to talk security **later**, as its own conversation. Don't bake in security decisions without him.
+questions and wanted a security talk as its own conversation: **done Nov 2 2026, decisions in §7.** Anything §7
+doesn't cover is still his call: don't bake it in without him.
 
 ## 2. Status
 - **Decided Nov 1:** the code lives in **`ellune/`** in this repo (same bot + PR flow); the ping command is
@@ -33,7 +34,27 @@ questions and wants to talk security **later**, as its own conversation. Don't b
 - **Tested Nov 2 on his PC:** up, 63-300 ms after the first run (1735 ms: DNS + proxy check). v2.20 is PR #19.
 - **App ping (v2.20, Nov 2):** he said yes to the INTERNET permission. Pocket Loomy has an Ellune box with **Ping
   Ellune** (`pocket/.../Ellune.kt`, `POCKET-HANDOVER.md` §11). Tested Nov 2: works, 150-700 ms, usually ~400.
-- **Next** in the plan below: the security talk.
+- **v2.21, step 1 of the brain: the guest list** (Nov 2). Worker 0.2: `GET /me` checks a signed request against the
+  `DEVICES` variable (`name=base64url raw P-256 key`, one per line, set in the dashboard; `keep_vars` in
+  wrangler.toml). Signed text and headers documented at the top of `src/index.js`; 60 s clock window, no storage
+  (a replay inside 60 s would need TLS broken first). `node test.mjs`: 26 checks + the cross-check from tests/jni.
+  App side: `POCKET-HANDOVER.md` §11. **Deployed + tested Nov 2:** he pasted 0.2 and added `DEVICES` (a plain Text variable, not
+  Secret, so he can see/edit it); the app says the phone is on her guest list. (First try he saved it empty, and he
+  asked whether to copy only the ID from the dialog title: the button already copies the whole line.)
+- **Steps 2+3 built (Nov 2), Worker 0.3:** `POST /hear` (signed; WAV 16 kHz mono 16-bit, 0.1-10 s, `wavOk`; Whisper
+  large-v3-turbo with `language: en`, `vad_filter`, an `initial_prompt` full of Loomy words) and `POST /understand`
+  (signed; `{"text"}` ≤ 300 chars; llama-3.1-8b-instruct-fp8-fast, temperature 0, a prompt listing Loomy's commands
+  + examples; `cleanCommand` only lets out commands matching a fixed pattern (no slash commands, max 4 joined with
+  "and"), else ""). Body read once with a size cap before the signature check (keys are public). Needs a **Workers
+  AI binding named `AI`** (503 without it). `node test.mjs`: 58 checks with a stand-in AI. App side: `POCKET-HANDOVER.md`
+  §11. **Deployed + tested by him Nov 2 (0.3 + the `AI` binding + the new APK): works.**
+- **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
+- **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
+  Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
+  so a 3 s command ≈ 2) → 3 the app sends audio when online, falls back to the local recognizer offline or if Ellune
+  is slow. Catch told to him: Android's recognizer won't hand over audio, so the app records itself; in
+  keep-listening, "Loomy" + pause → audio goes up, "Loomy open steam" in one breath → the recognizer's text goes up
+  instead. Then v2.22: remote (reuses the guest list). I call them "remote" and "the brain" with him now, not A/B.
 - Loomy is at **v2.20** (Pocket Loomy, the Android app, talks to Loomy over Bluetooth today; see
   `POCKET-HANDOVER.md`). Its connection is already split from its security so an internet path can plug in (§6).
 - **First step he picked: a simple ping.** Loomy sends a request to Ellune, Ellune answers, Loomy shows that Ellune is up
@@ -101,4 +122,34 @@ Scandinavian), and he doesn't want to memorise exact commands.
 - The app would need the INTERNET permission for this (today it has none). Tell him when that changes.
 
 **Order he agreed:** Ellune's ping first (§2: hosting, deploy, Loomy and the app reaching it), then A or B. The
-security conversation he wanted (§1) is still due: A's design above is the core of it, nothing else is decided.
+security conversation happened Nov 2 (§7). Still open: which of A or B comes first.
+
+## 7. Security decisions (the security talk, Nov 2 2026, all his calls)
+How it went: he wanted plain explanations (post office analogy: a hacked Ellune holds locked boxes it can't open
+or fake). He agreed these are the normal risks of any connected app. Told him honestly: pocket.c is our own
+protocol from standard parts (Monocypher, CPace), heavily tested but never reviewed by an outside expert.
+- **Accounts:** 2FA (Authy) is ON for both GitHub and Cloudflare (Nov 2). Told him: recovery codes off the phone,
+  Authy backups on, Authy "multi-device" off after setup. GitHub matters most (it controls what `/update` installs).
+- **Deploys stay manual:** he pastes `ellune/src/index.js` into the dashboard. No GitHub to Cloudflare auto-deploy,
+  no Cloudflare token held by us. Nothing changes on Ellune without him.
+- **Guest list:** Ellune only serves *his devices*, each with its own key from the in-person Bluetooth pairing. No
+  app-wide secret (the repo is public, APKs unpack). Strangers get turned away before anything reaches the PC.
+  `/ping` stays open to anyone. Even rejected requests count toward the free 100k/day (spam = Ellune down for the
+  day: annoying, not dangerous).
+- **A (relay):** as in §6. Remote commands = **the same as over Bluetooth** (today's set is mild: nothing deletes or
+  installs). Every remote command is marked "remotely" on the PC. **The on/off switch is on the PC**: the PC only
+  connects out to Ellune while remote is on.
+- **Junk (lockout):** junk = broken/fake *encrypted* messages, not words. Junk arriving over the relay **cuts off
+  everything** (Bluetooth too), same as today's lockout; he sorts it out when he's home. (I suggested remote-only;
+  he chose everything.) Speech that isn't a command is never junk: it stays a note.
+- **Solo mode over the internet: unchanged** (I suggested name-first over remote; he said solo is for when he's
+  alone, keep it).
+- **B (brain):** the phone **trusts Ellune's answer** and sends it; no second guessing on the phone (his call). The
+  PC's own command rules are the safety net (it refuses anything that isn't a real command). The app shows
+  "heard X -> sent Y".
+- **B, what goes up:** **if the phone has internet, send the audio clip** to Ellune (Whisper, for his accent), even
+  when the PC link is Bluetooth. **No internet: fall back to Android's local recognizer** and say so in the app
+  (less accurate, set phrases only, no free speech). My addition (tell him when building): also fall back if Ellune
+  doesn't answer within a few seconds. He's OK with the audio going to Cloudflare's AI.
+- **Risks named to him, not acted on yet:** a stolen unlocked phone can send commands for the 7-day pairing (remote
+  switch on the PC helps; fingerprint lock he said not yet); bugs in our code (hostile-input rules cover it).

@@ -1,14 +1,23 @@
 package io.github.jimmyuns.pocketloomy
 
 import java.net.URL
+import java.security.MessageDigest
+import java.security.PrivateKey
+import java.security.Signature
+import java.security.interfaces.ECPublicKey
+import java.util.Base64
 import javax.net.ssl.HttpsURLConnection
 
-// Pings Ellune, Loomy's online sister (ellune/ in the repo, a Cloudflare Worker), the same check as /ellune on
-// the PC. The only thing in the app that uses the internet, and only when you tap "Ping Ellune": nothing
-// about you or the PC is sent, it's a plain GET. Commands to the PC still only go over Bluetooth.
-// Plain Java networking (no Android classes), so check() runs in the desktop tests (tests/jni).
+// Talks to Ellune, Loomy's online sister (ellune/ in the repo, a Cloudflare Worker). Plain Java (no Android
+// classes), so all of it runs in the desktop tests (tests/jni); the key itself lives in ElluneKey.kt.
+// - ping: the same check as /ellune on the PC, a plain GET.
+// - the guest list (2.21): this phone has its own key (Android Keystore, can't be copied out). Its public half
+//   goes on Ellune's list (her DEVICES variable, pasted by Jimmy). Requests are signed with it; Ellune turns
+//   away anything else. Format in ellune/src/index.js. Only when you tap: nothing runs in the background.
+// Commands to the PC still only go over Bluetooth.
 object Ellune {
-    const val URL_PING = "https://ellune.loomybot.workers.dev/ping"
+    const val HOST = "https://ellune.loomybot.workers.dev"
+    const val URL_PING = "$HOST/ping"
 
     sealed class Result {
         data class Up(val version: String, val ms: Long) : Result()
@@ -66,5 +75,193 @@ object Ellune {
         }
     }
 
-    fun ping(done: (Result) -> Unit) { Thread({ done(pingNow()) }, "ellune-ping").start() }
+
+    // ------------------------------------------------------------------ the guest list
+    private val b64 = Base64.getUrlEncoder().withoutPadding()
+
+    // 65 bytes: 04 || X || Y (what Ellune's list holds, base64url)
+    fun rawPublic(pub: ECPublicKey): ByteArray {
+        fun fixed(v: java.math.BigInteger): ByteArray {
+            val b = v.toByteArray().dropWhile { it == 0.toByte() }.toByteArray()
+            return ByteArray(32 - b.size) + b
+        }
+        return byteArrayOf(4) + fixed(pub.w.affineX) + fixed(pub.w.affineY)
+    }
+
+    // Java/Android sign ECDSA as DER; Ellune (Web Crypto) wants raw r || s, 32 bytes each. null if it isn't DER.
+    fun derToRaw(der: ByteArray): ByteArray? {
+        if (der.size < 8 || der[0] != 0x30.toByte() || (der[1].toInt() and 0xff) != der.size - 2) return null
+        var i = 2
+        fun int(): ByteArray? {
+            if (i + 2 > der.size || der[i] != 0x02.toByte()) return null
+            val n = der[i + 1].toInt() and 0xff
+            if (n == 0 || n > 33 || i + 2 + n > der.size) return null
+            var v = der.copyOfRange(i + 2, i + 2 + n)
+            i += 2 + n
+            v = v.dropWhile { it == 0.toByte() }.toByteArray()
+            return if (v.size > 32) null else ByteArray(32 - v.size) + v
+        }
+        val r = int() ?: return null
+        val s = int() ?: return null
+        return if (i == der.size) r + s else null
+    }
+
+    private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    // The three headers Ellune checks (see ellune/src/index.js)
+    fun signedHeaders(priv: PrivateKey, pub: ByteArray, method: String, path: String, time: Long,
+                      body: ByteArray = ByteArray(0)): Map<String, String> {
+        val text = "ellune1\n$method\n$path\n$time\n" + hex(MessageDigest.getInstance("SHA-256").digest(body))
+        val der = Signature.getInstance("SHA256withECDSA").run { initSign(priv); update(text.toByteArray()); sign() }
+        val raw = derToRaw(der) ?: throw IllegalStateException("odd signature")
+        return mapOf("x-ellune-key" to b64.encodeToString(pub), "x-ellune-time" to time.toString(),
+                     "x-ellune-sig" to b64.encodeToString(raw))
+    }
+
+    // Short ID like the pairing one: 40 bits of SHA-256, Crockford base32, XXXX-XXXX. Also its name on the list.
+    fun deviceId(pub: ByteArray): String {
+        val h = MessageDigest.getInstance("SHA-256").digest(byteArrayOf(*"Ellune id".toByteArray()) + pub)
+        var v = 0L
+        for (k in 0 until 5) v = (v shl 8) or (h[k].toLong() and 0xff)
+        val abc = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+        val s = (0 until 8).map { abc[((v shr (35 - 5 * it)) and 31).toInt()] }.joinToString("")
+        return s.substring(0, 4) + "-" + s.substring(4)
+    }
+
+    // The line to paste into Ellune's DEVICES variable
+    fun guestLine(pub: ByteArray) = deviceId(pub) + "=" + b64.encodeToString(pub)
+
+    sealed class Me {
+        data class Guest(val name: String) : Me()
+        data class NotGuest(val why: String) : Me()
+        object Unreachable : Me()
+    }
+
+    fun meMessage(m: Me) = when (m) {
+        is Me.Guest -> "This phone is on her guest list (${m.name})."
+        is Me.NotGuest -> if (m.why == "not on the guest list") "This phone isn't on her guest list yet."
+                          else "She didn't accept this phone: ${m.why}."
+        Me.Unreachable -> "Couldn't check the guest list."
+    }
+
+    private val WHY = Regex("\"error\"\\s*:\\s*\"([A-Za-z0-9 ().,-]{1,60})\"")
+    private val NAME = Regex("\"name\"\\s*:\\s*\"([A-Za-z0-9._-]{1,32})\"")
+
+    // What Ellune makes of this phone. Blocking; call it off the main thread.
+    fun meNow(priv: PrivateKey, pub: ByteArray, now: Long = System.currentTimeMillis()): Me {
+        var c: HttpsURLConnection? = null
+        try {
+            c = URL("$HOST/me").openConnection() as HttpsURLConnection
+            c.connectTimeout = 8000
+            c.readTimeout = 8000
+            c.useCaches = false
+            c.instanceFollowRedirects = false
+            for ((k, v) in signedHeaders(priv, pub, "GET", "/me", now)) c.setRequestProperty(k, v)
+            val code = c.responseCode
+            if (code != 200 && code != 401) return Me.Unreachable
+            val buf = ByteArray(512)
+            var n = 0
+            (if (code == 200) c.inputStream else c.errorStream)?.use { s ->
+                while (n < buf.size) { val r = s.read(buf, n, buf.size - n); if (r < 0) break; n += r }
+            }
+            val body = String(buf, 0, n, Charsets.UTF_8)
+            if (!body.trim().startsWith("{") || !body.contains("\"guest\"")) return Me.Unreachable   // a login page, not her
+            return if (code == 200) NAME.find(body)?.let { Me.Guest(it.groupValues[1]) } ?: Me.Unreachable
+                   else Me.NotGuest(WHY.find(body)?.groupValues?.get(1) ?: "refused")
+        } catch (_: Exception) {
+            return Me.Unreachable
+        } finally {
+            c?.disconnect()
+        }
+    }
+
+    // ------------------------------------------------------------------ listening (the brain, 2.21)
+    // /hear: a WAV clip -> what Whisper heard. /understand: words the phone's rules don't know -> a Loomy command.
+    sealed class Answer {
+        data class Ok(val text: String) : Answer()
+        data class Down(val why: String, val notGuest: Boolean = false) : Answer()
+    }
+
+    /** "text" -> a JSON string literal */
+    fun jsonQuote(t: String): String {
+        val b = StringBuilder("\"")
+        for (c in t) when {
+            c == '"' -> b.append("\\\"")
+            c == '\\' -> b.append("\\\\")
+            c < ' ' -> b.append("\\u%04x".format(c.code))
+            else -> b.append(c)
+        }
+        return b.append('"').toString()
+    }
+
+    /** The string value of "key" in a small flat JSON object, unescaped; null if it isn't there */
+    fun jsonString(body: String, key: String): String? {
+        val k = body.indexOf("\"$key\"")
+        if (k < 0) return null
+        var i = k + key.length + 2
+        while (i < body.length && body[i].isWhitespace()) i++
+        if (i >= body.length || body[i] != ':') return null
+        i++
+        while (i < body.length && body[i].isWhitespace()) i++
+        if (i >= body.length || body[i] != '"') return null
+        i++
+        val out = StringBuilder()
+        while (i < body.length) {
+            val c = body[i++]
+            if (c == '"') return out.toString()
+            if (c != '\\') { out.append(c); continue }
+            if (i >= body.length) return null
+            when (val e = body[i++]) {
+                '"', '\\', '/' -> out.append(e)
+                'n' -> out.append('\n'); 't' -> out.append('\t'); 'r' -> out.append('\r')
+                'b' -> out.append('\b'); 'f' -> out.append('\u000c')
+                'u' -> { if (i + 4 > body.length) return null
+                         out.append(body.substring(i, i + 4).toIntOrNull(16)?.toChar() ?: return null); i += 4 }
+                else -> return null
+            }
+        }
+        return null
+    }
+
+    private fun post(priv: PrivateKey, pub: ByteArray, path: String, body: ByteArray, type: String,
+                     key: String, timeoutMs: Int, now: Long = System.currentTimeMillis()): Answer {
+        var c: HttpsURLConnection? = null
+        try {
+            c = URL(HOST + path).openConnection() as HttpsURLConnection
+            c.connectTimeout = 5000
+            c.readTimeout = timeoutMs
+            c.useCaches = false
+            c.instanceFollowRedirects = false
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setFixedLengthStreamingMode(body.size)
+            c.setRequestProperty("Content-Type", type)
+            for ((k, v) in signedHeaders(priv, pub, "POST", path, now, body)) c.setRequestProperty(k, v)
+            c.outputStream.use { it.write(body) }
+            val code = c.responseCode
+            val buf = ByteArray(2048)
+            var n = 0
+            (if (code == 200) c.inputStream else c.errorStream)?.use { s ->
+                while (n < buf.size) { val r = s.read(buf, n, buf.size - n); if (r < 0) break; n += r }
+            }
+            val text = String(buf, 0, n, Charsets.UTF_8)
+            if (code == 200) return jsonString(text, key)?.let { Answer.Ok(it) } ?: Answer.Down("odd answer")
+            val why = jsonString(text, "error") ?: "HTTP $code"
+            return Answer.Down(why, notGuest = code == 401)
+        } catch (e: java.net.SocketTimeoutException) {
+            return Answer.Down("too slow")
+        } catch (_: Exception) {
+            return Answer.Down("no connection")
+        } finally {
+            c?.disconnect()
+        }
+    }
+
+    /** A clip -> what was said ("" = nothing). Blocking. */
+    fun hearNow(priv: PrivateKey, pub: ByteArray, wav: ByteArray): Answer =
+        post(priv, pub, "/hear", wav, "audio/wav", "heard", 8000)
+
+    /** Words the phone's rules don't know -> a Loomy command ("" = not one). Blocking. */
+    fun understandNow(priv: PrivateKey, pub: ByteArray, text: String): Answer =
+        post(priv, pub, "/understand", "{\"text\":${jsonQuote(text.take(300))}}".toByteArray(), "application/json", "command", 6000)
 }

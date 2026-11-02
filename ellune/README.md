@@ -1,11 +1,30 @@
 # Ellune
 
 Loomy's online sister: the hosted server side that Loomy clients talk to. It runs on Cloudflare Workers (free plan).
-Right now it only answers a ping. The plan and the decisions so far are in `../ELLUNE-HANDOVER.md`.
+Right now it answers a ping and checks its guest list. The plan and the decisions so far (including the security
+talk) are in `../ELLUNE-HANDOVER.md`.
 
 ## What it does
-`GET /ping` answers `{"ok":true,"service":"ellune","version":"0.1"}`. Anything else is a 404 (or 405 for other
-methods on `/ping`). No storage, no secrets, nothing logged.
+- `GET /ping` answers `{"ok":true,"service":"ellune","version":"0.2"}`, to anyone.
+- `GET /me` is for devices on the **guest list**: a signed request from a listed device gets
+  `{"ok":true,"guest":true,"name":"..."}`, anything else a 401 with the reason.
+- `POST /hear` (guest list): a WAV clip (16 kHz mono 16-bit, at most 10 s) → `{"ok":true,"heard":"..."}` (Whisper).
+- `POST /understand` (guest list): `{"text":"make the screens go dark"}` → `{"ok":true,"command":"display off"}`
+  (`""` when it isn't a Loomy command; only commands from a fixed list ever come out).
+- Anything else is a 404 (or 405 for the wrong method). No storage, no secrets, nothing logged; audio and text only
+  go to Workers AI for the answer.
+
+## The AI binding (for /hear and /understand)
+The Worker → **Settings** → **Bindings** → **Add binding** → **Workers AI**, variable name `AI`. Without it those
+two answer 503 and Pocket Loomy uses the phone's own recognizer. Free plan: 10,000 neurons a day; a 3 s command
+is about 2 for Whisper and about 3 when the AI has to pick the command, so thousands of commands a day.
+
+## The guest list (`DEVICES`)
+Each device has its own key; the list holds only the public halves, so nothing in it is secret. In Pocket Loomy,
+**Add to guest list** copies a line like `K7P2-9QXD=BOr0...`. In the dashboard: the Worker → **Settings** →
+**Variables and Secrets** → add a **Text** variable named `DEVICES` with the line as its value (more devices: one
+line each). Changing it redeploys by itself. Removing a line throws that device out.
+How requests are signed is described at the top of `src/index.js`.
 
 ## Deploy (dashboard, no installs)
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → start from the **Hello World** Worker.
@@ -14,7 +33,9 @@ methods on `/ping`). No storage, no secrets, nothing logged.
 4. Check it: open `https://ellune.<your-subdomain>.workers.dev/ping` in a browser. You should see `"ok":true`.
 
 ## Deploy (wrangler, needs Node)
-From this folder: `npx wrangler login` once, then `npx wrangler deploy`.
+From this folder: `npx wrangler login` once, then `npx wrangler deploy`. `keep_vars = true` in `wrangler.toml` keeps
+the `DEVICES` list you set in the dashboard.
 
 ## Test
-`node test.mjs` (Node 18+) runs the Worker's handler locally.
+`node test.mjs` (Node 18+) runs the Worker's handler locally, guest list included. `tests/jni/run.sh` also checks
+that a request signed by the phone's real Kotlin code passes.
