@@ -4,6 +4,9 @@ All notable changes to Loomy, newest first.
 
 ## v2.21
 - **Ellune's guest list.** Ellune now only serves devices on her list. Pocket Loomy has its own Ellune key (kept in the phone's secure Keystore, it can't be copied out): **Add to guest list** copies the line you paste into Ellune's settings, and **Ping Ellune** now also says whether the phone is on the list. It's the groundwork for Ellune understanding your voice.
+- **Ellune hears you** (Pocket Loomy, setting **Understand me through Ellune**, on by default). With internet and the phone on her guest list, a Talk tap, "Loomy" + a pause, and solo mode record what you say and Ellune turns it into text with Whisper (much better with accents). Waiting for "Loomy" still happens on the phone, so what isn't said to Loomy never leaves it.
+- **Say it your way:** when the phone's phrase list doesn't know what you said ("make the screens go dark"), Ellune's AI picks the Loomy command, and the history shows *what you said → what was sent*.
+- Offline or if Ellune doesn't answer, the phone's own recognizer takes over (set phrases only) and the screen says so.
 
 ## v2.20
 - **Meet Ellune**, Loomy's online sister: a small server (`ellune/`, a Cloudflare Worker) that future online features will go through.

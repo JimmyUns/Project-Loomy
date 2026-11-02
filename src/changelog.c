@@ -16,6 +16,8 @@ static const Release RELEASES[] = {
     { L"2.21", L"2026-11-02", {
         L"Ellune's guest list: she only serves devices you added.",
         L"Pocket Loomy: Add to guest list, and Ping Ellune checks it.",
+        L"Ellune hears you: Whisper turns your voice into text when online.",
+        L"Say it your way: her AI picks the command the phone didn't know.",
         0 } },
     { L"2.20", L"2026-11-02", {
         L"Meet Ellune: Loomy's online sister, a small server for online features.",

@@ -1,4 +1,4 @@
-# Ellune — Handover (live; security talk done §7; v2.21 building "the brain": guest list done; Nov 2 2026)
+# Ellune — Handover (live; security talk done §7; v2.21 "the brain": guest list live, listening built; Nov 2 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -41,6 +41,13 @@ doesn't cover is still his call: don't bake it in without him.
   App side: `POCKET-HANDOVER.md` §11. **Deployed + tested Nov 2:** he pasted 0.2 and added `DEVICES` (a plain Text variable, not
   Secret, so he can see/edit it); the app says the phone is on her guest list. (First try he saved it empty, and he
   asked whether to copy only the ID from the dialog title: the button already copies the whole line.)
+- **Steps 2+3 built (Nov 2), Worker 0.3:** `POST /hear` (signed; WAV 16 kHz mono 16-bit, 0.1-10 s, `wavOk`; Whisper
+  large-v3-turbo with `language: en`, `vad_filter`, an `initial_prompt` full of Loomy words) and `POST /understand`
+  (signed; `{"text"}` ≤ 300 chars; llama-3.1-8b-instruct-fp8-fast, temperature 0, a prompt listing Loomy's commands
+  + examples; `cleanCommand` only lets out commands matching a fixed pattern (no slash commands, max 4 joined with
+  "and"), else ""). Body read once with a size cap before the signature check (keys are public). Needs a **Workers
+  AI binding named `AI`** (503 without it). `node test.mjs`: 58 checks with a stand-in AI. App side: `POCKET-HANDOVER.md`
+  §11. **He has to paste 0.3 and add the binding; not tried on a phone yet.**
 - **Plan he OK'd for v2.21 (Nov 2), "the brain":** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
   so a 3 s command ≈ 2) → 3 the app sends audio when online, falls back to the local recognizer offline or if Ellune

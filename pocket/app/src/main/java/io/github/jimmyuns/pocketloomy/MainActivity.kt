@@ -83,6 +83,7 @@ class MainActivity : Activity() {
     private lateinit var swCard: Switch
     private lateinit var swSpeed: Switch
     private lateinit var swSolo: Switch
+    private lateinit var swEllune: Switch
     private lateinit var elluneLine: TextView
     private lateinit var elluneGuest: TextView
     private lateinit var elluneId: TextView
@@ -289,9 +290,12 @@ class MainActivity : Activity() {
         elluneId = text("", dim, 12f).apply { setPadding(0, dp(6), 0, 0) }
         showElluneId(ElluneKey.peek())
         elluneBtn = button("Ping Ellune", false) { pingEllune() }
+        val (ne, nea) = setting("Understand me through Ellune", "With internet and this phone on her guest list: Talk, \u201CLoomy\u201D + a pause, and solo mode send your voice to Ellune (Whisper, much better with accents), and phrases the phone doesn't know go to her AI. Waiting for \u201CLoomy\u201D stays on the phone. Offline: the phone's own recognizer, set phrases only.") {
+            store.elluneSpeech = it }
+        swEllune = ne
         content.addView(box(text("Ellune", accent, 13f, true),
-                            text("Loomy's online sister. Ping checks this phone can reach her and whether it's on her guest list. Only when you tap.", dim, 12f),
-                            elluneId, elluneLine, elluneGuest, gap(10),
+                            text("Loomy's online sister. Ping checks this phone can reach her and whether it's on her guest list.", dim, 12f),
+                            elluneId, elluneLine, elluneGuest, ne, nea, gap(10),
                             LinearLayout(this).apply {
                                 addView(elluneBtn)
                                 addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(8), 1))
@@ -328,6 +332,7 @@ class MainActivity : Activity() {
         swCard.isChecked = store.talkCard
         swSpeed.isChecked = store.netSpeed
         swSolo.isChecked = store.solo
+        swEllune.isChecked = store.elluneSpeech
         onSwitch.isChecked = store.on
         settingSwitch = false
 

@@ -1,6 +1,8 @@
 // Desktop JNI test: the app's real Native.kt + libpocket (pocket_jni.c) as the phone, TestPc as the PC,
 // bytes passed by hand. Catches JNI name/signature mistakes before they crash on a phone. Also Words.
 import io.github.jimmyuns.pocketloomy.Ellune
+import io.github.jimmyuns.pocketloomy.Sound
+import io.github.jimmyuns.pocketloomy.Vad
 import io.github.jimmyuns.pocketloomy.Native
 import io.github.jimmyuns.pocketloomy.Words
 
@@ -215,6 +217,59 @@ fun main() {
         java.io.File("/tmp/ellune_cross.json").writeText(
             "{\"name\":\"$id\",\"key\":\"${Ellune.guestLine(pub).substringAfter("=")}\",\"time\":$time,\"headers\":${js(h)},\"tampered\":${js(bad)}}")
         check(Ellune.meMessage(Ellune.Me.NotGuest("not on the guest list")) == "This phone isn't on her guest list yet.", "ellune: guest message")
+        // a /hear request with a WAV from Sound.wav, for the Worker to check (wavOk + signature + whisper input)
+        val pcm = ShortArray(Sound.RATE * 2) { ((it * 37) % 2000 - 1000).toShort() }
+        val clip = Sound.wav(pcm)
+        val hh = Ellune.signedHeaders(kp.private, pub, "POST", "/hear", time, clip)
+        val b64 = java.util.Base64.getEncoder().encodeToString(clip)
+        val say = "{\"text\":${Ellune.jsonQuote("make the \"screens\" go dark")}}".toByteArray()
+        val uh = Ellune.signedHeaders(kp.private, pub, "POST", "/understand", time, say)
+        java.io.File("/tmp/ellune_cross_hear.json").writeText(
+            "{\"hear\":{\"headers\":${js(hh)},\"body\":\"$b64\"},\"understand\":{\"headers\":${js(uh)},\"body\":\"" +
+            java.util.Base64.getEncoder().encodeToString(say) + "\"}}")
+    }
+
+    // ---- recording for Ellune: WAV, voice detection, JSON
+    run {
+        val w = Sound.wav(ShortArray(4) { (it * 1000 - 1500).toShort() })
+        check(w.size == 52 && String(w, 0, 4) == "RIFF" && String(w, 8, 4) == "WAVE" && String(w, 36, 4) == "data" &&
+              w[22].toInt() == 1 && (w[24].toInt() and 0xff) + ((w[25].toInt() and 0xff) shl 8) == 16000 && w[34].toInt() == 16, "wav: header")
+        check(w[44] == (-1500 and 0xff).toByte() && w[45] == (-1500 shr 8).toByte() && w[50] == (1500 and 0xff).toByte(), "wav: little-endian samples")
+        check(Sound.wav(ShortArray(10), 2, 6).size == 52, "wav: a slice")
+        check(Sound.rms(ShortArray(100) { 300 }) == 300.0 && Sound.rms(ShortArray(0)) == 0.0, "rms")
+        check(Sound.level(1.0) == -2f && Sound.level(100.0) == 0f && Sound.level(1e6) == 10f, "level range")
+
+        fun runVad(frames: List<Double>, v: Vad = Vad()): Pair<Vad, List<Vad.Event>> {
+            val ev = mutableListOf<Vad.Event>()
+            for (f in frames) { val e = v.push(f); if (e != Vad.Event.NONE) ev += e }
+            return v to ev
+        }
+        val quiet = List(300) { 50.0 + (it % 3) * 10 }
+        val (v1, e1) = runVad(quiet)
+        check(e1 == listOf(Vad.Event.TIMEOUT), "vad: silence times out at 6 s")
+        val talk = List(40) { 50.0 } + List(60) { 3000.0 } + List(80) { 60.0 }
+        val (v2, e2) = runVad(talk)
+        check(e2 == listOf(Vad.Event.STARTED, Vad.Event.ENDED), "vad: talk starts and ends ($e2)")
+        check(v2.start == 40 + 2 - 2 - 15 && v2.end == 100 + 15, "vad: keeps 300 ms before and after (${v2.start}..${v2.end})")
+        val (_, e3) = runVad(List(10) { 50.0 } + listOf(3000.0, 3000.0) + List(100) { 50.0 })
+        check(e3.isEmpty(), "vad: a 40 ms click isn't talking")
+        val (v4, e4) = runVad(List(10) { 50.0 } + List(700) { 3000.0 })
+        check(e4 == listOf(Vad.Event.STARTED, Vad.Event.ENDED) && v4.end - v4.start == 500, "vad: 10 s at most")
+        val (v5, e5) = runVad(List(20) { 800.0 } + List(40) { 4000.0 } + List(60) { 900.0 })
+        check(e5 == listOf(Vad.Event.STARTED, Vad.Event.ENDED), "vad: a noisy room (floor 800)")
+        val (_, e6) = runVad(List(400) { 0.0 })
+        check(e6 == listOf(Vad.Event.TIMEOUT), "vad: digital silence times out")
+        check(Vad().let { it.push(1.0); it.frame } == 1, "vad: counts frames")
+
+        check(Ellune.jsonString("{\"ok\":true,\"heard\":\"Loomy, turn the screens off.\"}", "heard") == "Loomy, turn the screens off.", "json: plain")
+        check(Ellune.jsonString("{\"heard\" : \"it\\u2019s \\\"x\\\" a\\\\b\"}", "heard") == "it\u2019s \"x\" a\\b", "json: escapes")
+        check(Ellune.jsonString("{\"heard\":\"\"}", "heard") == "" && Ellune.jsonString("{}", "heard") == null &&
+              Ellune.jsonString("{\"heard\":5}", "heard") == null && Ellune.jsonString("{\"heard\":\"open", "heard") == null, "json: empty / missing / broken")
+        val tricky = "say \"hi\" \\ then\n\u0001"
+        check(Ellune.jsonString("{\"t\":" + Ellune.jsonQuote(tricky) + "}", "t") == tricky, "json: quote round trip")
+
+        check(Words.knows("display off") && Words.knows("si and input next tab") && Words.knows("web youtube") && Words.knows("/pkg"), "knows: real commands")
+        check(!Words.knows("make the screens go dark") && !Words.knows("") && !Words.knows("si and dance"), "knows: everything else")
     }
 
     println("$checks checks, $fails failure(s)")

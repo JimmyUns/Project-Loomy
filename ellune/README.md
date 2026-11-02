@@ -8,7 +8,16 @@ talk) are in `../ELLUNE-HANDOVER.md`.
 - `GET /ping` answers `{"ok":true,"service":"ellune","version":"0.2"}`, to anyone.
 - `GET /me` is for devices on the **guest list**: a signed request from a listed device gets
   `{"ok":true,"guest":true,"name":"..."}`, anything else a 401 with the reason.
-- Anything else is a 404 (or 405 for the wrong method). No storage, no secrets, nothing logged.
+- `POST /hear` (guest list): a WAV clip (16 kHz mono 16-bit, at most 10 s) → `{"ok":true,"heard":"..."}` (Whisper).
+- `POST /understand` (guest list): `{"text":"make the screens go dark"}` → `{"ok":true,"command":"display off"}`
+  (`""` when it isn't a Loomy command; only commands from a fixed list ever come out).
+- Anything else is a 404 (or 405 for the wrong method). No storage, no secrets, nothing logged; audio and text only
+  go to Workers AI for the answer.
+
+## The AI binding (for /hear and /understand)
+The Worker → **Settings** → **Bindings** → **Add binding** → **Workers AI**, variable name `AI`. Without it those
+two answer 503 and Pocket Loomy uses the phone's own recognizer. Free plan: 10,000 neurons a day; a 3 s command
+is about 2 for Whisper and about 3 when the AI has to pick the command, so thousands of commands a day.
 
 ## The guest list (`DEVICES`)
 Each device has its own key; the list holds only the public halves, so nothing in it is secret. In Pocket Loomy,

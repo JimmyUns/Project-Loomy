@@ -20,6 +20,13 @@ import android.os.SystemClock
 //   Key words with the name work any time: "Loomy down", "Loomy ok".
 //   "turn off the mic" / "stop listening" (outside solo) = mic off until Talk; "stop the connection" = Loomy off.
 //   What means what is in Phrases.kt.
+//   Ellune (2.21, setting "Understand me through Ellune", on by default): with internet and the phone on her
+//          guest list, a Talk tap, "Loomy" + pause, and solo mode while awake record the clip and ask Ellune
+//          (Whisper) what was said (ElluneEar). Waiting for "Loomy" in keep-listening stays on Android's
+//          recognizer, so what isn't said to Loomy never leaves the phone. When the phone's rules don't know
+//          a command, the words go to Ellune's AI (/understand) and its answer is sent as is (his call: no
+//          second guessing; the PC refuses anything that isn't a real command). Offline, or Ellune down:
+//          Android's recognizer, and the screen says so.
 object Voice {
     enum class State { OFF, LISTENING }
 
@@ -34,6 +41,7 @@ object Voice {
     @Volatile var inputMode = false        // "Loomy input mode": bare key words (next, back, ok...) work
     @Volatile var soloAwake = false        // solo mode: woken by her name, asleep again after "ok thank you"
     @Volatile var lastAt = 0L              // when the last answer came (the notification shows it for a while)
+    @Volatile var viaEllune = false        // this listen is going to Ellune (the screens show it)
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
     /** PocketService hears about start/stop here, to add or drop the microphone */
@@ -41,6 +49,9 @@ object Voice {
 
     private val main = Handler(Looper.getMainLooper())
     private var ear: Ear? = null
+    private var eEar: ElluneEar? = null
+    private var elluneDownUntil = 0L      // Ellune didn't answer: the phone's own recognizer until then
+    private var elluneKey: ElluneKey.Key? = null
     private lateinit var ctx: Context
     private var armedUntil = 0L
     private var followUp = false
@@ -53,6 +64,7 @@ object Voice {
         ctx = c
         keep = keepListening
         errors = 0
+        elluneKey = if (Store(c).elluneSpeech) ElluneKey.peek() else null
         if (state == State.LISTENING) { changed(); return }
         listenNow()
     }
@@ -68,21 +80,70 @@ object Voice {
         ear?.cancel()
         ear?.destroy()
         ear = null
+        eEar?.destroy()
+        eEar = null
+        viaEllune = false
         if (state != State.OFF) { state = State.OFF; partial = ""; level = 0f; changed() }
     }
 
     private fun changed() { Pocket.changed(); onChange() }
 
     private fun listenNow() {
+        state = State.LISTENING
+        partial = ""
+        changed()
+        startEar()
+    }
+
+    // ---- which ear: Ellune's (better, online) or Android's (on the phone)
+    /** Ellune can listen right now: the setting, a key, internet, and she hasn't just failed */
+    private fun elluneUp() = elluneKey != null && SystemClock.elapsedRealtime() > elluneDownUntil && ElluneEar.online(ctx)
+
+    /** this listen goes to Ellune: never while waiting for "Loomy" (that stays on the phone) or in input mode */
+    private fun wantEllune(): Boolean {
+        if (inputMode || !elluneUp()) return false
+        val armedNow = armed && SystemClock.elapsedRealtime() < armedUntil
+        return !keep || armedNow || (Store(ctx).solo && soloAwake)
+    }
+
+    private fun startEar() {
+        if (wantEllune()) {
+            ear?.cancel()
+            viaEllune = true
+            val e = eEar ?: ElluneEar(ctx,
+                partial = { partial = it; Pocket.changed() },
+                level = { level = it; Pocket.changed() },
+                heard = { heard(it) },
+                missed = { missed(it) },
+                failed = { elluneFailed(it) }).also { eEar = it }
+            if (partial.isEmpty()) partial = "Listening (Ellune)..."
+            Pocket.changed()
+            e.start()
+            return
+        }
+        eEar?.cancel()
+        viaEllune = false
         val e = ear ?: Ear(ctx, Words.HINTS,
             partial = { partial = it; Pocket.changed() },
             level = { level = it; Pocket.changed() },
             heard = { heard(it) },
             missed = { missed(it) }).also { ear = it }
-        state = State.LISTENING
-        partial = ""
-        changed()
+        // Ellune is wanted but can't listen: say so (the phone's recognizer only knows set phrases)
+        if (partial.isEmpty() && elluneKey != null && (!keep || armed || soloAwake) && !inputMode)
+            partial = if (!ElluneEar.online(ctx)) "Offline: the phone's recognizer, set phrases only"
+                      else "Ellune unavailable: the phone's recognizer, set phrases only"
+        Pocket.changed()
         e.start()
+    }
+
+    private fun elluneFailed(a: Ellune.Answer.Down) {
+        elluneDownUntil = SystemClock.elapsedRealtime() + if (a.notGuest) 10 * 60_000L else 2 * 60_000L
+        viaEllune = false
+        add("(Ellune)", if (a.notGuest) "Ellune didn't let this phone in (${a.why}). Using the phone's recognizer; check the Ellune box in the app."
+                        else "Ellune didn't answer (${a.why}). Using the phone's recognizer for a bit: say it again.", true)
+        if (state != State.LISTENING) return
+        partial = "Say it again"
+        main.postDelayed({ if (state == State.LISTENING) startEar() }, 100)
     }
 
     // after a result: keep mode listens again, once mode is done (unless her name came alone: then once more)
@@ -90,12 +151,12 @@ object Voice {
         if (!keep && followUp) {
             followUp = false
             partial = "Yes?"
-            main.postDelayed({ if (state == State.LISTENING) ear?.start() }, delayMs)
+            main.postDelayed({ if (state == State.LISTENING) startEar() }, delayMs)
             return
         }
-        if (!keep) { state = State.OFF; partial = ""; level = 0f; ear?.destroy(); ear = null; changed(); return }
+        if (!keep) { state = State.OFF; partial = ""; level = 0f; ear?.destroy(); ear = null; eEar?.destroy(); eEar = null; viaEllune = false; changed(); return }
         partial = ""
-        main.postDelayed({ if (keep && state == State.LISTENING) ear?.start() }, delayMs)
+        main.postDelayed({ if (keep && state == State.LISTENING) startEar() }, delayMs)
     }
 
     private fun heard(all: List<String>) {
@@ -148,14 +209,40 @@ object Voice {
         if (key != null) { send(key); next(150); return }
 
         val cmd = Words.command(said)
-        if (cmd.isEmpty()) {
-            add(said.ifEmpty { "(nothing)" }, "Didn't catch a command.", true)
-            Pocket.reportMiss(ctx, said)                            // the PC shows misses too
+        // the rules don't know it: ask Ellune's AI (only what was said TO Loomy gets here)
+        val k = elluneKey
+        if (!Words.knows(cmd) && k != null && elluneUp()) {
+            understand(k, said, cmd)
             next(150)
             return
         }
+        if (cmd.isEmpty()) { miss(said); next(150); return }
         send(cmd)
         next(150)
+    }
+
+    private fun miss(said: String) {
+        add(said.ifEmpty { "(nothing)" }, "Didn't catch a command.", true)
+        Pocket.reportMiss(ctx, said)                                // the PC shows misses too
+    }
+
+    // Ellune's AI picks the command; it's sent as is ("heard -> sent" in the history). If she can't answer,
+    // it goes on exactly as before 2.21: the rules' best guess, or a miss.
+    private fun understand(k: ElluneKey.Key, said: String, fallback: String) {
+        Thread({
+            val a = Ellune.understandNow(k.priv, k.pub, said)
+            main.post {
+                when {
+                    a is Ellune.Answer.Ok && a.text.isNotEmpty() -> send(a.text, "$said \u2192 ${a.text}")
+                    a is Ellune.Answer.Down -> {
+                        elluneDownUntil = SystemClock.elapsedRealtime() + if (a.notGuest) 10 * 60_000L else 2 * 60_000L
+                        if (fallback.isNotEmpty()) send(fallback) else miss(said)
+                    }
+                    fallback.isNotEmpty() -> send(fallback)
+                    else -> miss(said)
+                }
+            }
+        }, "ellune-understand").start()
     }
 
     // phone-side controls: "turn off the mic" / "stop listening" stop listening (Talk starts it again);
@@ -226,12 +313,12 @@ object Voice {
     /** send one command (also used for typing in the app) */
     fun send(c: Context, cmd: String) { ctx = c; send(cmd) }
 
-    private fun send(cmd: String) {
+    private fun send(cmd: String, shown: String = cmd) {
         val why = Pocket.ready(ctx)
-        if (why != null) { add(cmd, why, true); return }
+        if (why != null) { add(shown, why, true); return }
         val device = Pocket.device(ctx) ?: return
         val trust = Store(ctx).trust() ?: return
-        val e = Entry(cmd, "...", false)
+        val e = Entry(shown, "...", false)
         history += e
         if (history.size > 60) history.removeAt(0)
         sending = true

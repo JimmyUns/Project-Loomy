@@ -188,6 +188,16 @@ object Words {
         return parts.map { one(it) }.filter { it.isNotEmpty() }.joinToString(" and ")
     }
 
+    /** Does every part of this command start with a word Loomy knows? ("display off and si" yes, "make the
+     *  screens dark" no). The ones that don't go to Ellune's AI when she's reachable (Voice). */
+    fun knows(cmd: String): Boolean {
+        if (cmd.isBlank()) return false
+        return cmd.split(" and ").all { p ->
+            val w = p.trim().split(' ').firstOrNull() ?: ""
+            w.startsWith("/") || w in Phrases.KNOWN || w in setOf("input", "display", "sysinfo", "dp", "si", "web", "lp")
+        }
+    }
+
     /** the switches and controls are matched on the cleaned phrase, before any "and" splitting */
     fun plain(heard: String): String {
         var w = words(heard)

@@ -174,4 +174,94 @@ object Ellune {
             c?.disconnect()
         }
     }
+
+    // ------------------------------------------------------------------ listening (the brain, 2.21)
+    // /hear: a WAV clip -> what Whisper heard. /understand: words the phone's rules don't know -> a Loomy command.
+    sealed class Answer {
+        data class Ok(val text: String) : Answer()
+        data class Down(val why: String, val notGuest: Boolean = false) : Answer()
+    }
+
+    /** "text" -> a JSON string literal */
+    fun jsonQuote(t: String): String {
+        val b = StringBuilder("\"")
+        for (c in t) when {
+            c == '"' -> b.append("\\\"")
+            c == '\\' -> b.append("\\\\")
+            c < ' ' -> b.append("\\u%04x".format(c.code))
+            else -> b.append(c)
+        }
+        return b.append('"').toString()
+    }
+
+    /** The string value of "key" in a small flat JSON object, unescaped; null if it isn't there */
+    fun jsonString(body: String, key: String): String? {
+        val k = body.indexOf("\"$key\"")
+        if (k < 0) return null
+        var i = k + key.length + 2
+        while (i < body.length && body[i].isWhitespace()) i++
+        if (i >= body.length || body[i] != ':') return null
+        i++
+        while (i < body.length && body[i].isWhitespace()) i++
+        if (i >= body.length || body[i] != '"') return null
+        i++
+        val out = StringBuilder()
+        while (i < body.length) {
+            val c = body[i++]
+            if (c == '"') return out.toString()
+            if (c != '\\') { out.append(c); continue }
+            if (i >= body.length) return null
+            when (val e = body[i++]) {
+                '"', '\\', '/' -> out.append(e)
+                'n' -> out.append('\n'); 't' -> out.append('\t'); 'r' -> out.append('\r')
+                'b' -> out.append('\b'); 'f' -> out.append('\u000c')
+                'u' -> { if (i + 4 > body.length) return null
+                         out.append(body.substring(i, i + 4).toIntOrNull(16)?.toChar() ?: return null); i += 4 }
+                else -> return null
+            }
+        }
+        return null
+    }
+
+    private fun post(priv: PrivateKey, pub: ByteArray, path: String, body: ByteArray, type: String,
+                     key: String, timeoutMs: Int, now: Long = System.currentTimeMillis()): Answer {
+        var c: HttpsURLConnection? = null
+        try {
+            c = URL(HOST + path).openConnection() as HttpsURLConnection
+            c.connectTimeout = 5000
+            c.readTimeout = timeoutMs
+            c.useCaches = false
+            c.instanceFollowRedirects = false
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setFixedLengthStreamingMode(body.size)
+            c.setRequestProperty("Content-Type", type)
+            for ((k, v) in signedHeaders(priv, pub, "POST", path, now, body)) c.setRequestProperty(k, v)
+            c.outputStream.use { it.write(body) }
+            val code = c.responseCode
+            val buf = ByteArray(2048)
+            var n = 0
+            (if (code == 200) c.inputStream else c.errorStream)?.use { s ->
+                while (n < buf.size) { val r = s.read(buf, n, buf.size - n); if (r < 0) break; n += r }
+            }
+            val text = String(buf, 0, n, Charsets.UTF_8)
+            if (code == 200) return jsonString(text, key)?.let { Answer.Ok(it) } ?: Answer.Down("odd answer")
+            val why = jsonString(text, "error") ?: "HTTP $code"
+            return Answer.Down(why, notGuest = code == 401)
+        } catch (e: java.net.SocketTimeoutException) {
+            return Answer.Down("too slow")
+        } catch (_: Exception) {
+            return Answer.Down("no connection")
+        } finally {
+            c?.disconnect()
+        }
+    }
+
+    /** A clip -> what was said ("" = nothing). Blocking. */
+    fun hearNow(priv: PrivateKey, pub: ByteArray, wav: ByteArray): Answer =
+        post(priv, pub, "/hear", wav, "audio/wav", "heard", 8000)
+
+    /** Words the phone's rules don't know -> a Loomy command ("" = not one). Blocking. */
+    fun understandNow(priv: PrivateKey, pub: ByteArray, text: String): Answer =
+        post(priv, pub, "/understand", "{\"text\":${jsonQuote(text.take(300))}}".toByteArray(), "application/json", "command", 6000)
 }

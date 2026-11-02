@@ -54,6 +54,10 @@ class Store(ctx: Context) {
     var solo: Boolean
         get() = prefs.getBoolean("solo", false)
         set(v) { prefs.edit().putBoolean("solo", v).apply() }
+    /** 2.21: let Ellune hear (Whisper) and understand when online and on her guest list (Voice.kt) */
+    var elluneSpeech: Boolean
+        get() = prefs.getBoolean("ellune_speech", true)
+        set(v) { prefs.edit().putBoolean("ellune_speech", v).apply() }
     /** the phone's up/down speed in the status bar */
     var netSpeed: Boolean
         get() = prefs.getBoolean("net_speed", false)

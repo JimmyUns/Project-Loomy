@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Commands to your PC only ever go over Bluetooth. INTERNET (v2.20) is only for "Ping Ellune" (Ellune.kt):
-     one HTTPS GET to Loomy's server when you tap it. No plain http (usesCleartextTraffic="false"). -->
+<!-- Commands to your PC only ever go over Bluetooth. INTERNET is only for Ellune (Ellune.kt):
+     Ping / guest list when you tap them (2.20), and listening through her (2.21, a setting) when you Talk.
+     ACCESS_NETWORK_STATE: is there internet right now (else the phone's own recognizer). No plain http (usesCleartextTraffic="false"). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
