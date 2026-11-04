@@ -92,6 +92,10 @@ class MainActivity : Activity() {
     private lateinit var step1: TextView
     private lateinit var step2: TextView
     private lateinit var codeBtn: Button
+    private lateinit var setupBt: LinearLayout       // Bluetooth mode: your PC + the code (said or typed)
+    private lateinit var setupNet: LinearLayout      // Ellune mode: scan the QR in /remote
+    private lateinit var netStep: TextView
+    private lateinit var codeInput: EditText
     // the layers over it
     private lateinit var logLayer: View
     private lateinit var log: LinearLayout
@@ -138,6 +142,25 @@ class MainActivity : Activity() {
     }
 
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleLink(i) }
+
+    // ------------------------------------------------------------------ setup actions (2.22)
+    /** the phone's own camera app (it reads QR codes and opens the pocketloomy:// link back into here) */
+    private fun openCamera() {
+        answer = ""
+        try { startActivity(Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)) }
+        catch (_: Exception) { problem("Couldn't open the camera. Open it yourself and point it at the QR.") }
+    }
+
+    /** Bluetooth mode: the code typed instead of said */
+    private fun typedCode() {
+        val digits = codeInput.text.toString().filter { it.isDigit() }
+        if (digits.length != 8) { problem("The code is 8 digits."); return }
+        if (store.pcLabel == null) { problem("Choose your PC first (step 1)."); return }
+        if (phase != Phase.IDLE || !bluetoothOk()) return
+        codeInput.setText("")
+        phase = Phase.LISTEN_CODE
+        gotCode(listOf(digits))
+    }
 
     // ------------------------------------------------------------------ pairing by QR (2.22)
     // The QR in /remote opens this with pocketloomy://pair?c=<code>&r=<pairing room>&n=<PC name>. The phone must be
@@ -353,13 +376,37 @@ class MainActivity : Activity() {
         step1 = text("", textC)
         step2 = text("", textC)
         codeBtn = button("Say the code", true) { startPairing() }
+        // 2.22: the setup follows the mode (his ask). Ellune mode: scan the QR. Bluetooth mode: the PC, then the code
+        // said or typed.
+        codeInput = EditText(this).apply {
+            hint = "8-digit code"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(9))
+            setTextColor(textC); setHintTextColor(dim); typeface = Typeface.MONOSPACE
+            background = rounded(bg)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            setOnEditorActionListener { _, _, _ -> typedCode(); true }
+        }
+        setupBt = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(box(text("1  Your PC", accent, 13f, true), gap(6), step1, gap(10), button("Choose PC", false) { choosePc() }))
+            addView(gap(12))
+            addView(box(text("2  Pair", accent, 13f, true), gap(6), step2, gap(10), codeBtn, gap(10),
+                        row(codeInput.apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }, space(8), button("Pair", false) { typedCode() })))
+        }
+        netStep = text("On the PC type /remote and press N: a QR shows up. Scan it with your camera, then press Enter on the PC when it asks.", textC)
+        setupNet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(box(text("Pair with your PC", accent, 13f, true), gap(6), netStep, gap(12),
+                        button("Scan the QR", true) { openCamera() }))
+        }
         setup = ScrollView(this).apply {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(box(text("1  Your PC", accent, 13f, true), gap(6), step1, gap(10), button("Choose PC", false) { choosePc() }))
-                addView(gap(12))
-                addView(box(text("2  Pair", accent, 13f, true), gap(6), step2, gap(10), codeBtn))
+                addView(setupNet)
+                addView(setupBt)
             })
             isFillViewport = true
         }
@@ -368,6 +415,7 @@ class MainActivity : Activity() {
             addView(mic, FrameLayout.LayoutParams(-1, -1))
             addView(bt, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { topMargin = dp(8) })
             addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+            bt.bringToFront()                                   // the mode button works on the setup screen too
         }, LinearLayout.LayoutParams(-1, 0, 1f))
 
         // under the mic: what's happening, and the mode
@@ -635,8 +683,17 @@ class MainActivity : Activity() {
         modeBtn.text = "${modeName(store.solo)}  \u25BE"
         modeBtn2.text = modeBtn.text
 
-        if (!isPaired) {
+        if (!isPaired || phase == Phase.PAIRING) {
             setup.visibility = View.VISIBLE
+            setupBt.visibility = if (store.btMode) View.VISIBLE else View.GONE
+            setupNet.visibility = if (store.btMode) View.GONE else View.VISIBLE
+            netStep.text = when {
+                phase == Phase.PAIRING && confirmId != null -> "Right code. Look at the PC: it shows this phone's ID. If it says $confirmId, press Enter on the PC."
+                phase == Phase.PAIRING -> "Pairing with ${store.pcLabel ?: "your PC"} through Ellune\u2026"
+                answer.isNotEmpty() -> answer
+                else -> "On the PC type /remote and press N: a QR shows up. Scan it with your camera, then press Enter on the PC when it asks."
+            }
+            netStep.setTextColor(if (answer.isNotEmpty() && phase == Phase.IDLE) (if (answerBad) err else ok) else if (phase == Phase.PAIRING) accent else textC)
             mic.visibility = View.INVISIBLE
             typing.visibility = View.GONE
             modeBtn.visibility = View.GONE

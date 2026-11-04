@@ -232,7 +232,9 @@ static void update_listener(void) {
         }
         wchar_t err[120] = { 0 };
         if (want && !l->listening()) { if (!l->listen(err, 120) && !net) s_cpy(g_btErr, err, 120); else if (!net) g_btErr[0] = 0; }
-        if (!want && l->listening()) l->unlisten();
+        // never hang up the link a phone is on right now (QR pairing: the code is used up the moment it's right,
+        // and remote used to close mid-confirm, so the confirm vanished); it's done when that session ends
+        if (!want && l->listening() && !(g_conn && g_via == l)) l->unlisten();
         if (!want && !net) g_btErr[0] = 0;
     }
     timer_update();

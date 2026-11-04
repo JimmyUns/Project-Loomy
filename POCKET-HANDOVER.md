@@ -329,6 +329,12 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   confirm (ID big), shut down, the paired phone (name + connected / last seen + paired until), or the QR on the left
   with the code / time left / waiting on the right (QR sized to fit), or "No phone paired. N to pair one." Keys:
   short. C still copies the guest line but isn't advertised (use `/remote add <Authy code>`).
+- **QR pairing fixes (Nov 4):** the PC hung up remote mid-confirm (the code is used up the moment it's right, so
+  "no code, no phone" → unlisten): `update_listener` now never unlistens the link a phone is on (`g_conn && g_via
+  == l`). App setup screen follows the mode (his ask): Ellune mode = "Pair with your PC" + **Scan the QR** (opens
+  the camera app, `INTENT_ACTION_STILL_IMAGE_CAMERA`; the QR link brings it back, the step shows the progress / ID);
+  Bluetooth mode = Your PC + Pair with the code **said or typed** (`typedCode`). The Bluetooth button sits on top
+  of the setup too.
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").
