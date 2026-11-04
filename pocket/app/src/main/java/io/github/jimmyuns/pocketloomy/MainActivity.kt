@@ -688,6 +688,9 @@ class MainActivity : Activity() {
         // a few words at most: the mic shows the rest
         val heardWords = Voice.partial.takeIf { listening && taking && it.isNotEmpty() && !it.endsWith("...") && it != "Yes?" }
         val (liveText, liveColor) = when {
+            // pairing by QR while an old pairing is still on this phone: say what to do, right here
+            phase == Phase.PAIRING && confirmId != null -> "Look at the PC: press Enter there if it shows $confirmId" to accent
+            phase == Phase.PAIRING -> "Pairing with ${store.pcLabel ?: "your PC"} through Ellune\u2026" to accent
             Voice.thinking -> "Ellune is understanding\u2026" to accent
             Voice.sending -> "Sending to your PC\u2026" to accent
             heardWords != null -> "\u201C$heardWords\u201D" to textC
