@@ -348,15 +348,16 @@ static int ws_load(void) {
 }
 
 static int net_listening(void) { return g_want != 0; }
+int net_in_room(const char room[33]) { for (int i = 0; i < 33; i++) if (g_room[i] != room[i]) return 0; return 1; }
 
 static int net_listen(wchar_t *err, int cap) {
     if (g_want) return 1;
     if (!g_csInit) { InitializeCriticalSection(&g_cs); g_csInit = 1; }
-    const unsigned char *pk = phone_pc_pub();
-    if (!pk) { s_cpy(err, L"Remote needs a paired phone.", cap); return 0; }
+    char room[33];
+    if (!phone_net_room(room)) { s_cpy(err, L"Remote needs a paired phone or an open pairing code.", cap); return 0; }
     if (!ws_load()) { set_state(NS_UNREACHABLE); s_cpy(err, L"This Windows can't do WebSockets (needs Windows 8 or newer).", cap); return 0; }
     if (!key_ready()) { InterlockedExchange(&g_state, NS_NO_KEY); s_cpy(err, L"Couldn't make this PC's Ellune key.", cap); return 0; }
-    el_room(pk, g_room);
+    for (int i = 0; i < 33; i++) g_room[i] = room[i];
     if (!g_stop) g_stop = CreateEventW(0, TRUE, FALSE, 0);
     ResetEvent(g_stop);
     InterlockedExchange(&g_want, 1);

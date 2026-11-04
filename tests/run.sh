@@ -13,5 +13,5 @@ gcc -std=gnu11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -Wa
 /tmp/pocket_test
 gcc -std=gnu11 -w -DLOOMY_TESTS -Ishim -I../src -o /tmp/loomy_test test.c shim.c \
     ../src/modes.c ../src/web.c ../src/display.c ../src/features.c ../src/sysinfo.c ../src/commands.c ../src/config.c \
-    ../src/util.c ../src/version.c ../src/phone.c ../src/ellune.c $CRYPTO
+    ../src/util.c ../src/version.c ../src/phone.c ../src/ellune.c ../src/qr.c $CRYPTO
 /tmp/loomy_test

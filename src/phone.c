@@ -17,6 +17,7 @@
 //   - Only plain commands marked .phone in commands.c run, through the normal cmd_run.
 // The protocol is pocket.c; the Windows Bluetooth and OS bits are phonebt.c.
 #include "loomy.h"
+#include "qr/qrcodegen.h"
 #include "pocket.h"
 #include "monocypher.h"
 
@@ -39,6 +40,7 @@ static Trust g_trust;
 static int   g_trustLoaded;
 
 static char      g_code[PK_CODELEN];
+static char      g_pairRoom[33];      // 2.22: the relay room for pairing through Ellune (random per code, in the QR)
 static int       g_codeLive, g_codeGone;          // gone: 1 = used, 2 = ran out
 static ULONGLONG g_codeEnds;
 
@@ -223,7 +225,11 @@ static void update_listener(void) {
     for (int i = 0; i < NLINKS; i++) {
         const PhoneLink *l = LINKS[i];
         int net = l == &PHONE_NET;
-        int want = base && (net ? g_cfg.remoteNet && g_trust.have : g_cfg.remoteBt && (g_trust.have || g_codeLive));
+        int want = base && (net ? g_cfg.remoteNet && (g_trust.have || g_codeLive) : g_cfg.remoteBt && (g_trust.have || g_codeLive));
+        if (net && want && l->listening()) {                 // the room changed (a code opened / closed, a new pairing)
+            char room[33];
+            if (phone_net_room(room) && !net_in_room(room)) l->unlisten();
+        }
         wchar_t err[120] = { 0 };
         if (want && !l->listening()) { if (!l->listen(err, 120) && !net) s_cpy(g_btErr, err, 120); else if (!net) g_btErr[0] = 0; }
         if (!want && l->listening()) l->unlisten();
@@ -271,6 +277,10 @@ static void new_code(void) {
     } while (v >= 4000000000u);                          // no bias: 4e9 is a multiple of 1e8
     v %= 100000000u;
     for (int i = PK_CODELEN - 1; i >= 0; i--) { g_code[i] = (char)('0' + v % 10); v /= 10; }
+    unsigned char rr[16];
+    if (!os_random(rr, sizeof rr)) { lockout(L"Windows wouldn't give Loomy secure random numbers."); return; }
+    for (int i = 0; i < 16; i++) { g_pairRoom[2 * i] = "0123456789abcdef"[rr[i] >> 4]; g_pairRoom[2 * i + 1] = "0123456789abcdef"[rr[i] & 15]; }
+    g_pairRoom[32] = 0;
     g_codeLive = 1;
     g_codeGone = 0;
     g_codeEnds = now() + CODE_SECS;
@@ -287,6 +297,35 @@ static void flush(void) {
 }
 
 const unsigned char *phone_pc_pub(void) { return g_trust.have ? g_trust.pc_pk : 0; }
+
+// 2.22: which relay room PHONE_NET sits in: the pairing room while a code is open (QR pairing), else the trusted
+// phone's room (from the pairing). 0 = none.
+int phone_net_room(char out[33]) {
+    if (g_codeLive && g_pairRoom[0]) { for (int i = 0; i < 33; i++) out[i] = g_pairRoom[i]; return 1; }
+    if (g_trust.have) { el_room(g_trust.pc_pk, out); return 1; }
+    return 0;
+}
+
+// the QR's text: pocketloomy://pair?c=<code>&r=<room>&n=<this PC's name, only safe characters>
+static int qr_text(char *out, int cap) {
+    char name[PK_NAMEMAX + 1];
+    int nl = os_pc_name(name, PK_NAMEMAX);
+    int o = 0;
+    const char *head = "pocketloomy://pair?c=";
+    for (const char *c = head; *c; c++) out[o++] = *c;
+    for (int i = 0; i < PK_CODELEN; i++) out[o++] = g_code[i];
+    const char *r = "&r=";
+    for (const char *c = r; *c; c++) out[o++] = *c;
+    for (int i = 0; i < 32; i++) out[o++] = g_pairRoom[i];
+    out[o++] = '&'; out[o++] = 'n'; out[o++] = '=';
+    for (int i = 0; i < nl && o < cap - 2; i++) {
+        char ch = name[i];
+        int ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+        out[o++] = ok ? ch : '-';
+    }
+    out[o] = 0;
+    return o;
+}
 
 int phone_on_accept(const PhoneLink *via, const wchar_t *addr) {
     if (g_conn) { log_add(L"Turned away %s: already talking to a phone.", addr); return 0; }
@@ -880,6 +919,26 @@ void phone_paint(HDC dc, RECT a) {
         wsprintfW(line, L"Expires in %d:%02d \x00B7 one try, then it's used up", (int)(left / 60), (int)(left % 60));
         ui_text(dc, a.left, y, line, C_DIM); y += gap;
         ui_text(dc, a.left, y, g_conn ? L"A phone is connecting..." : L"Waiting for phone...", C_TEXT); y += gap;
+        if (g_cfg.remoteNet) {                               // 2.22: or scan it, no Bluetooth needed
+            static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(10)], tmp[qrcodegen_BUFFER_LEN_FOR_VERSION(10)];
+            char txt[160];
+            qr_text(txt, sizeof txt);
+            if (qrcodegen_encodeText(txt, tmp, qr, qrcodegen_Ecc_MEDIUM, 1, 10, qrcodegen_Mask_AUTO, true)) {
+                int n = qrcodegen_getSize(qr), m = S(4), quiet = 3 * m, side = n * m + 2 * quiet;
+                ui_text(dc, a.left, y, L"Or scan this with your phone's camera (it opens Pocket Loomy):", C_DIM); y += g_lineH + S(6);
+                RECT bg = { a.left, y, a.left + side, y + side };
+                HBRUSH white = CreateSolidBrush(RGB(255, 255, 255)), black = CreateSolidBrush(RGB(0, 0, 0));
+                FillRect(dc, &bg, white);
+                for (int qy = 0; qy < n; qy++)
+                    for (int qx = 0; qx < n; qx++)
+                        if (qrcodegen_getModule(qr, qx, qy)) {
+                            RECT r = { a.left + quiet + qx * m, y + quiet + qy * m, a.left + quiet + (qx + 1) * m, y + quiet + (qy + 1) * m };
+                            FillRect(dc, &r, black);
+                        }
+                DeleteObject(white); DeleteObject(black);
+                y += side + S(8);
+            }
+        }
     } else {
         ui_text(dc, a.left, y, g_codeGone == 1 ? L"That pairing code is used up." :
                                g_codeGone == 2 ? L"That pairing code ran out." : L"No pairing code open.", C_TEXT);

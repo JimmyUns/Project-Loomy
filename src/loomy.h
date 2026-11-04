@@ -170,6 +170,8 @@ typedef struct PhoneLink {
 extern const PhoneLink PHONE_BT;                  // phonebt.c
 extern const PhoneLink PHONE_NET;                 // phonenet.c (2.22): through Ellune, the PC connects out
 const unsigned char *phone_pc_pub(void);          // the PC's pairing public key (the relay room), or 0
+int  phone_net_room(char out[33]);                // 2.22: PHONE_NET's room: the pairing room (QR) or the trusted one
+int  net_in_room(const char room[33]);            // phonenet.c: is it in that room already?
 int  phone_on_accept(const PhoneLink *via, const wchar_t *from);   // a phone connected; 0 = turn it away
 void phone_on_data(const unsigned char *p, int n);
 void phone_on_closed(void);

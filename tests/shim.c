@@ -152,6 +152,7 @@ const PhoneLink PHONE_NET = { L"Ellune", net_listen, net_unlisten, net_listening
 const wchar_t *net_status(int *bad) { *bad = 0; return g_netListening ? L"remote: connected to Ellune" : L"remote: off"; }
 int  net_id(char out[10]) { memcpy(out, "NRFZ-85TB", 10); return 1; }
 int  net_copy_line(void) { g_netCopies++; return 1; }
+char g_netRoom[33]; int net_in_room(const char room[33]) { return !strcmp(g_netRoom, room); }
 int  g_netRegs; int net_register(const wchar_t *code, wchar_t *why, int cap) { g_netRegs++; if (wcscmp(code, L"123456")) { wcscpy(why, L"Wrong Authy code"); return 0; } return 1; }
 void net_event(WPARAM k, LPARAM d) {}
 void net_shutdown(void) {}
@@ -196,3 +197,5 @@ void ui_panel_choices(wchar_t *b, int cap) {
 }
 void ui_screens_on(void) { g_screensOn++; }
 void ui_flush(void) {}
+HBRUSH CreateSolidBrush(COLORREF c) { return (HBRUSH)1; }
+int FillRect(HDC d, const RECT *r, HBRUSH b) { return 1; }
