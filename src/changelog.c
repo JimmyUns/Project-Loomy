@@ -19,7 +19,7 @@ static const Release RELEASES[] = {
         L"Two ways to listen: Say \"Loomy\" or Solo; \"thank you\" ends a sentence.",
         L"Online first: Ellune by default; the Bluetooth button turns the app blue.",
         L"Remote: your phone reaches the PC through Ellune, from anywhere.",
-        L"/phone is now /remote: allow Bluetooth (B) and remote (R) separately.",
+        L"/phone is now /remote: pair by QR (no Bluetooth); B and R allow each way.",
         L"Solo ignores typing and noises; no silent switching to the phone.",
         0 } },
     { L"2.21", L"2026-11-02", {

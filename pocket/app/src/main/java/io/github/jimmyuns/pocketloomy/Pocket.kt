@@ -55,7 +55,7 @@ object Pocket {
         val s = Store(ctx)
         val t = s.trust()
         return when {
-            s.pcAddress == null -> "Choose your PC in the app first."
+            t == null && s.pcAddress == null -> "Choose your PC in the app first, or scan the QR in /remote."
             t == null -> "Pair with your PC in the app first."
             !t.valid() -> "The pairing ran out (7 days). Pair again in the app."
             !s.btMode -> null

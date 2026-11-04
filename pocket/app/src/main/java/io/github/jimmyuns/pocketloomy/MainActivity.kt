@@ -134,6 +134,82 @@ class MainActivity : Activity() {
         askPermissions()
         Notes.syncOff(this)
         render()
+        handleLink(intent)
+    }
+
+    override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleLink(i) }
+
+    // ------------------------------------------------------------------ pairing by QR (2.22)
+    // The QR in /remote opens this with pocketloomy://pair?c=<code>&r=<pairing room>&n=<PC name>. The phone must be
+    // on Ellune's guest list first (his call: the Authy code, the QR alone isn't enough), then it pairs through
+    // that room: the same pairing as over Bluetooth, the same Enter on the PC.
+    private fun handleLink(i: Intent?) {
+        val u = i?.data ?: return
+        if (u.scheme != "pocketloomy" || u.host != "pair") return
+        i.data = null                                        // once
+        val code = u.getQueryParameter("c") ?: ""
+        val room = u.getQueryParameter("r") ?: ""
+        val name = u.getQueryParameter("n") ?: "your PC"
+        if (!Regex("\\d{8}").matches(code) || !Regex("[0-9a-f]{32}").matches(room) || !Regex("[A-Za-z0-9_-]{1,40}").matches(name)) {
+            problem("That QR isn't a Loomy pairing code."); return
+        }
+        if (phase != Phase.IDLE) return
+        phase = Phase.PAIRING
+        confirmId = null
+        render()
+        Thread({
+            val k = ElluneKey.get()
+            val me = if (k != null) Ellune.meNow(k.priv, k.pub) else null
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                when {
+                    k == null -> { phase = Phase.IDLE; problem("This phone couldn't make its Ellune key.") }
+                    me is Ellune.Me.Guest -> qrPair(k, code, room, name)
+                    me is Ellune.Me.NotGuest -> askAuthyThenPair(k, code, room, name)
+                    else -> { phase = Phase.IDLE; problem("Couldn't reach Ellune. QR pairing needs internet.") }
+                }
+            }
+        }, "qr-pair").start()
+    }
+
+    private fun askAuthyThenPair(k: ElluneKey.Key, code: String, room: String, name: String) {
+        val box = codeBox()
+        AlertDialog.Builder(this)
+            .setTitle("First: add this phone to Ellune")
+            .setMessage("Type the code Authy shows for Ellune.")
+            .setView(LinearLayout(this).apply { setPadding(dp(20), 0, dp(20), 0); addView(box, LinearLayout.LayoutParams(-1, -2)) })
+            .setPositiveButton("Add and pair") { _, _ ->
+                val c = box.text.toString()
+                Thread({
+                    val why = Ellune.registerNow(k.priv, k.pub, c, "phone-${k.id}")
+                    runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
+                        if (why != null) { phase = Phase.IDLE; problem(why) } else qrPair(k, code, room, name)
+                    }
+                }, "qr-register").start()
+            }
+            .setNegativeButton("Cancel") { _, _ -> phase = Phase.IDLE; render() }
+            .setOnCancelListener { phase = Phase.IDLE; render() }
+            .show()
+    }
+
+    private fun qrPair(k: ElluneKey.Key, code: String, room: String, name: String) {
+        store.pcLabel = name
+        Pocket.link.pair(null, code, Pocket.myName(this), waiting = { id -> runOnUiThread { confirmId = id; render() } },
+                         via = { EllunePipe.open(room, k) }) { result ->
+            runOnUiThread {
+                phase = Phase.IDLE
+                confirmId = null
+                result.onSuccess { t ->
+                    store.save(t)
+                    if (store.btMode) { store.btMode = false; bt.active = false; animateTheme(false) }   // a QR pairing is online
+                    Pocket.syncPipe(this)
+                    Net.refresh(this)
+                    note("Paired with ${t.pcName} through Ellune. Trusted for 7 days.")
+                    offerOn()
+                }.onFailure { problem(it.message ?: "Pairing failed.") }
+            }
+        }
     }
 
     override fun onResume() { super.onResume(); Pocket.listen(onChange); Pocket.fixStaleOn(this); ticker.post(recheck); render() }
@@ -565,14 +641,14 @@ class MainActivity : Activity() {
             typing.visibility = View.GONE
             modeBtn.visibility = View.GONE
             live.text = ""
-            step1.text = store.pcLabel?.let { "\u2713 $it" } ?: "Pick your PC from the phone's Bluetooth devices. (Pair it in Android's Bluetooth settings first.)"
+            step1.text = store.pcLabel?.let { "\u2713 $it" } ?: "Easiest: on the PC type /remote and scan the QR with your camera. Or pick your PC from the phone's Bluetooth devices."
             step1.setTextColor(if (store.pcLabel != null) ok else textC)
             step2.text = when {
                 t != null -> "The pairing ran out after 7 days. On the PC type /phone, then tap below and say the 8 digits."
                 phase == Phase.LISTEN_CODE -> "Listening... say the 8 digits.  $transcript"
                 phase == Phase.PAIRING && confirmId != null ->
                     "Right code. Now look at the PC: it shows this phone's ID. If it says $confirmId, press Enter on the PC."
-                phase == Phase.PAIRING -> "Pairing with ${store.pcLabel}..."
+                phase == Phase.PAIRING -> "Pairing with ${store.pcLabel ?: "your PC"}..."
                 else -> "On the PC type /phone. Then tap below and say the 8 digits it shows."
             }
             codeBtn.isEnabled = store.pcLabel != null && phase == Phase.IDLE

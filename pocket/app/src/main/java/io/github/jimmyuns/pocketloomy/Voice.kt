@@ -326,7 +326,8 @@ object Voice {
         val why = Pocket.ready(ctx)
         if (why != null) { add(shown, why, true); return }
         Pocket.syncPipe(ctx)                                        // Ellune mode: through her relay; Bluetooth mode: Bluetooth
-        val device = Pocket.device(ctx) ?: return
+        val device = Pocket.device(ctx)
+        if (device == null && Store(ctx).btMode) { add(shown, "Choose your PC (Bluetooth) in the app first.", true); return }
         val trust = Store(ctx).trust() ?: return
         val e = Entry(shown, "...", false)
         history += e

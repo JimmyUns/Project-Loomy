@@ -172,7 +172,11 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
     asks for the current code, Ellune checks it (a used code can't be reused), stores the device's key herself.
     5 wrong tries → locked an hour. `DEVICES` stays as a backup. A device list with Remove in the app (needs a
     code). The secret is made on his PC by a small script in `ellune/`, never in chat.
-  - **QR pairing (his call, Nov 4, in v2.22): pairing without Bluetooth.** `/remote` → N shows the code AND a QR
+  - **QR pairing: BUILT Nov 4, not tried by him yet.** (`phone.c`: `g_pairRoom` per code, `phone_net_room`, `qr_text`, the
+    QR drawn in the panel; `qr.c` wraps `src/qr/qrcodegen.c`; PHONE_NET moves rooms only between sessions. App:
+    `MainActivity.handleLink` / `askAuthyThenPair` / `qrPair`, `Link.pair(via=)`, Link's device is nullable,
+    `Pocket.ready` doesn't need a Bluetooth PC in Ellune mode. A QR pairing switches the app to Ellune mode.)
+    The plan was: `/remote` → N shows the code AND a QR
     (`pocketloomy://pair?c=<8 digits>&r=<pairing room, 32 hex, random per code>&n=<PC name>`). He scans it with the
     phone's normal camera app → Android opens Pocket Loomy (intent filter, no QR library in the app). The app makes
     sure it's on Ellune's guest list (**his call: still asks for the Authy code, the QR alone isn't enough**), then

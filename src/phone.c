@@ -226,9 +226,9 @@ static void update_listener(void) {
         const PhoneLink *l = LINKS[i];
         int net = l == &PHONE_NET;
         int want = base && (net ? g_cfg.remoteNet && (g_trust.have || g_codeLive) : g_cfg.remoteBt && (g_trust.have || g_codeLive));
-        if (net && want && l->listening()) {                 // the room changed (a code opened / closed, a new pairing)
-            char room[33];
-            if (phone_net_room(room) && !net_in_room(room)) l->unlisten();
+        if (net && want && l->listening() && !(g_conn && g_via == l)) {   // the room changed (a code opened / closed,
+            char room[33];                                                // a new pairing); never mid-session: the
+            if (phone_net_room(room) && !net_in_room(room)) l->unlisten(); // pairing's last message must get out first
         }
         wchar_t err[120] = { 0 };
         if (want && !l->listening()) { if (!l->listen(err, 120) && !net) s_cpy(g_btErr, err, 120); else if (!net) g_btErr[0] = 0; }
@@ -599,8 +599,7 @@ static void accept_pairing(void) {
     paired();                                            // saves the trust
     flush();                                             // the PC's key goes out only now: the phone is paired
     g_connStart = now();                                 // it gets a moment to hang up by itself
-    if (PHONE_NET.listening()) PHONE_NET.unlisten();     // a new pairing = a new relay room
-    update_listener();
+    update_listener();                                   // a new pairing = a new relay room (moved once this session ends)
 }
 
 static void refuse_pairing(const wchar_t *why) {
