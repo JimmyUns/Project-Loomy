@@ -31,6 +31,7 @@ class PocketService : Service() {
     private var lastRx = -1L
     private var lastTx = -1L
     private var lastAt = 0L
+    private val samples = ArrayDeque<Triple<Long, Long, Long>>()   // (when, rx, tx) for the last few seconds
     private var down = -1L
     private var up = -1L
     private var ticking = false
@@ -119,11 +120,19 @@ class PocketService : Service() {
             val rx = TrafficStats.getTotalRxBytes()
             val tx = TrafficStats.getTotalTxBytes()
             val now = SystemClock.elapsedRealtime()
-            if (rx >= 0 && tx >= 0 && lastRx >= 0 && now > lastAt) {
-                val dt = (now - lastAt) / 1000.0
-                down = ((rx - lastRx).coerceAtLeast(0) / dt).toLong()
-                up = ((tx - lastTx).coerceAtLeast(0) / dt).toLong()
-                Notes.update(this@PocketService, down, up)
+            // 2.22 (his report: 8 MB/s shown on an 800 KB/s line): Android's byte counters don't move every second;
+            // they jump in bursts, so one second could carry several seconds' worth. The speed is now over the last
+            // 4 seconds, which averages the bursts out (still a "per second" number).
+            if (rx >= 0 && tx >= 0) {
+                samples.addLast(Triple(now, rx, tx))
+                while (samples.size > 5) samples.removeFirst()
+                val first = samples.first()
+                val dt = (now - first.first) / 1000.0
+                if (samples.size >= 2 && dt > 0.5) {
+                    down = ((rx - first.second).coerceAtLeast(0) / dt).toLong()
+                    up = ((tx - first.third).coerceAtLeast(0) / dt).toLong()
+                    Notes.update(this@PocketService, down, up)
+                }
             }
             lastRx = rx; lastTx = tx; lastAt = now
             main.postDelayed(this, 1000)
@@ -151,7 +160,7 @@ class PocketService : Service() {
 
     // nobody sees the status bar with the screen off: no work at all then
     private fun startTicking() { if (!ticking) { ticking = true; lastRx = -1; main.post(tick) } }
-    private fun stopTicking() { ticking = false; main.removeCallbacks(tick) }
+    private fun stopTicking() { ticking = false; main.removeCallbacks(tick); samples.clear() }   // a gap: start the window fresh
 
     override fun onDestroy() {
         pings?.shutdownNow(); pings = null

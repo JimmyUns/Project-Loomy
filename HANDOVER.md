@@ -166,7 +166,15 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   **Remote built Nov 2 (3 stages, `ELLUNE-HANDOVER.md` §2): Ellune 0.4 relay, the PC (`/phone` renamed `/remote`, his
   call, with Allow Bluetooth / Allow remote; `phonenet.c` + `ellune.c`), the app (`EllunePipe`). **Tested end to end
   Nov 4: works** (a command with the phone's Bluetooth off reached the PC). Ellune is on 0.4 (deployed with wrangler
-  from his PC; Node installed). Still on his list: master-password registration. Popups on switching modes removed (his ask). (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
+  from his PC; Node installed). Still on his list for **this release (v2.22)**:
+  - **Registration with Authy (his call, Nov 4; replaces the master-password idea):** a TOTP secret (6 digits, 30 s)
+    in Ellune as a Cloudflare Secret and in his Authy; a new phone ("Add to guest list") or PC (C in `/remote`)
+    asks for the current code, Ellune checks it (a used code can't be reused), stores the device's key herself.
+    5 wrong tries → locked an hour. `DEVICES` stays as a backup. A device list with Remove in the app (needs a
+    code). The secret is made on his PC by a small script in `ellune/`, never in chat.
+  - **The APK in releases** (needs the signing key set up as GitHub secrets).
+  - **Net speed meter spikes** (8 MB/s shown on his 800 KB/s line): fixed in code (4 s window, `PocketService`),
+    not tried yet. Popups on switching modes removed (his ask). (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
   1. **The app, redesigned.** Today's layout (buttons on top, then the log, settings at the very bottom) he called
      horrible. Wanted: a big mic in the middle with Loomy's halftone dots rippling out from its centre (calm idle,
      moving with the voice while listening); a cog (top right) holding all settings + the PC/pairing stuff; the
