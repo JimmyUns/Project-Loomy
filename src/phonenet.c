@@ -421,14 +421,14 @@ void net_event(WPARAM kind, LPARAM data) {
 
 const wchar_t *net_status(int *bad) {
     *bad = 0;
-    if (!g_cfg.remoteNet) return L"Remote is off (R allows it).";
+    if (!g_cfg.remoteNet) return L"Ellune: remote is off";
     switch (g_state) {
-    case NS_CONNECTED:  return g_session ? L"Remote: a phone is talking through Ellune." : L"Remote: connected to Ellune, waiting for your phone.";
-    case NS_CONNECTING: return L"Remote: connecting to Ellune...";
-    case NS_NOT_GUEST:  *bad = 1; return L"Remote: Ellune doesn't know this PC yet. Type /remote add and your Authy code (or C: copy the line).";
-    case NS_UNREACHABLE: *bad = 1; return L"Remote: can't reach Ellune right now (no internet, or blocked). Trying again.";
-    case NS_NO_KEY:     *bad = 1; return L"Remote: couldn't make this PC's Ellune key.";
-    default:            return g_want ? L"Remote: starting..." : L"Remote: waiting for a paired phone.";
+    case NS_CONNECTED:   return g_session ? L"Ellune: connected \x00B7 your phone is talking through her" : L"Ellune: connected";
+    case NS_CONNECTING:  return L"Ellune: connecting...";
+    case NS_NOT_GUEST:   *bad = 1; return L"Ellune doesn't know this PC: type /remote add <Authy code>";
+    case NS_UNREACHABLE: *bad = 1; return L"Ellune: can't reach her (no internet?), trying again";
+    case NS_NO_KEY:      *bad = 1; return L"Ellune: couldn't make this PC's key";
+    default:             return g_want ? L"Ellune: starting..." : L"Ellune: waiting for a paired phone";
     }
 }
 

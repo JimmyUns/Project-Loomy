@@ -324,6 +324,11 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   modes drops the kept connection. `Net` asks `/status?room=R` for "Online" vs "PC offline". The room =
   `Ellune.room(trust.pcPk)` (same vector as `el_room` on the PC). Notes (misses) go through either pipe now.
   tests/jni: 256 checks (frames, accept key, room). PC side: `phonenet.c` / `ellune.c`, see `ELLUNE-HANDOVER.md` §2.
+- **/remote panel redrawn simpler (2.22, his ask, "a lot of confusing text"):** title + listening; one line `[x] Bluetooth
+  [x] Remote (Ellune)` with `PC W6VV-D6NH` at the right; one short Ellune line (`net_status`); then ONE thing: the
+  confirm (ID big), shut down, the paired phone (name + connected / last seen + paired until), or the QR on the left
+  with the code / time left / waiting on the right (QR sized to fit), or "No phone paired. N to pair one." Keys:
+  short. C still copies the guest line but isn't advertised (use `/remote add <Authy code>`).
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").
