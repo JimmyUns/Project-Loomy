@@ -18,7 +18,7 @@ enum class LinkState { IDLE, CONNECTING, CONNECTED }
 
 /**
  * A pipe the encrypted bytes travel through. Link (and the security in pocket.c) never cares what it is:
- * Bluetooth today; an internet relay can be another Pipe later without touching the protocol.
+ * Bluetooth (BluetoothPipe), or Ellune's relay (EllunePipe, remote, 2.22). The protocol never changes.
  */
 interface Pipe {
     val input: InputStream
@@ -56,6 +56,9 @@ class Link {
     private var onAwait: (() -> Unit)? = null           // pairing: called once when the PC starts asking
     private var h = 0L
     private var idle: ScheduledFuture<*>? = null
+
+    /** remote (2.22): set in Ellune mode, null in Bluetooth mode (Pocket.syncPipe). Pairing is always Bluetooth. */
+    @Volatile var viaEllune: (() -> Pipe)? = null
 
     /** called on the worker thread whenever the connection changes */
     var onState: (LinkState) -> Unit = {}
@@ -118,7 +121,7 @@ class Link {
         onAwait = { if (!asked && Native.awaitingPc(h)) { asked = true; waiting(Native.phoneId(h)) } }
         try {
             Native.initPhone(h, code.toByteArray(Charsets.US_ASCII), null, null, null, name)
-            open(device)
+            open(device, bluetooth = true)                   // pairing: in person, always Bluetooth
             pumpUntil(Native.EV_PAIRED, 80)                  // includes up to a minute for Enter on the PC
             val keys = Native.myKeys(h)
             val t = Trust(keys.copyOfRange(0, 32), keys.copyOfRange(32, 64), Native.peerKey(h),
@@ -149,6 +152,9 @@ class Link {
             } catch (e: PocketError) {
                 hangUp()
                 throw e
+            } catch (e: NoPcException) {
+                hangUp()
+                throw PocketError("Your PC isn't connected to Ellune: it's off or asleep, Loomy isn't running, or remote is off in /remote (R).")
             } catch (e: IOException) {
                 hangUp()
                 if (fresh || attempt == 1) throw PocketError(unreachable(device))
@@ -167,8 +173,10 @@ class Link {
     }
 
     // ------------------------------------------------------------------ plumbing
-    private fun open(device: BluetoothDevice) {
+    private fun open(device: BluetoothDevice, bluetooth: Boolean = false) {
         onState(LinkState.CONNECTING)
+        val ellune = if (bluetooth) null else viaEllune
+        if (ellune != null) { pipe = ellune(); return }
         pipe = BluetoothPipe.open(device) { p ->
             val dog = watchdog.schedule({ p.close() }, 15, TimeUnit.SECONDS)
             val cancel: () -> Unit = { dog.cancel(false) }
@@ -225,9 +233,10 @@ class Link {
         if (had) onState(LinkState.IDLE)
     }
 
-    private fun unreachable(device: BluetoothDevice) =
+    private fun unreachable(device: BluetoothDevice) = if (viaEllune != null)
+        "Couldn't reach your PC through Ellune. Check the phone's internet, and that Loomy is running with remote allowed (/remote, R)." else
         "Couldn't reach Loomy on ${device.name ?: device.address}. Check that Bluetooth is on, the PC is close, " +
-        "and Loomy has the phone feature on (/pkg add phone). If Loomy shut listening down, Enter in /phone turns it back on."
+        "and Loomy has the phone feature on (/pkg add phone). If Loomy shut listening down, Enter in /remote turns it back on."
 
     private fun failMessage(f: Int) = when (f) {
         Native.F_NOPAIRING -> "Loomy isn't showing a pairing code. Type /phone on the PC first."

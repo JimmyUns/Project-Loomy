@@ -3,6 +3,7 @@
 import io.github.jimmyuns.pocketloomy.Ellune
 import io.github.jimmyuns.pocketloomy.Sound
 import io.github.jimmyuns.pocketloomy.Vad
+import io.github.jimmyuns.pocketloomy.Ws
 import io.github.jimmyuns.pocketloomy.Native
 import io.github.jimmyuns.pocketloomy.Words
 
@@ -309,6 +310,32 @@ fun main() {
             for (k in 0 until 60) ew += w.push(50.0, 0.1)
             check(ew.filter { it != Vad.Event.NONE } == listOf(Vad.Event.STARTED, Vad.Event.ENDED), "vad: a voice ends as speech")
         }
+    }
+
+    // ---- 2.22 remote: the relay room (same vector as ellune.c on the PC) and the WebSocket frames
+    run {
+        check(Ellune.room(ByteArray(32) { it.toByte() }) == "8a0e1d384dc28f829b6dbfec15ddb06d", "room: same as the PC's")
+        check(Ws.accept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "ws: accept key (RFC 6455's example)")
+        val mk = byteArrayOf(1, 2, 3, 4)
+        val f = Ws.frame(2, byteArrayOf(10, 20, 30), mk)
+        check(f.size == 2 + 4 + 3 && f[0] == 0x82.toByte() && f[1] == 0x83.toByte() && f[6] == (10 xor 1).toByte(), "ws: a small masked binary frame")
+        val big = Ws.frame(2, ByteArray(300) { 7 }, mk)
+        check(big[1] == (0x80 or 126).toByte() && big[2] == 1.toByte() && big[3] == 44.toByte() && big.size == 4 + 4 + 300, "ws: 16-bit length")
+        fun srv(op: Int, p: ByteArray, fin: Boolean = true) = byteArrayOf(((if (fin) 0x80 else 0) or op).toByte(), p.size.toByte()) + p
+        var r = Ws.readFrame(java.io.ByteArrayInputStream(srv(2, byteArrayOf(5, 6))))
+        check(r != null && r.first == 2 && r.second.contentEquals(byteArrayOf(5, 6)), "ws: read a binary message")
+        r = Ws.readFrame(java.io.ByteArrayInputStream(srv(1, "no".toByteArray(), false) + srv(0, "pc".toByteArray())))
+        check(r != null && r.first == 1 && String(r.second) == "nopc", "ws: fragments join")
+        r = Ws.readFrame(java.io.ByteArrayInputStream(srv(9, byteArrayOf(1))))
+        check(r != null && r.first == 9, "ws: a ping comes through on its own")
+        check(Ws.readFrame(java.io.ByteArrayInputStream(ByteArray(0))) == null, "ws: end of stream")
+        val masked = Ws.frame(2, byteArrayOf(42, 43), mk)              // a masked frame reads back too
+        r = Ws.readFrame(java.io.ByteArrayInputStream(masked))
+        check(r != null && r.second.contentEquals(byteArrayOf(42, 43)), "ws: masked round trip")
+        val huge = byteArrayOf(0x82.toByte(), 127) + ByteArray(8).also { it[6] = 0x20 }
+        check(runCatching { Ws.readFrame(java.io.ByteArrayInputStream(huge)) }.isFailure, "ws: an 8 KB message is refused")
+        check(Ws.readHead(java.io.ByteArrayInputStream("HTTP/1.1 101 Switching\r\nUpgrade: websocket\r\n\r\nxx".toByteArray()))?.startsWith("HTTP/1.1 101") == true, "ws: the answer's head")
+        check(Ws.readHead(java.io.ByteArrayInputStream("HTTP/1.1 101".toByteArray())) == null, "ws: a cut-off head")
     }
 
     println("$checks checks, $fails failure(s)")

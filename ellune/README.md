@@ -11,6 +11,9 @@ talk) are in `../ELLUNE-HANDOVER.md`.
 - `POST /hear` (guest list): a WAV clip (16 kHz mono 16-bit, at most 10 s) → `{"ok":true,"heard":"..."}` (Whisper).
 - `POST /understand` (guest list): `{"text":"make the screens go dark"}` → `{"ok":true,"command":"display off"}`
   (`""` when it isn't a Loomy command; only commands from a fixed list ever come out).
+- `GET /pc?room=R`, `GET /phone?room=R` (guest list, WebSockets): remote. The PC waits in its room, the phone joins
+  it for a session, Ellune passes their (end-to-end encrypted) bytes on untouched. `GET /status?room=R` says whether
+  the PC is there. R comes from the pairing (both ends work it out themselves).
 - Anything else is a 404 (or 405 for the wrong method). No storage, no secrets, nothing logged; audio and text only
   go to Workers AI for the answer.
 
@@ -26,7 +29,13 @@ Each device has its own key; the list holds only the public halves, so nothing i
 line each). Changing it redeploys by itself. Removing a line throws that device out.
 How requests are signed is described at the top of `src/index.js`.
 
-## Deploy (dashboard, no installs)
+## Deploy (since 0.4: wrangler)
+0.4 adds the relay rooms for remote, a Durable Object, and those can't be set up by pasting code into the dashboard.
+Once, on the PC: install Node (nodejs.org, LTS). Then in this folder: `npx wrangler login` (a browser asks you to
+allow it), then `npx wrangler deploy`. It keeps the `DEVICES` list (`keep_vars`) and sets up the `AI` binding and
+the `ROOMS` rooms itself (`wrangler.toml`). Each later update: `npx wrangler deploy` again.
+
+## Deploy (dashboard, no installs: only up to 0.3)
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → start from the **Hello World** Worker.
 2. Name it `ellune` and deploy it. The first time, Cloudflare asks you to pick your `workers.dev` subdomain.
 3. Open the Worker → **Edit code**, replace everything with `src/index.js`, and **Deploy**.

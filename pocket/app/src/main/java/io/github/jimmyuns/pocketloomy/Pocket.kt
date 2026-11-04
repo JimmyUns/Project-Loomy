@@ -75,6 +75,22 @@ object Pocket {
         }
     }
 
+    /** remote (2.22): in Ellune mode the link goes through Ellune's relay, in Bluetooth mode over Bluetooth */
+    fun syncPipe(ctx: Context) {
+        val s = Store(ctx)
+        val t = s.trust()
+        val want = !s.btMode
+        val k = if (want) ElluneKey.peek() else null
+        val before = link.viaEllune
+        link.viaEllune = when {
+            !want -> null
+            t == null -> { { throw PocketError("Pair with your PC first.") } }
+            k == null -> { { throw PocketError("This phone isn't on Ellune's guest list yet (Settings, Ellune).") } }
+            else -> { val room = Ellune.room(t.pcPk); { EllunePipe.open(room, k) } }
+        }
+        if ((before == null) != (link.viaEllune == null)) link.close()       // switched modes: drop the kept connection
+    }
+
     fun device(ctx: Context): BluetoothDevice? = Store(ctx).pcAddress?.let { adapter(ctx)?.getRemoteDevice(it) }
 
     fun pcName(ctx: Context) = Store(ctx).trust()?.pcName ?: Store(ctx).pcLabel ?: "your PC"
@@ -153,7 +169,8 @@ object Pocket {
 
     /** a failed attempt: tell the PC so it shows there too */
     fun reportMiss(ctx: Context, heard: String) {
-        if (!Store(ctx).btMode || ready(ctx) != null) return       // Bluetooth mode only, for now
+        if (ready(ctx) != null) return
+        syncPipe(ctx)
         val d = device(ctx) ?: return
         val t = Store(ctx).trust() ?: return
         link.note(d, t, myName(ctx), heard)

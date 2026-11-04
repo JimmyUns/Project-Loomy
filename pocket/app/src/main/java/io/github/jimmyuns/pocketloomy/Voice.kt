@@ -325,10 +325,7 @@ object Voice {
     private fun send(cmd: String, shown: String = cmd) {
         val why = Pocket.ready(ctx)
         if (why != null) { add(shown, why, true); return }
-        if (!Store(ctx).btMode) {                                   // remote (through Ellune) is the next step
-            add(shown, "Sending through Ellune comes with the next step (remote). Tap the Bluetooth button over the mic to use Bluetooth for now.", true)
-            return
-        }
+        Pocket.syncPipe(ctx)                                        // Ellune mode: through her relay; Bluetooth mode: Bluetooth
         val device = Pocket.device(ctx) ?: return
         val trust = Store(ctx).trust() ?: return
         val e = Entry(shown, "...", false)

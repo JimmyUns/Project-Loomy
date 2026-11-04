@@ -317,6 +317,13 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   rate < 0.25: vowels; keyboard taps and knocks are crackly) → else `NOISE`, never uploaded; `Words.isNoise` drops
   Whisper's noise outputs ("[typing]", "you", "Thanks for watching!"); in Solo, anything that isn't a command (rules
   don't know it / the AI says NONE) is dropped quietly, no red miss. 244 checks.
+- **Remote (2.22), the app side:** `EllunePipe.kt` (a tiny WebSocket client: SSLSocket + hostname check, the
+  upgrade with the guest-list headers on `/phone?room=R`, `Ws.kt` frames: masked out, ping answered, "nopc" →
+  `NoPcException`) is a `Pipe` like `BluetoothPipe`. `Link.viaEllune` (set by `Pocket.syncPipe` before every send:
+  Ellune mode → the relay, Bluetooth mode → null) picks the pipe; **pairing always opens Bluetooth**. Switching
+  modes drops the kept connection. `Net` asks `/status?room=R` for "Online" vs "PC offline". The room =
+  `Ellune.room(trust.pcPk)` (same vector as `el_room` on the PC). Notes (misses) go through either pipe now.
+  tests/jni: 256 checks (frames, accept key, room). PC side: `phonenet.c` / `ellune.c`, see `ELLUNE-HANDOVER.md` §2.
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").

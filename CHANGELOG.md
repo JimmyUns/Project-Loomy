@@ -5,6 +5,8 @@ All notable changes to Loomy, newest first.
 ## v2.22
 - **Pocket Loomy, redesigned.** A big mic in the middle with Loomy's dots rippling out of it (they move with your voice), the latest thing said at the top (tap it for the whole history), and everything else behind the gear: your PC and the On switch, Listening, Ellune and the app settings.
 - **You can see what it's doing**: the mic breathes while it waits for "Loomy", turns purple when it's taking your command, shows a spinning ring while Ellune works it out (the mic is off then), and flashes green or red when the answer comes back. A faint grid sits behind it all.
+- **Remote**: your phone reaches your PC through Ellune, from anywhere with internet. The PC connects out to her (no open ports) and she only passes on the same end-to-end encrypted messages as Bluetooth; she can't read or fake them. Pairing still happens in person, over Bluetooth.
+- **`/phone` is now `/remote`**, with **Allow Bluetooth** (B) and **Allow remote** (R) to choose what works, and C to copy this PC's line for Ellune's guest list.
 - **Online first.** Pocket Loomy now goes through Ellune by default and doesn't touch Bluetooth at all. The **Bluetooth button** over the mic switches to Bluetooth mode (the app turns blue): then it's Bluetooth only and Ellune is left alone. Only you switch it.
 - **The bar on top shows the connection**: Offline, Ellune offline, PC offline, Online, or Online BT.
 - **Solo ignores typing and noises**: a sound has to actually be a voice before it's sent anywhere, and things that aren't commands are dropped quietly.

@@ -72,9 +72,12 @@ doesn't cover is still his call: don't bake it in without him.
      `ellune.dat`, WinHTTP WebSocket on a worker thread, WM_PHONENET to the UI thread, keepalive 60 s, backoff 5 s /
      15 s / 1 min / 2 min, 5 min after a 401). Config `remote_bluetooth` / `remote_ellune` (both default on); keys B /
      R / C in `/remote`. Cross-compiles clean with mingw (`build.sh`).
-  3. **Then the app:** a tiny WebSocket client (no libraries: SSLSocket, masked client frames) as an `EllunePipe`
+  3. **Done (not run end to end yet): the app.** As planned: a tiny WebSocket client (no libraries: SSLSocket, masked client frames) as an `EllunePipe`
      next to `BluetoothPipe` in Link.kt, used in Ellune mode; `Net` asks `/status` so the bar can say Online /
      PC offline; `Voice.send` stops saying "comes with the next step".
+  4. **To try it (his steps):** deploy 0.4 with wrangler (Node), run the test exe, `/remote` → C → paste the PC's
+     line into `DEVICES` (comma or new line), install the dev APK, Ellune mode (purple): the bar should say Online
+     and commands should work with Bluetooth off.
 - **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
 - **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,

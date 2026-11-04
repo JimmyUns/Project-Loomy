@@ -128,6 +128,35 @@ object Ellune {
         return s.substring(0, 4) + "-" + s.substring(4)
     }
 
+    /** remote (2.22): the relay room both ends know from the pairing: hex(SHA-256("Loomy room" + the PC's key))[0..32] */
+    fun room(pcPk: ByteArray): String =
+        hex(MessageDigest.getInstance("SHA-256").digest("Loomy room".toByteArray() + pcPk)).substring(0, 32)
+
+    /** is the PC in its room right now? null = couldn't ask. Blocking. */
+    fun pcThere(priv: PrivateKey, pub: ByteArray, room: String): Boolean? {
+        var c: HttpsURLConnection? = null
+        try {
+            val path = "/status?room=$room"
+            c = URL(HOST + path).openConnection() as HttpsURLConnection
+            c.connectTimeout = 6000
+            c.readTimeout = 6000
+            c.useCaches = false
+            c.instanceFollowRedirects = false
+            for ((k, v) in signedHeaders(priv, pub, "GET", path, System.currentTimeMillis())) c.setRequestProperty(k, v)
+            if (c.responseCode != 200) return null
+            val body = c.inputStream.use { String(it.readBytes().take(256).toByteArray(), Charsets.UTF_8) }
+            return when {
+                Regex("\"pc\"\\s*:\\s*true").containsMatchIn(body) -> true
+                Regex("\"pc\"\\s*:\\s*false").containsMatchIn(body) -> false
+                else -> null
+            }
+        } catch (_: Exception) {
+            return null
+        } finally {
+            c?.disconnect()
+        }
+    }
+
     // The line to paste into Ellune's DEVICES variable
     fun guestLine(pub: ByteArray) = deviceId(pub) + "=" + b64.encodeToString(pub)
 

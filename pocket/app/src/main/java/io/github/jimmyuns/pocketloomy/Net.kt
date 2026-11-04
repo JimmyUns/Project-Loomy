@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 //   PC offline      Ellune answers, but the PC isn't connected to her
 //   Online          Ellune answers and says the PC is connected to her
 //   Online BT       the PC answered over Bluetooth
-// Until remote is built the PC never connects to Ellune, so Ellune mode tops out at "PC offline".
+// "Online" in Ellune mode = Ellune says the PC is in its relay room (/status), i.e. remote can reach it.
 object Net {
     enum class State(val label: String) {
         CHECKING("checking"), OFFLINE("Offline"), ELLUNE_OFFLINE("Ellune offline"),
@@ -53,6 +53,8 @@ object Net {
         }
         if (!ElluneEar.online(ctx)) return State.OFFLINE
         if (Ellune.pingNow() !is Ellune.Result.Up) return State.ELLUNE_OFFLINE
-        return State.PC_OFFLINE                    // remote (the PC connecting to Ellune) is the next step
+        val t = s.trust() ?: return State.PC_OFFLINE
+        val k = ElluneKey.peek() ?: return State.PC_OFFLINE
+        return if (Ellune.pcThere(k.priv, k.pub, Ellune.room(t.pcPk)) == true) State.ONLINE else State.PC_OFFLINE
     }
 }
