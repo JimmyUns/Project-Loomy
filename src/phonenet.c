@@ -59,6 +59,7 @@ static HANDLE    g_thread, g_stop;
 static HINTERNET g_ws;
 static volatile LONG g_state;               // NS_*
 static volatile LONG g_want;
+static volatile LONG g_gen;                 // bumped by each listen: an old worker still finishing up just stops
 static char      g_room[33];
 static int       g_session;                 // a phone session is running through here (UI thread)
 enum { NS_OFF, NS_CONNECTING, NS_CONNECTED, NS_NOT_GUEST, NS_UNREACHABLE, NS_NO_KEY };
@@ -248,7 +249,13 @@ int net_register(const wchar_t *code, wchar_t *why, int cap) {
     case 429: s_cpy(why, L"Locked for an hour after 5 wrong codes.", cap); break;
     case 503: s_cpy(why, L"Ellune's registration isn't set up yet (TOTP_SECRET, see ellune/README.md).", cap); break;
     case 0:   s_cpy(why, L"Couldn't reach Ellune.", cap); break;
-    default:  wsprintfW(why, L"Ellune said %u.", (unsigned)status); break;
+    case 404: s_cpy(why, L"Ellune doesn't have /register: she needs the 0.5 update (npx wrangler deploy).", cap); break;
+    default: {
+        wchar_t w[160];
+        MultiByteToWideChar(CP_UTF8, 0, ans, -1, w, 160);
+        wsprintfW(why, L"Ellune said %u: %s", (unsigned)status, w);
+        break;
+    }
     }
     return 0;
 }
@@ -309,13 +316,14 @@ static int connect_once(DWORD *status) {
 }
 
 static DWORD WINAPI worker(void *arg) {
+    LONG gen = (LONG)(LONG_PTR)arg;
     int tries = 0;
     static const DWORD WAIT[] = { 5000, 15000, 60000, 120000 };
-    while (g_want) {
+    while (g_want && gen == g_gen) {
         set_state(NS_CONNECTING);
         DWORD status = 0;
         if (connect_once(&status)) tries = 0;
-        if (!g_want) break;
+        if (!g_want || gen != g_gen) break;
         DWORD wait;
         if (status == 401) { set_state(NS_NOT_GUEST); wait = 300000; }
         else { set_state(NS_UNREACHABLE); wait = WAIT[tries < 3 ? tries : 3]; tries++; }
@@ -352,7 +360,8 @@ static int net_listen(wchar_t *err, int cap) {
     if (!g_stop) g_stop = CreateEventW(0, TRUE, FALSE, 0);
     ResetEvent(g_stop);
     InterlockedExchange(&g_want, 1);
-    g_thread = CreateThread(0, 0, worker, 0, 0, 0);
+    LONG gen = InterlockedIncrement(&g_gen);
+    g_thread = CreateThread(0, 0, worker, (void *)(LONG_PTR)gen, 0, 0);
     if (!g_thread) { InterlockedExchange(&g_want, 0); s_cpy(err, L"Couldn't start the remote connection.", cap); return 0; }
     return 1;
 }
@@ -361,18 +370,24 @@ static void net_unlisten(void) {
     if (!g_want) return;
     InterlockedExchange(&g_want, 0);
     SetEvent(g_stop);
+    // Take the socket out under the lock, then close it outside it. (It used to send a polite close while holding
+    // the lock: that waits for Ellune's answer, which the worker thread receives, and the worker was waiting for
+    // the lock: Loomy hung on /shutdown and on F in /remote.) Closing the handle cancels the waiting receive.
     EnterCriticalSection(&g_cs);
-    if (g_ws) { wsClose(g_ws, 1000, 0, 0); WinHttpCloseHandle(g_ws); g_ws = 0; }   // wakes the waiting receive
+    HINTERNET ws = g_ws;
+    g_ws = 0;
     LeaveCriticalSection(&g_cs);
+    if (ws) WinHttpCloseHandle(ws);
+    InterlockedIncrement(&g_gen);
     if (g_thread) { WaitForSingleObject(g_thread, 3000); CloseHandle(g_thread); g_thread = 0; }
     if (g_session) { g_session = 0; phone_on_closed(); }
     InterlockedExchange(&g_state, NS_OFF);
 }
 
 static int send_raw(int type, const void *p, int n) {
-    int ok = 0;
     EnterCriticalSection(&g_cs);
-    if (g_ws) ok = wsSend(g_ws, type, (PVOID)p, (DWORD)n) == 0;
+    HINTERNET ws = g_ws;
+    int ok = ws && wsSend(ws, type, (PVOID)p, (DWORD)n) == 0;   // frames are small: the send returns at once
     LeaveCriticalSection(&g_cs);
     return ok;
 }
