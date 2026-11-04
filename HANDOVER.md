@@ -172,6 +172,16 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
     asks for the current code, Ellune checks it (a used code can't be reused), stores the device's key herself.
     5 wrong tries → locked an hour. `DEVICES` stays as a backup. A device list with Remove in the app (needs a
     code). The secret is made on his PC by a small script in `ellune/`, never in chat.
+  - **QR pairing (his call, Nov 4, in v2.22): pairing without Bluetooth.** `/remote` → N shows the code AND a QR
+    (`pocketloomy://pair?c=<8 digits>&r=<pairing room, 32 hex, random per code>&n=<PC name>`). He scans it with the
+    phone's normal camera app → Android opens Pocket Loomy (intent filter, no QR library in the app). The app makes
+    sure it's on Ellune's guest list (**his call: still asks for the Authy code, the QR alone isn't enough**), then
+    pairs through Ellune in that pairing room: the same CPace pairing + the Enter confirm on the PC, only the wire
+    differs. No Ellune change needed (rooms are generic; both ends are guests). PC: while a code is live and remote
+    is allowed, PHONE_NET sits in the pairing room instead of the trust room (`phone.c` decides the room). QR drawn
+    in C (vendor nayuki's qrcodegen, MIT). App: a QR-paired PC has no Bluetooth address, so Ellune mode must work
+    without `pcAddress` (Link takes a nullable device). Bluetooth pairing stays, behind Allow Bluetooth.
+    **Pairing stays 7 days** (his call; I offered auto-renew or 30/90 days).
   - **The APK in releases** (needs the signing key set up as GitHub secrets).
   - **Net speed meter spikes** (8 MB/s shown on his 800 KB/s line): fixed in code (4 s window, `PocketService`),
     not tried yet. Popups on switching modes removed (his ask). (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
