@@ -1,4 +1,4 @@
-# Ellune — Handover (live, Worker 0.3; security talk §7; v2.21 "the brain" done; v2.22 next; Nov 2 2026)
+# Ellune — Handover (live 0.3, 0.4 relay written not deployed; security talk §7; remote being built; Nov 2 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -48,6 +48,28 @@ doesn't cover is still his call: don't bake it in without him.
   "and"), else ""). Body read once with a size cap before the signature check (keys are public). Needs a **Workers
   AI binding named `AI`** (503 without it). `node test.mjs`: 58 checks with a stand-in AI. App side: `POCKET-HANDOVER.md`
   §11. **Deployed + tested by him Nov 2 (0.3 + the `AI` binding + the new APK): works.**
+- **Remote, being built (v2.22, started Nov 2; he said go).** Staged; each stage committed:
+  1. **Done: Ellune 0.4, the relay** (`src/index.js`, class `Room`, a Durable Object; `wrangler.toml` now has the
+     `ROOMS` binding + `new_sqlite_classes` migration + the `AI` binding). `GET /pc?room=R` (PC, WebSocket),
+     `GET /phone?room=R` (phone, WebSocket, one session), `GET /status?room=R` (`{"pc":bool}`), all guest-list
+     signed **with the query in the signed path**. R = hex(SHA-256("Loomy room" + the PC's pairing static public
+     key))[0..32]: both ends know it from the Bluetooth pairing, nothing new to exchange, a re-pair = a new room.
+     The room passes bytes (pocket.c frames, end-to-end encrypted) both ways untouched; text = signals ("phone" /
+     "gone" to the PC, "nopc" to the phone, "drop" from the PC; "ping" auto-answered "pong" without waking it).
+     One PC + one phone per room; replaced sockets are marked so their close doesn't signal twice. Frames > 1024
+     bytes close the sender. `node test.mjs`: 82 checks (fake DO runtime). **Deploy needs wrangler** (Durable
+     Objects can't be pasted in): he needs Node, the repo, `npx wrangler login`, `npx wrangler deploy` in `ellune/`.
+  2. **Next: the PC.** Rename `/phone` → **`/remote`** (his call) with checkboxes inside: **Allow Bluetooth**,
+     **Allow remote** (+ anything else important). The PC's own Ellune key (CNG ECDSA P-256 via bcrypt, private
+     blob DPAPI-protected in `%APPDATA%\Loomy\ellune.dat`), its ID + guest line shown in `/remote` with copy to
+     clipboard (paste into `DEVICES` once; password registration later). `PHONE_NET` in a new `phonenet.c`: a
+     WinHTTP WebSocket to `/pc?room=R` on a worker thread, reconnecting with backoff, pinging "ping" every 60 s,
+     posting to the UI thread; "phone" → `phone_on_accept(&PHONE_NET, ...)`, bytes → `phone_on_data`, "gone" →
+     `phone_on_closed`; `drop` sends "drop". Listens only when a phone is trusted and Allow remote is on. Junk
+     through the relay = the normal lockout of everything (his §7 choice).
+  3. **Then the app:** a tiny WebSocket client (no libraries: SSLSocket, masked client frames) as an `EllunePipe`
+     next to `BluetoothPipe` in Link.kt, used in Ellune mode; `Net` asks `/status` so the bar can say Online /
+     PC offline; `Voice.send` stops saying "comes with the next step".
 - **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
 - **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,

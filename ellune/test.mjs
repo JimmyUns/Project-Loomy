@@ -1,6 +1,6 @@
 // Runs the Worker's fetch handler locally: node test.mjs (Node 18+)
 // Optional: node test.mjs cross.json  also checks a request signed by the phone's real code (tests/jni writes it).
-import worker, { guestList, wavOk, cleanCommand } from "./src/index.js";
+import worker, { guestList, wavOk, cleanCommand, Room } from "./src/index.js";
 import { readFileSync } from "node:fs";
 
 let fails = 0, n = 0;
@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.3", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.4", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -141,6 +141,95 @@ const envAI = (answer) => ({ ...env, AI: AI(answer) });
   expect((await post("/understand", phone, say("y".repeat(301)), envAI({ response: "x" }))).status === 400, "understand: too long = 400");
   expect((await post("/understand", other, say("hi"), envAI({ response: "help" }))).status === 401, "understand: stranger refused");
   expect((await post("/understand", phone, say("hi"), envAI(new Error("busy")))).status === 503, "understand: AI fails = 503");
+}
+
+// ---- remote: the relay rooms, with a stand-in for Cloudflare's Durable Object + WebSocket runtime
+class FakeWs {
+  constructor(name) { this.name = name; this.sent = []; this.closed = null; this.att = null; this.peer = null; }
+  send(m) { if (this.closed) throw new Error("closed"); this.sent.push(m); }
+  close(code, why) { if (!this.closed) { this.closed = { code, why }; } }
+  serializeAttachment(a) { this.att = a; }
+  deserializeAttachment() { return this.att; }
+}
+class FakeCtx {
+  constructor() { this.socks = []; }
+  setWebSocketAutoResponse() {}
+  acceptWebSocket(ws, tags) { ws.tags = tags; this.socks.push(ws); }
+  getWebSockets(tag) { return this.socks.filter((w) => !w.closed && w.tags.includes(tag)); }
+  getTags(ws) { return ws.tags; }
+}
+let made = 0;
+function room() {
+  const ctx = new FakeCtx();
+  const r = new Room(ctx, {});
+  r.upgraded = (client) => ({ status: 101, client });
+  r.pair = () => { const a = new FakeWs("client" + made), b = new FakeWs("server" + made++); a.peer = b; return [a, b]; };
+  return { r, ctx };
+}
+const up = (role) => new Request("https://room/x", { headers: { "x-ellune-role": role, Upgrade: "websocket" } });
+async function join(r, ctx, role) { await r.fetch(up(role)); return ctx.socks[ctx.socks.length - 1]; }
+const texts = (ws) => ws.sent.filter((m) => typeof m === "string");
+{
+  const { r, ctx } = room();
+  const st0 = await (await r.fetch(new Request("https://room/x", { headers: { "x-ellune-role": "status" } }))).json();
+  expect(st0.pc === false, "room: no pc yet");
+  const lonely = await join(r, ctx, "phone");
+  expect(texts(lonely).includes("nopc") && lonely.closed && lonely.closed.code === 4004, "room: phone without a pc is told and closed");
+  const pc = await join(r, ctx, "pc");
+  expect((await (await r.fetch(new Request("https://room/x", { headers: { "x-ellune-role": "status" } }))).json()).pc === true, "room: status sees the pc");
+  const ph = await join(r, ctx, "phone");
+  expect(texts(pc).join(",") === "phone", "room: pc told a phone joined");
+  const hello = new Uint8Array([0, 3, 1, 2, 0]).buffer, conn = new Uint8Array([0, 2, 5, 9]).buffer;
+  r.webSocketMessage(pc, hello);
+  r.webSocketMessage(ph, conn);
+  expect(ph.sent.includes(hello) && pc.sent.includes(conn), "room: bytes pass both ways, untouched");
+  r.webSocketMessage(ph, "drop"); r.webSocketMessage(ph, "phone");
+  expect(!ph.closed && texts(pc).join(",") === "phone", "room: a phone's text is ignored (can't fake signals)");
+  r.webSocketMessage(ph, new Uint8Array(2000).buffer);
+  expect(ph.closed && ph.closed.code === 1009 && texts(pc).join(",") === "phone,gone", "room: an oversized frame closes the phone, pc told");
+  const ph2 = await join(r, ctx, "phone");
+  const ph3 = await join(r, ctx, "phone");
+  expect(ph2.closed && ph2.closed.code === 4001 && texts(pc).join(",") === "phone,gone,phone,gone,phone", "room: one phone at a time, pc told each change");
+  r.webSocketClose(ph2);
+  expect(texts(pc).length === 5, "room: closing a replaced phone says nothing more");
+  r.webSocketMessage(pc, "drop");
+  expect(ph3.closed && ph3.closed.code === 4002, "room: the pc can hang up");
+  r.webSocketClose(ph3);
+  expect(texts(pc).length === 5, "room: (dropped on purpose: no extra gone)");
+  const ph4 = await join(r, ctx, "phone");
+  r.webSocketClose(ph4); ph4.close(1000, "bye");
+  expect(texts(pc)[texts(pc).length - 1] === "gone", "room: a phone leaving tells the pc");
+  const ph5 = await join(r, ctx, "phone");
+  const pc2 = await join(r, ctx, "pc");
+  expect(pc.closed && pc.closed.code === 4000 && ph5.closed && ph5.closed.code === 4003, "room: a new pc connection replaces the old (and its phone)");
+  const ph6 = await join(r, ctx, "phone");
+  pc2.close(1006, "lost"); r.webSocketClose(pc2);
+  expect(ph6.closed && ph6.closed.code === 4003, "room: the pc leaving closes the phone");
+  expect((await r.fetch(new Request("https://room/x", { headers: { "x-ellune-role": "pc" } }))).status === 426, "room: websocket only");
+}
+// the Worker's door to the rooms: guest list, a proper room name, signed with the query, the role set by Ellune
+{
+  const roomName = "0123456789abcdef0123456789abcdef";
+  let seen = null;
+  const ROOMS = { idFromName: (n) => n, get: (id) => ({ fetch: async (req) => { seen = { id, role: req.headers.get("x-ellune-role"), up: req.headers.get("Upgrade") }; return reply200(); } }) };
+  function reply200() { return new Response("{}", { status: 200 }); }
+  const envR = { ...env, ROOMS };
+  async function door(path, signPath, extra = {}, who = phone, envX = envR) {
+    const h = await sign(who, "GET", signPath, now);
+    const { res } = await call("GET", path, { headers: { ...h, ...extra }, env: envX, now });
+    return res.status;
+  }
+  seen = null;
+  expect(await door(`/phone?room=${roomName}`, `/phone?room=${roomName}`, { Upgrade: "websocket", "x-ellune-role": "pc" }) === 200 &&
+         seen.id === roomName && seen.role === "phone" && seen.up === "websocket", "door: phone let in, role set by Ellune not the caller");
+  expect(await door(`/pc?room=${roomName}`, `/pc?room=${roomName}`, { Upgrade: "websocket" }) === 200 && seen.role === "pc", "door: pc let in");
+  expect(await door(`/status?room=${roomName}`, `/status?room=${roomName}`) === 200 && seen.role === "status" && !seen.up, "door: status");
+  expect(await door(`/phone?room=${roomName}`, `/phone`, { Upgrade: "websocket" }) === 401, "door: the room is part of what's signed");
+  expect(await door(`/phone?room=${roomName}`, `/phone?room=${roomName}`, { Upgrade: "websocket" }, other) === 401, "door: strangers refused");
+  expect(await door(`/phone?room=NOTAROOM`, `/phone?room=NOTAROOM`, { Upgrade: "websocket" }) === 400, "door: bad room name");
+  expect(await door(`/phone?room=${roomName}&x=1`, `/phone?room=${roomName}&x=1`, { Upgrade: "websocket" }) === 400, "door: nothing else in the query");
+  expect(await door(`/phone?room=${roomName}`, `/phone?room=${roomName}`) === 426, "door: phone needs a websocket");
+  expect(await door(`/pc?room=${roomName}`, `/pc?room=${roomName}`, { Upgrade: "websocket" }, phone, env) === 503, "door: no rooms binding = 503");
 }
 
 // ---- a request signed by the phone's real Kotlin code (tests/jni/run.sh writes it)

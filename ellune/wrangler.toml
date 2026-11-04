@@ -1,6 +1,19 @@
-# Only needed if you deploy with wrangler instead of the dashboard.
+# For `npx wrangler deploy` from this folder (needed since 0.4: Durable Objects can't be set up by pasting code).
 name = "ellune"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
 keep_vars = true   # never wipe the DEVICES list set in the dashboard
+
+# Whisper + the small LLM (/hear, /understand)
+[ai]
+binding = "AI"
+
+# remote: one room per paired PC (src/index.js, class Room)
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

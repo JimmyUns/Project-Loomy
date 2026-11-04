@@ -434,9 +434,6 @@ class MainActivity : Activity() {
         Net.refresh(this)
         if (Voice.state != Voice.State.OFF) { Pocket.stopTalking(this); Pocket.talk(this, true) }   // listen the new way
         Pocket.sync(this)
-        android.widget.Toast.makeText(this,
-            if (toBt) "Bluetooth mode: everything goes over Bluetooth, Ellune is left alone."
-            else "Ellune mode: online first, Bluetooth isn't used.", android.widget.Toast.LENGTH_SHORT).show()
         animateTheme(toBt)
     }
 
