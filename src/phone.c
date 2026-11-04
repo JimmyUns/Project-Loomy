@@ -753,7 +753,7 @@ int phone_char(WPARAM ch) {
         return 1;
     }
     if (!g_confirm && c == L'c') {                       // this PC's line for Ellune's guest list
-        log_add(net_copy_line() ? L"Copied this PC's guest line: paste it into Ellune's DEVICES (a new line)." : L"Couldn't copy the guest line.");
+        log_add(net_copy_line() ? L"Copied this PC's guest line: add it to Ellune's DEVICES (after a comma)." : L"Couldn't copy the guest line.");
         ui_redraw();
         return 1;
     }
@@ -895,10 +895,11 @@ void phone_paint(HDC dc, RECT a) {
                           g_cfg.phoneLocked ? L"Enter turn listening back on    Esc close" :
                           g_trust.have ? L"B Bluetooth    R remote    C copy guest line    F forget    Esc close" :
                           L"N new code    B Bluetooth    R remote    Esc close";
-    ui_text(dc, a.left, a.bottom - S(16), keys, C_DIM);
+    int kw = ui_text(dc, a.left, a.bottom - S(16), keys, C_DIM);
     const wchar_t *hint = L"names are what the phone claims";
     GetTextExtentPoint32W(dc, hint, s_len(hint), &sz);
-    ui_text(dc, a.right - sz.cx, a.bottom - S(16), hint, C_DIM);
+    if (a.left + kw + S(24) < a.right - sz.cx)            // only if it fits next to the keys (2.22: they got longer)
+        ui_text(dc, a.right - sz.cx, a.bottom - S(16), hint, C_DIM);
     SelectObject(dc, g_font);
 }
 

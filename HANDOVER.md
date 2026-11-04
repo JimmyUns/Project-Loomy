@@ -164,8 +164,9 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   **Round 2 made Ellune mode the default and Bluetooth an opt-in mode (blue theme)**: until remote exists, Ellune
   mode can't deliver commands, so **remote is now the urgent next step** (he called it "the mailing system").
   **Remote built Nov 2 (3 stages, `ELLUNE-HANDOVER.md` §2): Ellune 0.4 relay, the PC (`/phone` renamed `/remote`, his
-  call, with Allow Bluetooth / Allow remote; `phonenet.c` + `ellune.c`), the app (`EllunePipe`). Not run end to end
-  yet: he deploys 0.4 with wrangler and tests.** Popups on switching modes removed (his ask). (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
+  call, with Allow Bluetooth / Allow remote; `phonenet.c` + `ellune.c`), the app (`EllunePipe`). **Tested end to end
+  Nov 4: works** (a command with the phone's Bluetooth off reached the PC). Ellune is on 0.4 (deployed with wrangler
+  from his PC; Node installed). Still on his list: master-password registration. Popups on switching modes removed (his ask). (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
   1. **The app, redesigned.** Today's layout (buttons on top, then the log, settings at the very bottom) he called
      horrible. Wanted: a big mic in the middle with Loomy's halftone dots rippling out from its centre (calm idle,
      moving with the voice while listening); a cog (top right) holding all settings + the PC/pairing stuff; the

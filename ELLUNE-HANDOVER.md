@@ -75,7 +75,12 @@ doesn't cover is still his call: don't bake it in without him.
   3. **Done (not run end to end yet): the app.** As planned: a tiny WebSocket client (no libraries: SSLSocket, masked client frames) as an `EllunePipe`
      next to `BluetoothPipe` in Link.kt, used in Ellune mode; `Net` asks `/status` so the bar can say Online /
      PC offline; `Voice.send` stops saying "comes with the next step".
-  4. **To try it (his steps):** deploy 0.4 with wrangler (Node), run the test exe, `/remote` → C → paste the PC's
+  4. **WORKS END TO END (Nov 4, he tested): 0.4 deployed with wrangler, the PC in its room ("connected to Ellune"),
+     the app's bar "Online", a command with the phone's Bluetooth off reached the PC.** Gotchas from the setup: npx
+     not found until a new cmd window; wrangler's first download timed out once (just rerun); the first `DEVICES`
+     edit replaced the phone's line instead of adding (put both back, comma-separated); R had been pressed by
+     accident ("Remote not allowed" in the log). The PC is `W6VV-D6NH`, his phone `J000-NN38`.
+     Steps it took: deploy 0.4 with wrangler (Node), run the test exe, `/remote` → C → paste the PC's
      line into `DEVICES` (comma or new line), install the dev APK, Ellune mode (purple): the bar should say Online
      and commands should work with Bluetooth off.
 - **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
