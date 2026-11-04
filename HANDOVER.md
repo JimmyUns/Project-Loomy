@@ -159,7 +159,42 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.22 NEXT (agreed Nov 2, not started).** His list, in the order agreed (test each part before the next):
+- **v2.22 ENDED (Nov 4), PR #21 ready.** He called it done after the power button + tap-to-send / hold-to-mute.
+  Built but not all tried by him yet: QR pairing (after the mid-confirm fix), the setup screens by mode, the simpler
+  `/remote`, /shutdown no longer freezing, the net speed fix, power + tap/hold. **Next release's first job: the
+  APK in releases** (he has the steps: make `pocket-release.keystore` with `keytool` (Java), back it up, base64 it,
+  GitHub secrets `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD`; the release APK has another signature than the
+  dev one, so the dev app must be uninstalled once and the phone paired again).
+- **(the v2.22 history:) branch `claude/v2.22`.** Part 1 (items 1-3 below: redesign, modes, checkbox) built;
+  he tried it, feedback rounds 1 + 2 done (`POCKET-HANDOVER.md` §11), round 2 not tried yet.
+  **Round 2 made Ellune mode the default and Bluetooth an opt-in mode (blue theme)**: until remote exists, Ellune
+  mode can't deliver commands, so **remote is now the urgent next step** (he called it "the mailing system").
+  **Remote built Nov 2 (3 stages, `ELLUNE-HANDOVER.md` §2): Ellune 0.4 relay, the PC (`/phone` renamed `/remote`, his
+  call, with Allow Bluetooth / Allow remote; `phonenet.c` + `ellune.c`), the app (`EllunePipe`). **Tested end to end
+  Nov 4: works** (a command with the phone's Bluetooth off reached the PC). Ellune is on 0.4 (deployed with wrangler
+  from his PC; Node installed). Still on his list for **this release (v2.22)**:
+  - **Registration with Authy: BUILT Nov 4 (Ellune 0.5, `ELLUNE-HANDOVER.md` §2), he hasn't set it up yet.** Plan was: a TOTP secret (6 digits, 30 s)
+    in Ellune as a Cloudflare Secret and in his Authy; a new phone ("Add to guest list") or PC (C in `/remote`)
+    asks for the current code, Ellune checks it (a used code can't be reused), stores the device's key herself.
+    5 wrong tries → locked an hour. `DEVICES` stays as a backup. A device list with Remove in the app (needs a
+    code). The secret is made on his PC by a small script in `ellune/`, never in chat.
+  - **QR pairing: BUILT Nov 4, not tried by him yet.** (`phone.c`: `g_pairRoom` per code, `phone_net_room`, `qr_text`, the
+    QR drawn in the panel; `qr.c` wraps `src/qr/qrcodegen.c`; PHONE_NET moves rooms only between sessions. App:
+    `MainActivity.handleLink` / `askAuthyThenPair` / `qrPair`, `Link.pair(via=)`, Link's device is nullable,
+    `Pocket.ready` doesn't need a Bluetooth PC in Ellune mode. A QR pairing switches the app to Ellune mode.)
+    The plan was: `/remote` → N shows the code AND a QR
+    (`pocketloomy://pair?c=<8 digits>&r=<pairing room, 32 hex, random per code>&n=<PC name>`). He scans it with the
+    phone's normal camera app → Android opens Pocket Loomy (intent filter, no QR library in the app). The app makes
+    sure it's on Ellune's guest list (**his call: still asks for the Authy code, the QR alone isn't enough**), then
+    pairs through Ellune in that pairing room: the same CPace pairing + the Enter confirm on the PC, only the wire
+    differs. No Ellune change needed (rooms are generic; both ends are guests). PC: while a code is live and remote
+    is allowed, PHONE_NET sits in the pairing room instead of the trust room (`phone.c` decides the room). QR drawn
+    in C (vendor nayuki's qrcodegen, MIT). App: a QR-paired PC has no Bluetooth address, so Ellune mode must work
+    without `pcAddress` (Link takes a nullable device). Bluetooth pairing stays, behind Allow Bluetooth.
+    **Pairing stays 7 days** (his call; I offered auto-renew or 30/90 days).
+  - **The APK in releases** (needs the signing key set up as GitHub secrets).
+  - **Net speed meter spikes** (8 MB/s shown on his 800 KB/s line): fixed in code (4 s window, `PocketService`),
+    not tried yet. Popups on switching modes removed (his ask). (`POCKET-HANDOVER.md` §5 + §11). His list, in the order agreed (test each part first):
   1. **The app, redesigned.** Today's layout (buttons on top, then the log, settings at the very bottom) he called
      horrible. Wanted: a big mic in the middle with Loomy's halftone dots rippling out from its centre (calm idle,
      moving with the voice while listening); a cog (top right) holding all settings + the PC/pairing stuff; the

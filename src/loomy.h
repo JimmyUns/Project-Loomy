@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.21"
+#define LOOMY_VERSION L"2.22"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -148,6 +148,7 @@ void pkg_wheel(int notches);
 // ---------- phone.c (Pocket Loomy, PC side: /phone, pairing, the trusted phone, lockout) ----------
 // The protocol itself is pocket.c (shared with the Android app); Bluetooth is phonebt.c.
 #define WM_PHONE    (WM_APP + 3)        // socket events from WSAAsyncSelect
+#define WM_PHONENET (WM_APP + 9)        // phonenet.c's thread -> the UI thread (remote through Ellune)
 #define TIMER_PHONE 6                   // 1 s, only while a code is open or a phone is connected
 void cmd_phone(wchar_t *args);
 void phone_complete(const wchar_t *partial);
@@ -167,6 +168,10 @@ typedef struct PhoneLink {
     void (*drop)(void);                           // hang up on the connected phone
 } PhoneLink;
 extern const PhoneLink PHONE_BT;                  // phonebt.c
+extern const PhoneLink PHONE_NET;                 // phonenet.c (2.22): through Ellune, the PC connects out
+const unsigned char *phone_pc_pub(void);          // the PC's pairing public key (the relay room), or 0
+int  phone_net_room(char out[33]);                // 2.22: PHONE_NET's room: the pairing room (QR) or the trusted one
+int  net_in_room(const char room[33]);            // phonenet.c: is it in that room already?
 int  phone_on_accept(const PhoneLink *via, const wchar_t *from);   // a phone connected; 0 = turn it away
 void phone_on_data(const unsigned char *p, int n);
 void phone_on_closed(void);
@@ -182,6 +187,23 @@ void phone_wheel(int notches);
 // ---------- phonebt.c (Windows only: the Bluetooth link PHONE_BT, plus random, DPAPI, time) ----------
 void bt_event(WPARAM sock, LPARAM ev);  // WM_PHONE
 void bt_shutdown(void);                 // Loomy is closing: unregister and close everything
+
+// ---------- ellune.c (portable) + phonenet.c (Windows): remote through Ellune (2.22) ----------
+void el_sha256(const unsigned char *p, int n, unsigned char out[32]);
+void el_sha256_2(const unsigned char *p1, int n1, const unsigned char *p2, int n2, unsigned char out[32]);
+int  el_b64url(const unsigned char *p, int n, char *out, int cap);
+void el_device_id(const unsigned char pub[65], char out[10]);
+int  el_guest_line(const unsigned char pub[65], char *out, int cap);
+void el_room(const unsigned char pc_pk[32], char out[33]);
+int  el_signed_text(const char *method, const char *path, unsigned long long ms, char *out, int cap);
+int  el_signed_text_body(const char *method, const char *path, unsigned long long ms,
+                         const unsigned char *body, int n, char *out, int cap);
+int  net_register(const wchar_t *code, wchar_t *why, int cap);   // /remote add <Authy code>: 1 = this PC is a guest now
+const wchar_t *net_status(int *bad);    // the remote line in /remote ("connected to Ellune", ...)
+int  net_id(char out[10]);              // this PC's Ellune ID (makes its key the first time); 0 = no key
+int  net_copy_line(void);               // this PC's guest line -> the clipboard; 1 = done
+void net_event(WPARAM kind, LPARAM data); // WM_PHONENET
+void net_shutdown(void);
 int  os_random(void *p, int n);         // 1 = filled with secure random bytes
 int  os_protect(const unsigned char *in, int n, unsigned char *out, int cap, int unprotect);  // DPAPI, per user
 ULONGLONG os_now(void);                 // seconds, UTC
@@ -357,6 +379,8 @@ typedef struct {
     unsigned featuresOff;   // bit per feature turned off on this PC (/pkg)
     unsigned featuresOn;    // bit per opt-in feature turned on (phone)
     int      phoneLocked;   // the phone listener shut itself down after a bad connection
+    int      remoteBt;      // 2.22 /remote: phones may connect over Bluetooth (pairing always needs it)
+    int      remoteNet;     // 2.22 /remote: phones may connect through Ellune (remote)
 } Config;
 enum { ANIM_OFF, ANIM_AUTO, ANIM_ON };
 #define FADE_MIN  100

@@ -24,6 +24,8 @@ static void set_defaults(void) {
     g_cfg.featuresOff = 0;
     g_cfg.featuresOn = 0;
     g_cfg.phoneLocked = 0;
+    g_cfg.remoteBt = 1;
+    g_cfg.remoteNet = 1;
 }
 
 static int is_on(const wchar_t *v) {
@@ -107,6 +109,8 @@ static void parse(wchar_t *text) {
                 }
             }
             else if (s_ieq(k, L"phone_locked")) g_cfg.phoneLocked = is_on(v);
+            else if (s_ieq(k, L"remote_bluetooth")) g_cfg.remoteBt = is_on(v);
+            else if (s_ieq(k, L"remote_ellune")) g_cfg.remoteNet = is_on(v);
             else if (s_ieq(k, L"mode_hidden")) {         // "work" or "home, work"
                 g_cfg.modeHidden = 0;
                 for (wchar_t *p = v; *p; p++) if (*p == L',') *p = L' ';
@@ -149,10 +153,10 @@ void cfg_save(void) {
     wsprintfW(text + n0,
         L"animations = %s\r\nanim_dots = %s\r\nanim_lines = %s\r\nanim_select = %s\r\n"
         L"anim_text = %s\r\nfade_in = %s\r\nfade_ms = %d\r\nfeatures_off = %s\r\nfeatures_on = %s\r\n"
-        L"phone_locked = %s\r\n",
+        L"phone_locked = %s\r\nremote_bluetooth = %s\r\nremote_ellune = %s\r\n",
         g_cfg.anim == ANIM_OFF ? L"off" : g_cfg.anim == ANIM_ON ? L"on" : L"auto",
         onoff(g_cfg.animDots), onoff(g_cfg.animLines), onoff(g_cfg.animSelect),
-        onoff(g_cfg.animText), onoff(g_cfg.fadeIn), g_cfg.fadeMs, off, on, onoff(g_cfg.phoneLocked));
+        onoff(g_cfg.animText), onoff(g_cfg.fadeIn), g_cfg.fadeMs, off, on, onoff(g_cfg.phoneLocked), onoff(g_cfg.remoteBt), onoff(g_cfg.remoteNet));
     char utf8[4096];
     int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, sizeof(utf8), 0, 0) - 1;
     HANDLE f = CreateFileW(g_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);

@@ -42,22 +42,29 @@ class Store(ctx: Context) {
     var showNotif: Boolean
         get() = prefs.getBoolean("show_notif", true)
         set(v) { prefs.edit().putBoolean("show_notif", v).apply() }
-    /** after Talk, keep listening (for "yo/ayo Loomy ...") until stopped */
-    var keepListening: Boolean
-        get() = prefs.getBoolean("keep_listening", false)
-        set(v) { prefs.edit().putBoolean("keep_listening", v).apply() }
     /** the small card over other apps when Talk is pressed in the notification */
     var talkCard: Boolean
         get() = prefs.getBoolean("talk_card", true)
         set(v) { prefs.edit().putBoolean("talk_card", v).apply() }
-    /** solo mode: no "Loomy" needed, everything heard while keep-listening is a command (for when he's alone) */
+    /** the Listening mode (2.22): false = Say "Loomy" (everything after her name), true = Solo (everything said) */
     var solo: Boolean
         get() = prefs.getBoolean("solo", false)
         set(v) { prefs.edit().putBoolean("solo", v).apply() }
-    /** 2.21: let Ellune hear (Whisper) and understand when online and on her guest list (Voice.kt) */
-    var elluneSpeech: Boolean
-        get() = prefs.getBoolean("ellune_speech", true)
-        set(v) { prefs.edit().putBoolean("ellune_speech", v).apply() }
+    /** 2.22: how Pocket Loomy reaches the PC. false (default) = through Ellune (online first, his call): no
+     *  Bluetooth checks at all. true = Bluetooth mode (the blue theme): Bluetooth only, Ellune ignored entirely.
+     *  Only he switches it (the Bluetooth button over the mic); nothing switches it by itself. */
+    var btMode: Boolean
+        get() = prefs.getBoolean("bt_mode", false)
+        set(v) { prefs.edit().putBoolean("bt_mode", v).apply() }
+    /** 2.22: the background grid's strength, 0..100 (Visuals in the settings) */
+    var gridOpacity: Int
+        get() = prefs.getInt("grid_opacity", 50)
+        set(v) { prefs.edit().putInt("grid_opacity", v.coerceIn(0, 100)).apply() }
+    /** 2.22: ticked = only the phone's own recognizer and phrase rules, Ellune never hears anything.
+     *  Unticked (default) = Ellune hears the command and her AI picks it; offline the phone is the only option. */
+    var phoneEar: Boolean
+        get() = prefs.getBoolean("phone_ear", false)
+        set(v) { prefs.edit().putBoolean("phone_ear", v).apply() }
     /** the phone's up/down speed in the status bar */
     var netSpeed: Boolean
         get() = prefs.getBoolean("net_speed", false)

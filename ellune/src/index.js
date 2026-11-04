@@ -6,6 +6,13 @@
 //             ->  200 {"ok":true,"heard":"loomy turn the screens off"}  (Whisper, via the AI binding)
 // POST /understand (guest list) body: {"text":"make the screens go dark"}
 //             ->  200 {"ok":true,"command":"display off"}  ("" when it isn't a Loomy command)
+// GET /pc?room=R     (guest list, WebSocket) the PC connects OUT and waits for its phone      \  remote (0.4):
+// GET /phone?room=R  (guest list, WebSocket) the phone joins its PC's room for one session      >  the relay,
+// GET /status?room=R (guest list)            -> {"ok":true,"pc":true}  is the PC connected?   /  see Room below
+// POST /register    {"code":"123456","name":"phone-J000-NN38"}  signed by the NEW key itself: with the current
+//                   Authy code a device puts itself on the guest list (0.5, his idea: no copy-pasting)
+// GET  /devices     (guest list) -> {"devices":[{"name","key","from":"app"|"dashboard"}]}
+// POST /remove      {"key":"...","code":"123456"} (guest list): throw a device out (one added from the app)
 // anything else on a known path -> 405, any other path -> 404.
 // No storage, no logging of who asked or what was said. Audio and text only go to Cloudflare's Workers AI
 // (it doesn't train on them) and are gone after the answer. Needs a Workers AI binding named AI
@@ -21,7 +28,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.3";
+const VERSION = "0.5";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -35,6 +42,89 @@ function reply(status, body, extra = {}) {
     },
   });
 }
+
+// ---------------------------------------------------------------- Authy (TOTP, RFC 6238: 6 digits, 30 s)
+// The secret is a Cloudflare Secret (TOTP_SECRET, base32), made on his PC by totp-setup.mjs and added to Authy
+// there: it never passes through anything else. A code works once (the last used time-step is kept), one step
+// either side is allowed for clock drift, and 5 wrong codes lock registration and removal for an hour.
+function base32(s) {
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const clean = String(s || "").toUpperCase().replace(/[\s=-]/g, "");
+  let bits = 0, v = 0;
+  const out = [];
+  for (const ch of clean) {
+    const i = A.indexOf(ch);
+    if (i < 0) return null;
+    v = (v << 5) | i; bits += 5;
+    if (bits >= 8) { out.push((v >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return out.length >= 10 ? new Uint8Array(out) : null;
+}
+
+export async function totp(secret, step) {
+  const key = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const msg = new Uint8Array(8);
+  let c = step;
+  for (let i = 7; i >= 0; i--) { msg[i] = c % 256; c = Math.floor(c / 256); }
+  const h = new Uint8Array(await crypto.subtle.sign("HMAC", key, msg));
+  const o = h[19] & 15;
+  const n = ((h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3]) % 1000000;
+  return String(n).padStart(6, "0");
+}
+
+// the time-step a code belongs to (now, or one either side), if it's newer than the last one used; else 0
+export async function codeStep(secretB32, code, now, lastStep) {
+  const secret = base32(secretB32);
+  if (!secret || !/^\d{6}$/.test(String(code || ""))) return 0;
+  const t = Math.floor(now / 30000);
+  for (const step of [t, t - 1, t + 1]) if (step > lastStep && (await totp(secret, step)) === code) return step;
+  return 0;
+}
+
+// One object holds the devices added with a code, the lockout and the last used step (one instance, so it's all
+// atomic). Its own storage; Ellune keeps nothing else.
+export class Guests {
+  constructor(ctx, env) { this.ctx = ctx; this.env = env; }
+  async fetch(request) {
+    const what = new URL(request.url).pathname;
+    const st = this.ctx.storage;
+    const devices = (await st.get("devices")) || {};
+    if (what === "/list") return reply(200, { ok: true, devices });
+    let b = {};
+    try { b = await request.json(); } catch {}
+    const now = Number(b.now) || Date.now();
+    if (!this.env || !this.env.TOTP_SECRET) return reply(503, { ok: false, error: "registration isn't set up (no TOTP_SECRET)" });
+    const lock = (await st.get("lock")) || { fails: 0, until: 0 };
+    if (now < lock.until) return reply(429, { ok: false, error: "locked for an hour after 5 wrong codes" });
+    const step = await codeStep(this.env.TOTP_SECRET, b.code, now, (await st.get("last")) || 0);
+    if (!step) {
+      lock.fails++;
+      if (lock.fails >= 5) { lock.fails = 0; lock.until = now + 3600000; }
+      await st.put("lock", lock);
+      return reply(403, { ok: false, error: lock.until > now ? "wrong code: locked for an hour" : "wrong code" });
+    }
+    await st.put("last", step);
+    await st.put("lock", { fails: 0, until: 0 });
+    if (what === "/register") devices[b.key] = { name: b.name, added: now };
+    else if (what === "/remove") delete devices[b.key];
+    await st.put("devices", devices);
+    return reply(200, { ok: true });
+  }
+}
+
+let cache = { at: 0, devices: {} };                // the added devices, kept a minute per Worker instance
+async function added(env, now) {
+  if (!env || !env.GUESTS) return {};
+  if (cache.at && now - cache.at < 60000) return cache.devices;
+  try {
+    const r = await guestsStub(env).fetch(new Request("https://guests/list"));
+    const j = await r.json();
+    cache = { at: now, devices: j.devices || {} };
+  } catch {}
+  return cache.devices;
+}
+const guestsStub = (env) => env.GUESTS.get(env.GUESTS.idFromName("guests"));
+export function resetGuestCache() { cache = { at: 0, devices: {} }; }
 
 // ---------------------------------------------------------------- the guest list
 const B64URL = /^[A-Za-z0-9_-]+$/;
@@ -98,8 +188,14 @@ async function guest(request, env, path, now, body) {
   const time = request.headers.get("x-ellune-time");
   const sig = request.headers.get("x-ellune-sig");
   if (!key || !time || !sig) return { why: "not signed" };
-  const name = guestList(env && env.DEVICES).get(key);
+  let name = guestList(env && env.DEVICES).get(key);
+  if (!name) { const a = (await added(env, now))[key]; if (a) name = a.name; }
   if (!name) return { why: "not on the guest list" };
+  return sigCheck(request, path, now, body, key, time, sig, name);
+}
+
+// the signature on a request, by `key` (listed or, for /register, the key asking to be listed)
+async function sigCheck(request, path, now, body, key, time, sig, name) {
   if (!/^\d{1,15}$/.test(time) || Math.abs(now - Number(time)) > SKEW_MS) return { why: "clock off (over 60 s)" };
   const sigBytes = b64urlBytes(sig);
   if (!sigBytes || sigBytes.length !== 64) return { why: "bad signature" };
@@ -203,6 +299,146 @@ async function understand(body, ai) {
   }
 }
 
+// ---------------------------------------------------------------- remote: the relay (a blind post office)
+// R = a room name both ends already know from their Bluetooth pairing: hex of SHA-256("Loomy room" + the PC's
+// pairing public key), first 32 characters. Ellune learns nothing from it, and a new pairing means a new room.
+// Inside a room: one PC socket and at most one phone socket; bytes from one go to the other, untouched. They're
+// Pocket Loomy's own end-to-end encrypted frames (pocket.c): Ellune can't read, change or replay them, only pass
+// them on or not. Text messages are the room's own signals:
+//   to the PC:    "phone" (a phone joined: start a session, say HELLO), "gone" (it left)
+//   to the phone: "nopc" (the PC isn't connected; then closed), the PC leaving closes the phone too
+//   from the PC:  "drop" (hang up on the phone), "ping" (answered "pong" without waking the room)
+// Uses a Durable Object (ROOMS binding, SQLite class, free plan) with WebSocket hibernation, so an idle PC
+// connection costs nothing.
+const ROOM = /^[a-f0-9]{32}$/;
+const MAX_FRAME = 1024;                            // pocket.c frames are at most 514 bytes
+
+export class Room {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.env = env;
+    try { ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong")); } catch {}
+  }
+
+  // overridable in tests (Node can't make a 101 response)
+  upgraded(client) { return new Response(null, { status: 101, webSocket: client }); }
+  pair() { const p = new WebSocketPair(); return [p[0], p[1]]; }
+
+  quietClose(ws, code, why) {
+    try { ws.serializeAttachment({ replaced: true }); } catch {}
+    try { ws.close(code, why); } catch {}
+  }
+
+  async fetch(request) {
+    const role = request.headers.get("x-ellune-role");
+    const pcs = this.ctx.getWebSockets("pc");
+    if (role === "status") return reply(200, { ok: true, pc: pcs.length > 0 });
+    if (request.headers.get("Upgrade") !== "websocket") return reply(426, { ok: false, error: "websocket only" });
+    const [client, server] = this.pair();
+    if (role === "pc") {
+      for (const old of pcs) this.quietClose(old, 4000, "another PC connection took over");
+      for (const p of this.ctx.getWebSockets("phone")) this.quietClose(p, 4003, "pc reconnected");
+      this.ctx.acceptWebSocket(server, ["pc"]);
+      return this.upgraded(client);
+    }
+    // a phone: one at a time, and only if the PC is there
+    for (const old of this.ctx.getWebSockets("phone")) {
+      this.quietClose(old, 4001, "another phone session took over");
+      for (const pc of pcs) try { pc.send("gone"); } catch {}
+    }
+    this.ctx.acceptWebSocket(server, ["phone"]);
+    if (pcs.length === 0) { try { server.send("nopc"); } catch {} this.quietClose(server, 4004, "pc offline"); }
+    else for (const pc of pcs) try { pc.send("phone"); } catch {}
+    return this.upgraded(client);
+  }
+
+  webSocketMessage(ws, msg) {
+    const isPc = this.ctx.getTags(ws).includes("pc");
+    if (typeof msg === "string") {
+      if (isPc && msg === "drop") for (const p of this.ctx.getWebSockets("phone")) this.quietClose(p, 4002, "the pc hung up");
+      return;                                       // anything else in text is ignored
+    }
+    if (msg.byteLength > MAX_FRAME) { this.quietClose(ws, 1009, "too big"); if (!isPc) this.tellPcGone(); return; }
+    for (const to of this.ctx.getWebSockets(isPc ? "phone" : "pc")) try { to.send(msg); } catch {}
+  }
+
+  tellPcGone() { for (const pc of this.ctx.getWebSockets("pc")) try { pc.send("gone"); } catch {} }
+
+  webSocketClose(ws) { this.closed(ws); }
+  webSocketError(ws) { this.closed(ws); }
+
+  closed(ws) {
+    let a = null;
+    try { a = ws.deserializeAttachment(); } catch {}
+    if (a && a.replaced) return;                    // we closed it on purpose and already said so
+    if (this.ctx.getTags(ws).includes("pc")) {
+      for (const p of this.ctx.getWebSockets("phone")) this.quietClose(p, 4003, "pc gone");
+    } else {
+      this.tellPcGone();
+    }
+  }
+}
+
+async function relay(request, env, url, path, now) {
+  if (request.method !== "GET") return reply(405, { ok: false, error: "method not allowed" }, { allow: "GET" });
+  const room = url.searchParams.get("room") || "";
+  if (!ROOM.test(room) || url.search !== `?room=${room}`) return reply(400, { ok: false, error: "bad room" });
+  const body = await readCapped(request, 0);
+  if (!body) return reply(413, { ok: false, error: "too big" });
+  const g = await guest(request, env, path + url.search, now, body);
+  if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
+  if (!env || !env.ROOMS) return reply(503, { ok: false, error: "no rooms binding" });
+  if (path !== "/status" && request.headers.get("Upgrade") !== "websocket") return reply(426, { ok: false, error: "websocket only" });
+  // a fresh request: only what the room needs, so nobody outside can set the role
+  const headers = { "x-ellune-role": path.slice(1) };
+  if (path !== "/status") headers.Upgrade = "websocket";
+  const stub = env.ROOMS.get(env.ROOMS.idFromName(room));
+  return stub.fetch(new Request("https://room/" + path.slice(1), { headers }));
+}
+
+// ---------------------------------------------------------------- registration
+async function register(request, env, path, now) {
+  if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" }, { allow: "POST" });
+  const body = await readCapped(request, 1024);
+  if (!body) return reply(413, { ok: false, error: "too big" });
+  if (!env || !env.GUESTS) return reply(503, { ok: false, error: "no guests binding" });
+  let b = {};
+  try { b = JSON.parse(new TextDecoder().decode(body)); } catch {}
+  const key = request.headers.get("x-ellune-key") || "";
+  const kb = b64urlBytes(key);
+  if (!kb || kb.length !== 65 || kb[0] !== 4) return reply(400, { ok: false, error: "bad key" });
+  if (!NAME.test(String(b.name || ""))) return reply(400, { ok: false, error: "bad name" });
+  // the request must be signed by the key being added: nobody can add someone else's key
+  const g = await sigCheck(request, path, now, body, key, request.headers.get("x-ellune-time"), request.headers.get("x-ellune-sig"), b.name);
+  if (!g.name) return reply(401, { ok: false, error: g.why });
+  const r = await guestsStub(env).fetch(new Request("https://guests/register", { method: "POST",
+    body: JSON.stringify({ key, name: b.name, code: String(b.code || ""), now }) }));
+  resetGuestCache();
+  return r;
+}
+
+async function devices(request, env, path, now) {
+  const isList = path === "/devices";
+  if (request.method !== (isList ? "GET" : "POST")) return reply(405, { ok: false, error: "method not allowed" });
+  const body = await readCapped(request, 1024);
+  if (!body) return reply(413, { ok: false, error: "too big" });
+  const g = await guest(request, env, path, now, body);
+  if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
+  if (!env || !env.GUESTS) return reply(503, { ok: false, error: "no guests binding" });
+  if (isList) {
+    const out = [];
+    for (const [key, name] of guestList(env.DEVICES)) out.push({ name, key, from: "dashboard" });
+    for (const [key, d] of Object.entries(await added(env, now))) out.push({ name: d.name, key, from: "app" });
+    return reply(200, { ok: true, devices: out });
+  }
+  let b = {};
+  try { b = JSON.parse(new TextDecoder().decode(body)); } catch {}
+  const r = await guestsStub(env).fetch(new Request("https://guests/remove", { method: "POST",
+    body: JSON.stringify({ key: String(b.key || ""), code: String(b.code || ""), now }) }));
+  resetGuestCache();
+  return r;
+}
+
 // ---------------------------------------------------------------- routes
 export default {
   async fetch(request, env, ctx, now = Date.now()) {
@@ -222,6 +458,10 @@ export default {
       if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
       return reply(200, { ok: true, guest: true, name: g.name });
     }
+
+    if (path === "/pc" || path === "/phone" || path === "/status") return relay(request, env, new URL(request.url), path, now);
+    if (path === "/register") return register(request, env, path, now);
+    if (path === "/devices" || path === "/remove") return devices(request, env, path, now);
 
     if (path === "/hear" || path === "/understand") {
       if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" }, { allow: "POST" });

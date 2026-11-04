@@ -18,7 +18,7 @@ enum class LinkState { IDLE, CONNECTING, CONNECTED }
 
 /**
  * A pipe the encrypted bytes travel through. Link (and the security in pocket.c) never cares what it is:
- * Bluetooth today; an internet relay can be another Pipe later without touching the protocol.
+ * Bluetooth (BluetoothPipe), or Ellune's relay (EllunePipe, remote, 2.22). The protocol never changes.
  */
 interface Pipe {
     val input: InputStream
@@ -57,16 +57,20 @@ class Link {
     private var h = 0L
     private var idle: ScheduledFuture<*>? = null
 
+    /** remote (2.22): set in Ellune mode, null in Bluetooth mode (Pocket.syncPipe). Pairing is always Bluetooth. */
+    @Volatile var viaEllune: (() -> Pipe)? = null
+
     /** called on the worker thread whenever the connection changes */
     var onState: (LinkState) -> Unit = {}
 
     /** waiting(id): the code was right and the PC now asks you to confirm; show this phone's ID */
-    fun pair(device: BluetoothDevice, code: String, myName: ByteArray, waiting: (String) -> Unit, done: (Result<Trust>) -> Unit) {
-        worker.execute { done(runCatching { doPair(device, code, myName, waiting) }) }
+    /** pairing: over Bluetooth, or (2.22, QR) through Ellune's pairing room when `via` is given */
+    fun pair(device: BluetoothDevice?, code: String, myName: ByteArray, waiting: (String) -> Unit, via: (() -> Pipe)? = null, done: (Result<Trust>) -> Unit) {
+        worker.execute { done(runCatching { doPair(device, code, myName, waiting, via) }) }
     }
 
     /** a command; the result is Loomy's answer */
-    fun send(device: BluetoothDevice, trust: Trust, myName: ByteArray, text: String, done: (Result<String>) -> Unit) {
+    fun send(device: BluetoothDevice?, trust: Trust, myName: ByteArray, text: String, done: (Result<String>) -> Unit) {
         worker.execute {
             done(runCatching {
                 val bytes = text.toByteArray(Charsets.UTF_8)
@@ -82,14 +86,14 @@ class Link {
     }
 
     /** "still here": the PC shows it as last seen */
-    fun ping(device: BluetoothDevice, trust: Trust, myName: ByteArray, done: (Result<Unit>) -> Unit) {
+    fun ping(device: BluetoothDevice?, trust: Trust, myName: ByteArray, done: (Result<Unit>) -> Unit) {
         worker.execute {
             done(runCatching { session(device, trust, myName) { Native.sendPing(h); pumpUntil(Native.EV_PONG, 15) } })
         }
     }
 
     /** a failed attempt, so the PC can show it too. Best effort: nobody waits for it. */
-    fun note(device: BluetoothDevice, trust: Trust, myName: ByteArray, heard: String) {
+    fun note(device: BluetoothDevice?, trust: Trust, myName: ByteArray, heard: String) {
         worker.execute {
             runCatching {
                 var b = heard.toByteArray(Charsets.UTF_8)
@@ -100,7 +104,7 @@ class Link {
     }
 
     /** tell the PC this phone forgot it, then hang up */
-    fun forget(device: BluetoothDevice, trust: Trust, myName: ByteArray, done: (Result<Unit>) -> Unit) {
+    fun forget(device: BluetoothDevice?, trust: Trust, myName: ByteArray, done: (Result<Unit>) -> Unit) {
         worker.execute {
             done(runCatching {
                 try { session(device, trust, myName) { Native.sendForget(h); flushOut() } } finally { hangUp() }
@@ -111,14 +115,18 @@ class Link {
     fun close() { worker.execute { hangUp() } }
 
     // ------------------------------------------------------------------ pairing
-    private fun doPair(device: BluetoothDevice, code: String, name: ByteArray, waiting: (String) -> Unit): Trust {
+    private fun doPair(device: BluetoothDevice?, code: String, name: ByteArray, waiting: (String) -> Unit, via: (() -> Pipe)? = null): Trust {
         hangUp()
         h = Native.create()
         var asked = false
         onAwait = { if (!asked && Native.awaitingPc(h)) { asked = true; waiting(Native.phoneId(h)) } }
         try {
             Native.initPhone(h, code.toByteArray(Charsets.US_ASCII), null, null, null, name)
-            open(device)
+            if (via == null) open(device, bluetooth = true)   // pairing in person: over Bluetooth, or the QR (via Ellune)
+            else {
+                onState(LinkState.CONNECTING)
+                pipe = try { via() } catch (e: NoPcException) { throw PocketError("Your PC isn't waiting: open /remote on the PC and press N for a new code.") }
+            }
             pumpUntil(Native.EV_PAIRED, 80)                  // includes up to a minute for Enter on the PC
             val keys = Native.myKeys(h)
             val t = Trust(keys.copyOfRange(0, 32), keys.copyOfRange(32, 64), Native.peerKey(h),
@@ -137,7 +145,7 @@ class Link {
     // ------------------------------------------------------------------ a trusted connection
     // run `op` on a ready connection: reuse the kept one, or connect. A kept one can go stale
     // (Loomy reloaded, the PC slept), so an I/O error on it gets one retry on a fresh connection.
-    private fun <T> session(device: BluetoothDevice, trust: Trust, name: ByteArray, op: () -> T): T {
+    private fun <T> session(device: BluetoothDevice?, trust: Trust, name: ByteArray, op: () -> T): T {
         idle?.cancel(false)
         for (attempt in 0..1) {
             val fresh = h == 0L || pipe == null || !Native.ready(h)
@@ -149,6 +157,9 @@ class Link {
             } catch (e: PocketError) {
                 hangUp()
                 throw e
+            } catch (e: NoPcException) {
+                hangUp()
+                throw PocketError("Your PC isn't connected to Ellune: it's off or asleep, Loomy isn't running, or remote is off in /remote (R).")
             } catch (e: IOException) {
                 hangUp()
                 if (fresh || attempt == 1) throw PocketError(unreachable(device))
@@ -157,7 +168,7 @@ class Link {
         throw PocketError(unreachable(device))
     }
 
-    private fun connect(device: BluetoothDevice, trust: Trust, name: ByteArray) {
+    private fun connect(device: BluetoothDevice?, trust: Trust, name: ByteArray) {
         hangUp()
         h = Native.create()
         Native.initPhone(h, null, trust.sk, trust.pk, trust.pcPk, name)
@@ -167,8 +178,11 @@ class Link {
     }
 
     // ------------------------------------------------------------------ plumbing
-    private fun open(device: BluetoothDevice) {
+    private fun open(device: BluetoothDevice?, bluetooth: Boolean = false) {
         onState(LinkState.CONNECTING)
+        val ellune = if (bluetooth) null else viaEllune
+        if (ellune != null) { pipe = ellune(); return }
+        if (device == null) throw PocketError("No PC chosen for Bluetooth: pick it in the app, or use Ellune mode.")
         pipe = BluetoothPipe.open(device) { p ->
             val dog = watchdog.schedule({ p.close() }, 15, TimeUnit.SECONDS)
             val cancel: () -> Unit = { dog.cancel(false) }
@@ -225,13 +239,14 @@ class Link {
         if (had) onState(LinkState.IDLE)
     }
 
-    private fun unreachable(device: BluetoothDevice) =
-        "Couldn't reach Loomy on ${device.name ?: device.address}. Check that Bluetooth is on, the PC is close, " +
-        "and Loomy has the phone feature on (/pkg add phone). If Loomy shut listening down, Enter in /phone turns it back on."
+    private fun unreachable(device: BluetoothDevice?) = if (viaEllune != null)
+        "Couldn't reach your PC through Ellune. Check the phone's internet, and that Loomy is running with remote allowed (/remote, R)." else
+        "Couldn't reach Loomy on ${device?.name ?: device?.address ?: "your PC"}. Check that Bluetooth is on, the PC is close, " +
+        "and Loomy has the phone feature on (/pkg add phone). If Loomy shut listening down, Enter in /remote turns it back on."
 
     private fun failMessage(f: Int) = when (f) {
-        Native.F_NOPAIRING -> "Loomy isn't showing a pairing code. Type /phone on the PC first."
-        Native.F_CODE -> "Wrong code. Loomy used that one up: press N in /phone for a new one and try again."
+        Native.F_NOPAIRING -> "Loomy isn't showing a pairing code. Type /remote on the PC first."
+        Native.F_CODE -> "Wrong code. Loomy used that one up: press N in /remote for a new one and try again."
         Native.F_NOTRUST -> "Loomy doesn't trust this phone (any more). Pair again."
         Native.F_AUTH -> "Loomy didn't recognise this phone. It may have been forgotten on the PC. Pair again."
         Native.F_VERSION -> "Loomy on the PC and this app speak different versions. Update both to the same release."

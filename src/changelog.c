@@ -13,6 +13,15 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.22", L"2026-11-02", {
+        L"Pocket Loomy redesigned: a mic with Loomy's dots, settings behind a gear.",
+        L"The mic shows what's happening; \"Loomy\" is caught better (lumi, lumie...).",
+        L"Two ways to listen: Say \"Loomy\" or Solo; \"thank you\" ends a sentence.",
+        L"Online first: Ellune by default; the Bluetooth button turns the app blue.",
+        L"Remote: your phone reaches the PC through Ellune, from anywhere.",
+        L"/phone is now /remote: pair by QR (no Bluetooth); B and R allow each way.",
+        L"Tap the mic to send, hold it to mute; off shows a power button.",
+        0 } },
     { L"2.21", L"2026-11-02", {
         L"Ellune's guest list: she only serves devices you added.",
         L"Pocket Loomy: Add to guest list, and Ping Ellune checks it.",

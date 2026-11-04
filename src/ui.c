@@ -425,6 +425,7 @@ static void tray_menu(void) {
 // ---------------------------------------------------------------- shutdown / restart
 static void cleanup(void) {
     bt_shutdown();                         // phone: unregister the Bluetooth service, close sockets
+    net_shutdown();                        // remote: close the connection to Ellune
     UnregisterHotKey(g_wnd, HOTKEY_ID);
     Shell_NotifyIconW(NIM_DELETE, &g_nid);
     if (g_mutex) { CloseHandle(g_mutex); g_mutex = 0; }
@@ -844,6 +845,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     case WM_HOTKEY: if (wp == HOTKEY_ID) toggle(); return 0;
     case WM_LOOMY_SHOW: show(); return 0;
     case WM_PHONE: bt_event(wp, lp); return 0;
+    case WM_PHONENET: net_event(wp, lp); return 0;
     case WM_TIMER:
         if (wp == TIMER_SCREENS) {
             KillTimer(w, TIMER_SCREENS);

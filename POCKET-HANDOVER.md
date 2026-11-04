@@ -230,10 +230,14 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
     pings every 5 min, first one at once; 3 misses in a row = turns itself off), `PocketTile` (on/off tile, opens
     the app when it can't turn on), `TalkActivity` (translucent card: listens at once, sends, shows the answer,
     closes; tap card = again), `Ear` (SpeechRecognizer with partial results + mic level).
-  - `MainActivity` is drawn from state (`render()`): setup steps 1 (PC) / 2 (pair) until paired; then PC card with
-    the On switch, a Talk button that glows with the mic level while listening, the live transcript, the last
-    answer, typing, history; a status chip (not paired / listening / pairing / talking to Loomy / connecting /
-    connected / can't reach PC / on / off). Battery-optimization exemption asked once when first turned on.
+  - `MainActivity` is drawn from state (`render()`). **Redesigned in 2.22** (his brief, see §11): title + status
+    chip + a gear (`GearView`) on top; the latest history line in a pill under it (tap: the whole history,
+    newest first, over the screen); `MicView` in the middle (round mic button, halftone dots rippling out, calm
+    idle / swelling with the voice / pulsing while sending; paused behind the layers); the live text; the mode
+    button (Say "Loomy" / Solo, a dialog); typing. Until paired, setup steps 1 (PC) / 2 (pair) sit where the mic is.
+    The gear opens Settings over the screen: Your PC (name, paired until, On switch, Change PC, Forget), Listening
+    (the two modes + the "Use the phone's recognizer" checkbox), Ellune (ID, Ping, Add to guest list), App
+    (Notification, Talk card, Net speed). Back closes the layers. Battery exemption asked once when first turned on.
   - `Store.on` + `PocketService.running`; `Pocket.fixStaleOn` resets "on" if the process died without onDestroy.
 - Keep-listening with the "yo/ayo Loomy" greeting is built (§12). Not yet: auto-off after idle time.
 - **Signing:** dev builds (branches) use `pocket/dev.keystore` (committed on purpose, password `pocketdev`,
@@ -264,23 +268,82 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   list or not), **Add to guest list** (copies the line + a dialog saying where it goes, Share to send it to the PC).
   tests/jni: 184 checks + a signed request handed to `ellune/test.mjs` (the Worker's real code verifies it).
 
-- **Ellune listening (2.21), setting "Understand me through Ellune" (`Store.elluneSpeech`, default on):**
-  `ElluneEar.kt` records itself (AudioRecord, VOICE_RECOGNITION source, 16 kHz mono; 4 tries if the recognizer
-  still holds the mic), `Vad` in `Sound.kt` finds start/end (noise floor, 60 ms to start, 1 s quiet ends, 6 s
-  wait, 10 s max, 300 ms kept each side), `Sound.wav` → `Ellune.hearNow` → `heard(listOf(text))`: the same pipeline
-  as Android's recognizer, so names, solo, keys, controls all work unchanged. **Which ear** (`Voice.wantEllune`):
-  Ellune only for a Talk tap (once), "Loomy" + pause (armed), solo while awake; never while waiting for "Loomy"
-  in keep-listening and never in input mode (what isn't said to Loomy stays on the phone, as promised him).
-  Needs the setting, a key, `ElluneEar.online` (validated internet; ACCESS_NETWORK_STATE) and no recent failure
-  (`elluneDownUntil`: 2 min, 10 min if refused by the guest list). On failure: a history note, then Android's ear
-  ("say it again"). Offline/unavailable is shown in `partial`. **AI fallback:** `Words.knows(cmd)` false (first
-  word of a part isn't a Loomy word) → `Ellune.understandNow(said)` → sent as is, history shows "said → sent";
-  if she can't answer, the old behaviour (rules' guess or a miss). tests/jni: 203 checks (WAV, Vad, JSON, knows)
-  + the phone's /hear and /understand requests checked by the Worker's code. **He tested it on his phone (Nov 2): works.**
-
-- **v2.22 (agreed, not started):** the app gets redesigned, one Listening dropdown (Say "Loomy" / Solo, "thank you"
-  ends a sentence), a phone-recognizer checkbox instead of auto switching, password registration, remote. Full list
-  in `HANDOVER.md` §6. The notification stays as it is.
+- **Ellune listening (2.21, reworked 2.22):** `ElluneEar.kt` records itself (AudioRecord, VOICE_RECOGNITION
+  source, 16 kHz mono; 4 tries if the recognizer still holds the mic), `Vad` in `Sound.kt` finds start/end (noise
+  floor, 60 ms to start, 1 s quiet ends, 6 s wait, 10 s max, 300 ms kept each side), `Sound.wav` →
+  `Ellune.hearNow` → `heard(listOf(text))`: the same pipeline as Android's recognizer, so names, keys, controls
+  work unchanged. **Which ear** (`Voice.wantEllune`): Ellune only for the sentence after her name (armed, also
+  right after a mic tap) and in Solo; never while waiting for "Loomy" (stays on the phone) and never in input
+  mode. Needs the checkbox unticked (`Store.phoneEar`, default false), a key and validated internet
+  (`ElluneEar.online`; ACCESS_NETWORK_STATE). **2.22, his call: no auto switching.** If Ellune fails: a history
+  note ("nothing was sent, say it again") and she's tried again next time (`elluneDownUntil` is gone). Offline (or
+  no key yet): the phone's recognizer, and `partial` says so. **AI:** `Words.knows(cmd)` false → `understandNow`
+  → sent as is ("said → sent"); NONE = a miss; if she can't answer, an error and nothing sent (no falling back to
+  the rules' guess). tests/jni + the phone's /hear and /understand requests checked by the Worker's code.
+- **Listening modes (2.22):** `Store.solo` false = **Say "Loomy"**, true = **Solo** (everything is a command, no
+  wake/sleep any more: `soloAwake` and the SLEEP behaviour are gone). The mic always keeps listening until tapped
+  again (`Store.keepListening` is gone; Talk from the notification / card keeps listening too). A tap arms the
+  first sentence (no name needed for 8 s). In both, `Words.untilThanks` cuts each heard text at "thank you" /
+  "thanks" (whole words): before it is the command, after it is dropped, a bare "thank you" does nothing. "please"
+  is only a filler (LEAD/TAIL), never an end. Told him: the pause is what ends the recording ("thank you" can't
+  cut it instantly, Whisper gets the clip after you stop). By voice "solo mode" / "solo mode off" still switch.
+- **2.22 part 1, his feedback round 1 (Nov 2):** (1) settings had checkboxes for the mode while the main screen
+  had a dropdown → Settings uses the same mode button. (2) Wording: "Loomy is listening", Ellune only named while
+  she works ("Ellune is understanding"), and then the mic is **off with a loading ring** (`Voice.thinking`: set by
+  `ElluneEar`'s `busy` callback during /hear, and by `understand()`, which now waits for her answer before
+  listening again). (3) "The connection switch is buggy": turning On failed and the reason was printed on the main
+  screen, hidden behind Settings, so the switch just flipped back → the reason now shows in red under the switch
+  + a toast (`onProblem`). If it still won't stay on, get that message from him. (4) Background: faint grid lines
+  fading out to the edges (`GridDrawable` in MicView.kt, accent at alpha 22, 26 dp cells). (5) **His main issue:
+  Say "Loomy" didn't catch her name** (the recognizer writes "lumi", "lumie", "loomino"...): `Words.isName` now
+  also takes anything shaped like l+oo/u/ou/o+m+a short ending (`NAMEISH`, not "loom"/"lome"), and "lou me" /
+  "lu mi" as two words (`joinName`). And **the state must be visible, not read**: MicView modes IDLE (dark, slow),
+  WAITING (dark, ring breathing = listening for her name), LISTENING (purple, white ring, dots swell with the voice
+  = taking the command), THINKING (dimmed, spinning ring = Ellune / sending), plus `flash()` green/red ring + ripple
+  when an answer comes back. `Voice.takingCommand()` decides WAITING vs LISTENING. Live text is 2-3 words; partial
+  transcripts only show while taking the command (no more random words while waiting). 225 checks.
+- **2.22 feedback round 2 (Nov 2), his calls:** **online first.** `Store.btMode` (default false = **Ellune mode**):
+  Bluetooth isn't checked at all (`Pocket.ready` only checks the pairing; `readyBt` holds the Bluetooth part, used
+  in Bluetooth mode and for pairing / forget, which stay Bluetooth). **Bluetooth mode** = the Bluetooth button
+  (`BtIconView`, top right of the mic area): Bluetooth only, Ellune ignored (phone recognizer, no /hear,
+  /understand), and the theme animates purple → blue (`#5A8BFF`; `themers` re-colour everything drawn in the theme
+  colour, 650 ms). Only he switches modes; nothing switches by itself. **The bar on top = the connection only**
+  (`Net.kt`, his five states): Offline / Ellune offline / PC offline / Online / Online BT; checked every 30 s while
+  the app is open (60 s in Bluetooth mode, a real Bluetooth ping), on tap, and by the service every 5 min when On
+  (Ellune mode: no Bluetooth pings). **Until remote exists, Ellune mode can't deliver commands**: `Voice.send` says
+  "comes with the next step (remote), tap the Bluetooth button", and the bar tops out at "PC offline". **Grid**: a
+  Visuals slider (`Store.gridOpacity`, default 50 % = line alpha 50 %; it was 9 %, "too dim"). **Solo picked up
+  typing / noises**: `Vad` now needs 80 ms to start and, to count as speech, ≥ 8 loud *voiced* frames (zero-crossing
+  rate < 0.25: vowels; keyboard taps and knocks are crackly) → else `NOISE`, never uploaded; `Words.isNoise` drops
+  Whisper's noise outputs ("[typing]", "you", "Thanks for watching!"); in Solo, anything that isn't a command (rules
+  don't know it / the AI says NONE) is dropped quietly, no red miss. 244 checks.
+- **Remote (2.22), the app side:** `EllunePipe.kt` (a tiny WebSocket client: SSLSocket + hostname check, the
+  upgrade with the guest-list headers on `/phone?room=R`, `Ws.kt` frames: masked out, ping answered, "nopc" →
+  `NoPcException`) is a `Pipe` like `BluetoothPipe`. `Link.viaEllune` (set by `Pocket.syncPipe` before every send:
+  Ellune mode → the relay, Bluetooth mode → null) picks the pipe; **pairing always opens Bluetooth**. Switching
+  modes drops the kept connection. `Net` asks `/status?room=R` for "Online" vs "PC offline". The room =
+  `Ellune.room(trust.pcPk)` (same vector as `el_room` on the PC). Notes (misses) go through either pipe now.
+  tests/jni: 256 checks (frames, accept key, room). PC side: `phonenet.c` / `ellune.c`, see `ELLUNE-HANDOVER.md` §2.
+- **/remote panel redrawn simpler (2.22, his ask, "a lot of confusing text"):** title + listening; one line `[x] Bluetooth
+  [x] Remote (Ellune)` with `PC W6VV-D6NH` at the right; one short Ellune line (`net_status`); then ONE thing: the
+  confirm (ID big), shut down, the paired phone (name + connected / last seen + paired until), or the QR on the left
+  with the code / time left / waiting on the right (QR sized to fit), or "No phone paired. N to pair one." Keys:
+  short. C still copies the guest line but isn't advertised (use `/remote add <Authy code>`).
+- **QR pairing fixes (Nov 4):** the PC hung up remote mid-confirm (the code is used up the moment it's right, so
+  "no code, no phone" → unlisten): `update_listener` now never unlistens the link a phone is on (`g_conn && g_via
+  == l`). App setup screen follows the mode (his ask): Ellune mode = "Pair with your PC" + **Scan the QR** (opens
+  the camera app, `INTENT_ACTION_STILL_IMAGE_CAMERA`; the QR link brings it back, the step shows the progress / ID);
+  Bluetooth mode = Your PC + Pair with the code **said or typed** (`typedCode`). The Bluetooth button sits on top
+  of the setup too.
+- **Last two asks for 2.22 (Nov 4):** (1) **power button**: `PowerView` small at the top left while On (tap = off);
+  while Off the mic is replaced by a big beating `PowerView` (tap = on), the small one hidden. (2) **the mic in Ellune
+  mode**: tap while listening = send now (`Voice.tap`: Ellune's ear `finishNow()` sends from where talking started, or
+  the last 10 s; the phone's ear waiting for her name: the tap arms, Ellune takes the next sentence), listening
+  carries on; **hold 800 ms = mute** (a ring fills round the button, `MicView.onHold`). Bluetooth mode: tap starts /
+  stops like before, hold also mutes. No anti-spam (his call).
+- **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
+  registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
+  in it changed: "Solo mode: listening").
 
 ## 11b. Where it's heading (agreed Nov 1, not started)
 - **Remote from anywhere** (e.g. at work: "open Steam" on the home laptop) through **Ellune as a blind relay**: the same

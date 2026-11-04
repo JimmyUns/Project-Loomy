@@ -1,22 +1,23 @@
 // phone.c - Pocket Loomy, PC side. Your Android phone hears "Loomy, display extend" and sends it
 // here over Bluetooth; Loomy runs it like you typed it and answers. Opt-in: /pkg add phone.
 //
-//   /phone            the connection screen: a pairing code (no phone trusted yet) or the trusted
+//   /remote            the connection screen: a pairing code (no phone trusted yet) or the trusted
 //                     phone and whether it's around. N = new code, F = forget phone, Enter = turn
 //                     listening back on after a shutdown, Esc closes.
-//   /phone forget     drop the trusted phone
+//   /remote forget     drop the trusted phone
 //
 // The rules (POCKET-HANDOVER.md has the why):
 //   - Listening only happens with the feature on, not shut down, and either a trusted phone or an
 //     open pairing code. No timers run while it just waits.
 //   - A code is 8 random digits, lives 2 minutes, and is used up by the first try, right or wrong.
-//     A new one only comes from you (opening /phone, or N).
+//     A new one only comes from you (opening /remote, or N).
 //   - A paired phone is trusted for 7 days from pairing, then it has to pair again.
 //   - Any failed check, bad frame or unknown phone shuts the listener down completely, prints who
-//     tried (the name is only what the phone claimed) and pops a tray note. Only /phone reopens it.
+//     tried (the name is only what the phone claimed) and pops a tray note. Only /remote reopens it.
 //   - Only plain commands marked .phone in commands.c run, through the normal cmd_run.
 // The protocol is pocket.c; the Windows Bluetooth and OS bits are phonebt.c.
 #include "loomy.h"
+#include "qr/qrcodegen.h"
 #include "pocket.h"
 #include "monocypher.h"
 
@@ -39,6 +40,7 @@ static Trust g_trust;
 static int   g_trustLoaded;
 
 static char      g_code[PK_CODELEN];
+static char      g_pairRoom[33];      // 2.22: the relay room for pairing through Ellune (random per code, in the QR)
 static int       g_codeLive, g_codeGone;          // gone: 1 = used, 2 = ran out
 static ULONGLONG g_codeEnds;
 
@@ -47,7 +49,7 @@ static wchar_t g_btErr[120];
 static int     g_rngBad;
 
 // every pipe a phone can come through (only Bluetooth today; a relay would be added here)
-static const PhoneLink *LINKS[] = { &PHONE_BT };
+static const PhoneLink *LINKS[] = { &PHONE_BT, &PHONE_NET };   // 2.22: + remote through Ellune
 #define NLINKS ((int)(sizeof LINKS / sizeof LINKS[0]))
 static const PhoneLink *g_via;                // the link the connected phone came through
 
@@ -217,13 +219,24 @@ static void update_listener(void) {
         forget_trust();
     }
     if (g_codeLive && now() >= g_codeEnds) { burn_code(2); log_add(L"The pairing code ran out."); }
-    int want = feature_on(FEAT_PHONE) && !g_cfg.phoneLocked && (g_trust.have || g_codeLive);
+    // 2.22 /remote: Bluetooth and remote are each allowed or not (his checkboxes). Pairing is Bluetooth only, in
+    // person; remote (through Ellune) needs a trusted phone, since the relay room comes from the pairing.
+    int base = feature_on(FEAT_PHONE) && !g_cfg.phoneLocked;
     for (int i = 0; i < NLINKS; i++) {
         const PhoneLink *l = LINKS[i];
-        if (want && !l->listening()) { if (l->listen(g_btErr, 120)) g_btErr[0] = 0; }
-        if (!want && l->listening()) l->unlisten();
+        int net = l == &PHONE_NET;
+        int want = base && (net ? g_cfg.remoteNet && (g_trust.have || g_codeLive) : g_cfg.remoteBt && (g_trust.have || g_codeLive));
+        if (net && want && l->listening() && !(g_conn && g_via == l)) {   // the room changed (a code opened / closed,
+            char room[33];                                                // a new pairing); never mid-session: the
+            if (phone_net_room(room) && !net_in_room(room)) l->unlisten(); // pairing's last message must get out first
+        }
+        wchar_t err[120] = { 0 };
+        if (want && !l->listening()) { if (!l->listen(err, 120) && !net) s_cpy(g_btErr, err, 120); else if (!net) g_btErr[0] = 0; }
+        // never hang up the link a phone is on right now (QR pairing: the code is used up the moment it's right,
+        // and remote used to close mid-confirm, so the confirm vanished); it's done when that session ends
+        if (!want && l->listening() && !(g_conn && g_via == l)) l->unlisten();
+        if (!want && !net) g_btErr[0] = 0;
     }
-    if (!want) g_btErr[0] = 0;
     timer_update();
     ui_redraw();
 }
@@ -238,7 +251,7 @@ static void lockout(const wchar_t *what) {
     update_listener();
     log_add(L"Shut down: %s", what);
     outf(OUT_ERR, L"Phone listener shut down: %s", what);
-    out(OUT_DIM, L"Nothing got in. /phone turns listening back on.");
+    out(OUT_DIM, L"Nothing got in. /remote turns listening back on.");
     ui_balloon(L"Loomy: phone listener shut down", what);
 }
 
@@ -266,6 +279,10 @@ static void new_code(void) {
     } while (v >= 4000000000u);                          // no bias: 4e9 is a multiple of 1e8
     v %= 100000000u;
     for (int i = PK_CODELEN - 1; i >= 0; i--) { g_code[i] = (char)('0' + v % 10); v /= 10; }
+    unsigned char rr[16];
+    if (!os_random(rr, sizeof rr)) { lockout(L"Windows wouldn't give Loomy secure random numbers."); return; }
+    for (int i = 0; i < 16; i++) { g_pairRoom[2 * i] = "0123456789abcdef"[rr[i] >> 4]; g_pairRoom[2 * i + 1] = "0123456789abcdef"[rr[i] & 15]; }
+    g_pairRoom[32] = 0;
     g_codeLive = 1;
     g_codeGone = 0;
     g_codeEnds = now() + CODE_SECS;
@@ -279,6 +296,37 @@ static void flush(void) {
     int ok = g_via && g_via->send(g_pk.out, g_pk.outlen);
     g_pk.outlen = 0;
     if (!ok) { log_add(L"Couldn't send to %s; hung up.", g_connAddr); drop_conn(); }
+}
+
+const unsigned char *phone_pc_pub(void) { return g_trust.have ? g_trust.pc_pk : 0; }
+
+// 2.22: which relay room PHONE_NET sits in: the pairing room while a code is open (QR pairing), else the trusted
+// phone's room (from the pairing). 0 = none.
+int phone_net_room(char out[33]) {
+    if (g_codeLive && g_pairRoom[0]) { for (int i = 0; i < 33; i++) out[i] = g_pairRoom[i]; return 1; }
+    if (g_trust.have) { el_room(g_trust.pc_pk, out); return 1; }
+    return 0;
+}
+
+// the QR's text: pocketloomy://pair?c=<code>&r=<room>&n=<this PC's name, only safe characters>
+static int qr_text(char *out, int cap) {
+    char name[PK_NAMEMAX + 1];
+    int nl = os_pc_name(name, PK_NAMEMAX);
+    int o = 0;
+    const char *head = "pocketloomy://pair?c=";
+    for (const char *c = head; *c; c++) out[o++] = *c;
+    for (int i = 0; i < PK_CODELEN; i++) out[o++] = g_code[i];
+    const char *r = "&r=";
+    for (const char *c = r; *c; c++) out[o++] = *c;
+    for (int i = 0; i < 32; i++) out[o++] = g_pairRoom[i];
+    out[o++] = '&'; out[o++] = 'n'; out[o++] = '=';
+    for (int i = 0; i < nl && o < cap - 2; i++) {
+        char ch = name[i];
+        int ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+        out[o++] = ok ? ch : '-';
+    }
+    out[o] = 0;
+    return o;
 }
 
 int phone_on_accept(const PhoneLink *via, const wchar_t *addr) {
@@ -540,7 +588,7 @@ static void ask_confirm(void) {
     for (int i = 0; i < 10; i++) id[i] = (wchar_t)g_confirmId[i];
     name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
     log_add(L"\"%s\" (%s) has the right code. Waiting for Enter.", nm, g_connAddr);
-    outf(OUT_OK, L"\"%s\" (%s) has the right code. Its ID is %s: if your phone shows the same, press Enter in /phone.",
+    outf(OUT_OK, L"\"%s\" (%s) has the right code. Its ID is %s: if your phone shows the same, press Enter in /remote.",
          nm, g_connAddr, id);
     if (!phone_active()) phone_open();                   // the question has to be on screen
     ui_show();
@@ -553,7 +601,7 @@ static void accept_pairing(void) {
     paired();                                            // saves the trust
     flush();                                             // the PC's key goes out only now: the phone is paired
     g_connStart = now();                                 // it gets a moment to hang up by itself
-    update_listener();
+    update_listener();                                   // a new pairing = a new relay room (moved once this session ends)
 }
 
 static void refuse_pairing(const wchar_t *why) {
@@ -561,7 +609,7 @@ static void refuse_pairing(const wchar_t *why) {
     name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
     g_confirm = 0;
     log_add(L"Didn't pair \"%s\": %s.", nm, why);
-    outf(OUT_ERR, L"Didn't pair \"%s\": %s. /phone, N for a new code.", nm, why);
+    outf(OUT_ERR, L"Didn't pair \"%s\": %s. /remote, N for a new code.", nm, why);
     drop_conn();                                         // its keys are wiped with the connection
     update_listener();
 }
@@ -622,7 +670,7 @@ void phone_on_closed(void) {
     if (g_confirm) { refuse_pairing(L"the phone hung up before you confirmed it"); return; }
     if (pk_mid_pairing(&g_pk)) {
         log_add(L"Pairing from %s stopped halfway. That code is used up.", g_connAddr);
-        out(OUT_ERR, L"A phone used the pairing code but hung up before finishing. /phone, N for a new code.");
+        out(OUT_ERR, L"A phone used the pairing code but hung up before finishing. /remote, N for a new code.");
     } else if (!g_wasReady && !pk_done(&g_pk)) {
         log_add(L"%s hung up during the handshake.", g_connAddr);
     }
@@ -637,7 +685,7 @@ void phone_tick(void) {
     else if (g_conn && !g_confirm) {
         int ready = pk_ready(&g_pk);
         if (!ready && t - g_connStart >= HANDSHAKE_SECS) {
-            if (pk_mid_pairing(&g_pk)) out(OUT_ERR, L"A phone used the pairing code but stalled. /phone, N for a new code.");
+            if (pk_mid_pairing(&g_pk)) out(OUT_ERR, L"A phone used the pairing code but stalled. /remote, N for a new code.");
             log_add(L"%s took too long; hung up.", g_connAddr);
             drop_conn();
             update_listener();
@@ -667,14 +715,14 @@ void phone_feature_changed(void) {
     update_listener();
 }
 
-// ---------------------------------------------------------------- /phone
+// ---------------------------------------------------------------- /remote
 static void do_forget(void) {
     if (!g_trust.have) { out(OUT_DIM, L"No phone is trusted."); return; }
     wchar_t nm[64]; trust_name(nm, 64);
     drop_conn();
     forget_trust();
     log_add(L"Forgot \"%s\".", nm);
-    outf(OUT_OK, L"Forgot \"%s\". It can't connect any more; /phone to pair again.", nm);
+    outf(OUT_OK, L"Forgot \"%s\". It can't connect any more; /remote to pair again.", nm);
     update_listener();
 }
 
@@ -683,10 +731,18 @@ void cmd_phone(wchar_t *args) {
     int n = s_words(args, w, 2);
     if (n == 0) { phone_open(); return; }
     if (n == 1 && s_ieq(w[0], L"forget")) { do_forget(); return; }
-    cmd_usage(L"[forget]");
+    if (n == 2 && s_ieq(w[0], L"add")) {                 // 2.22: this PC onto Ellune's guest list with an Authy code
+        wchar_t why[160];
+        out(OUT_DIM, L"Asking Ellune...");
+        ui_flush();
+        if (net_register(w[1], why, 160)) { out(OUT_OK, L"This PC is on Ellune's guest list now."); log_add(L"Added this PC to Ellune's guest list."); }
+        else out(OUT_ERR, why);
+        return;
+    }
+    cmd_usage(L"[forget | add <Authy code>]");
 }
 
-void phone_complete(const wchar_t *partial) { complete_add(L"forget", partial); }
+void phone_complete(const wchar_t *partial) { complete_add(L"forget", partial); complete_add(L"add", partial); }
 
 // ---------------------------------------------------------------- the screen
 static int   g_active, g_confirmForget;
@@ -736,6 +792,19 @@ int phone_key(WPARAM vk) {
 
 int phone_char(WPARAM ch) {
     wchar_t c = s_low((wchar_t)ch);
+    if (!g_confirm && (c == L'b' || c == L'r')) {         // 2.22: allow Bluetooth / remote
+        if (c == L'b') g_cfg.remoteBt = !g_cfg.remoteBt; else g_cfg.remoteNet = !g_cfg.remoteNet;
+        cfg_save();
+        log_add(L"%s %s.", c == L'b' ? L"Bluetooth" : L"Remote", (c == L'b' ? g_cfg.remoteBt : g_cfg.remoteNet) ? L"allowed" : L"not allowed");
+        g_confirmForget = 0;
+        update_listener();
+        return 1;
+    }
+    if (!g_confirm && c == L'c') {                       // this PC's line for Ellune's guest list
+        log_add(net_copy_line() ? L"Copied this PC's guest line: add it to Ellune's DEVICES (after a comma)." : L"Couldn't copy the guest line.");
+        ui_redraw();
+        return 1;
+    }
     if (c == L'n' && !g_cfg.phoneLocked && !g_trust.have) { burn_code(0); new_code(); }
     else if (c == L'f' && g_trust.have) {
         if (g_confirmForget) { g_confirmForget = 0; do_forget(); }
@@ -751,109 +820,154 @@ int phone_char(WPARAM ch) {
 void phone_click(int x, int y, int dbl) {}
 void phone_wheel(int notches) {}
 
+// 2.22: redrawn simpler (his ask: "a lot of confusing text"). Top: what's allowed + Ellune in one short line each.
+// Middle: one thing at a time (confirm / shut down / the paired phone / the QR + code / nothing yet). Bottom: keys.
+static void draw_qr(HDC dc, int x, int y, int maxSide, int *sideOut) {
+    static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(10)], tmp[qrcodegen_BUFFER_LEN_FOR_VERSION(10)];
+    char txt[160];
+    *sideOut = 0;
+    qr_text(txt, sizeof txt);
+    if (!qrcodegen_encodeText(txt, tmp, qr, qrcodegen_Ecc_MEDIUM, 1, 10, qrcodegen_Mask_AUTO, true)) return;
+    int n = qrcodegen_getSize(qr), m = maxSide / (n + 6);
+    if (m > S(5)) m = S(5);
+    if (m < 2) m = 2;
+    int quiet = 3 * m, side = n * m + 2 * quiet;
+    RECT bg = { x, y, x + side, y + side };
+    HBRUSH white = CreateSolidBrush(RGB(255, 255, 255)), black = CreateSolidBrush(RGB(0, 0, 0));
+    FillRect(dc, &bg, white);
+    for (int qy = 0; qy < n; qy++)
+        for (int qx = 0; qx < n; qx++)
+            if (qrcodegen_getModule(qr, qx, qy)) {
+                RECT r = { x + quiet + qx * m, y + quiet + qy * m, x + quiet + (qx + 1) * m, y + quiet + (qy + 1) * m };
+                FillRect(dc, &r, black);
+            }
+    DeleteObject(white); DeleteObject(black);
+    *sideOut = side;
+}
+
+static int big_text(HDC dc, int x, int y, const wchar_t *t, COLORREF c) {
+    if (g_big) SelectObject(dc, g_big);
+    ui_text(dc, x, y, t, c);
+    SIZE cs; GetTextExtentPoint32W(dc, t, s_len(t), &cs);
+    SelectObject(dc, g_font);
+    return cs.cy > g_lineH ? cs.cy : g_lineH;
+}
+
 void phone_paint(HDC dc, RECT a) {
     SelectObject(dc, g_font);
     int y = a.top, gap = g_lineH + S(6);
-    int tw = ui_text(dc, a.left, y, L"Phone", g_accent);
-    ui_text(dc, a.left + tw + S(12), y, L"Pocket Loomy over Bluetooth", C_DIM);
-    const wchar_t *st = g_cfg.phoneLocked ? L"shut down" : any_listening() ? L"listening" : L"not listening";
-    SIZE sz; GetTextExtentPoint32W(dc, st, s_len(st), &sz);
-    ui_text(dc, a.right - sz.cx, y, st, g_cfg.phoneLocked ? C_ERR : any_listening() ? C_OK : C_DIM);
-    y += g_lineH + S(18);
-
     wchar_t line[260], t[48];
+    SIZE sz;
+
+    // title + whether anything listens
+    ui_text(dc, a.left, y, L"Remote", g_accent);
+    const wchar_t *st = g_cfg.phoneLocked ? L"shut down" : any_listening() ? L"listening" : L"off";
+    GetTextExtentPoint32W(dc, st, s_len(st), &sz);
+    ui_text(dc, a.right - sz.cx, y, st, g_cfg.phoneLocked ? C_ERR : any_listening() ? C_OK : C_DIM);
+    y += g_lineH + S(12);
+
+    // what's allowed, and this PC's ID on the right
+    int x = a.left + ui_text(dc, a.left, y, g_cfg.remoteBt ? L"[x] " : L"[ ] ", g_cfg.remoteBt ? g_accent : C_DIM);
+    x += ui_text(dc, x, y, L"Bluetooth", C_TEXT);
+    x += S(28);
+    x += ui_text(dc, x, y, g_cfg.remoteNet ? L"[x] " : L"[ ] ", g_cfg.remoteNet ? g_accent : C_DIM);
+    ui_text(dc, x, y, L"Remote (Ellune)", C_TEXT);
+    char id[10];
+    if (net_id(id)) {
+        wchar_t wid[16] = L"PC ";
+        for (int i = 0; i < 10; i++) wid[3 + i] = (wchar_t)id[i];
+        GetTextExtentPoint32W(dc, wid, s_len(wid), &sz);
+        ui_text(dc, a.right - sz.cx, y, wid, C_DIM);
+    }
+    y += g_lineH + S(4);
+    int bad = 0;
+    const wchar_t *ns = net_status(&bad);
+    ui_text(dc, a.left, y, ns, bad ? C_ERR : C_DIM);
+    y += gap + S(8);
+
     if (g_confirm) {                                     // the right code came in: is it really your phone?
-        wchar_t nm[64], id[10];
+        wchar_t nm[64], cid[10];
         name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
-        for (int i = 0; i < 10; i++) id[i] = (wchar_t)g_confirmId[i];
-        ui_text(dc, a.left, y, L"Pair with this phone?", g_accent); y += gap;
-        int x = a.left + ui_text(dc, a.left, y, nm, C_BRIGHT);
-        wsprintfW(line, L"   %s", g_connAddr);
-        ui_text(dc, x, y, line, C_DIM);
-        y += gap + S(4);
-        ui_text(dc, a.left, y, L"Its ID", C_DIM); y += g_lineH + S(2);
-        if (g_big) SelectObject(dc, g_big);
-        ui_text(dc, a.left, y, id, g_accent);
-        SIZE cs; GetTextExtentPoint32W(dc, id, s_len(id), &cs);
-        SelectObject(dc, g_font);
-        y += (cs.cy > g_lineH ? cs.cy : g_lineH) + S(6);
-        ui_text(dc, a.left, y, L"Your phone shows its ID too. Only say yes if they match.", C_TEXT); y += gap;
+        for (int i = 0; i < 10; i++) cid[i] = (wchar_t)g_confirmId[i];
+        x = a.left + ui_text(dc, a.left, y, L"Pair with ", C_TEXT);
+        x += ui_text(dc, x, y, nm, C_BRIGHT);
+        ui_text(dc, x, y, L"?", C_TEXT);
+        y += gap;
+        y += big_text(dc, a.left, y, cid, g_accent) + S(6);
         ULONGLONG left = g_confirmUntil > now() ? g_confirmUntil - now() : 0;
-        wsprintfW(line, L"Enter = yes, pair it    Esc = no    (%d s)", (int)left);
-        ui_text(dc, a.left, y, line, C_DIM); y += gap;
+        wsprintfW(line, L"Same ID on your phone? Enter = yes, Esc = no (%d s)", (int)left);
+        ui_text(dc, a.left, y, line, C_TEXT); y += gap;
+        ui_text(dc, a.left, y, L"(the name is only what the phone says it is: the ID is what counts)", C_DIM); y += gap;
     } else if (g_cfg.phoneLocked) {
-        ui_text(dc, a.left, y, L"Listening is off: the last connection failed a check.", C_ERR); y += gap;
+        ui_text(dc, a.left, y, L"Shut down after a bad connection. Nothing got in.", C_ERR); y += gap;
         if (g_lockWhy[0]) {
             RECT r = { a.left, y, a.right, y + 3 * g_lineH };
-            SetTextColor(dc, C_TEXT);
+            SetTextColor(dc, C_DIM);
             DrawTextW(dc, g_lockWhy, -1, &r, DT_WORDBREAK | DT_NOPREFIX);
             y += 2 * g_lineH + S(6);
         }
-        ui_text(dc, a.left, y, L"Nothing got in. Enter turns listening back on.", C_DIM); y += gap;
     } else if (g_trust.have) {
         wchar_t nm[64]; trust_name(nm, 64);
-        int x = a.left + ui_text(dc, a.left, y, L"Trusted phone  ", C_DIM);
-        x += ui_text(dc, x, y, nm, C_BRIGHT);
-        line[0] = line[1] = L' ';
-        for (int i = 0; i <= 17; i++) line[2 + i] = (wchar_t)(unsigned char)g_trust.addr[i];
-        ui_text(dc, x, y, line, C_DIM);
+        x = a.left + ui_text(dc, a.left, y, L"Phone  ", C_DIM);
+        ui_text(dc, x, y, nm, C_BRIGHT);
         y += gap;
         os_fmt_time(g_trust.expires, t, 48, 1);
-        wsprintfW(line, L"Trusted until %s, then it pairs again", t);
-        ui_text(dc, a.left, y, line, C_DIM); y += gap + S(6);
-        if (g_conn && g_wasReady) ui_text(dc, a.left, y, L"Connected", C_OK);
-        else if (g_conn) ui_text(dc, a.left, y, L"A phone is connecting...", C_TEXT);
+        if (g_conn && g_wasReady) wsprintfW(line, L"connected \x00B7 paired until %s", t);
+        else if (g_conn) wsprintfW(line, L"connecting... \x00B7 paired until %s", t);
         else if (g_lastSeenEver) {
-            os_fmt_time(g_lastSeenEver, t, 48, 0);
-            wsprintfW(line, L"Awaiting trusted device ping \x00B7 last seen %s", t);
-            ui_text(dc, a.left, y, line, C_DIM);
-        } else ui_text(dc, a.left, y, L"Awaiting trusted device ping", C_DIM);
-        y += gap;
+            wchar_t seen[48];
+            os_fmt_time(g_lastSeenEver, seen, 48, 0);
+            wsprintfW(line, L"last seen %s \x00B7 paired until %s", seen, t);
+        } else wsprintfW(line, L"paired until %s", t);
+        ui_text(dc, a.left, y, line, g_conn && g_wasReady ? C_OK : C_DIM); y += gap;
         if (g_confirmForget) {
             wsprintfW(line, L"Press F again to forget \"%s\".", nm);
-            ui_text(dc, a.left, y, line, C_ERR);
-            y += gap;
+            ui_text(dc, a.left, y, line, C_ERR); y += gap;
         }
     } else if (g_codeLive) {
-        ui_text(dc, a.left, y, L"Say this code on your phone", C_DIM); y += g_lineH + S(4);
+        // the QR on the left (Ellune), the code and the time on the right
+        int side = 0, colX = a.left;
+        if (g_cfg.remoteNet) {
+            int room = a.bottom - S(40) - y;
+            draw_qr(dc, a.left, y, room < S(240) ? room : S(240), &side);
+            if (side) colX = a.left + side + S(20);
+        }
+        int cy = y;
+        ui_text(dc, colX, cy, side ? L"Scan with your phone's camera" : L"Say this code on your phone", C_TEXT); cy += gap;
         wchar_t code[12];
         for (int i = 0, k = 0; i < PK_CODELEN; i++) { if (i == 4) code[k++] = L' '; code[k++] = (wchar_t)g_code[i]; code[k] = 0; }
-        if (g_big) SelectObject(dc, g_big);
-        ui_text(dc, a.left, y, code, g_accent);
-        SIZE cs; GetTextExtentPoint32W(dc, code, s_len(code), &cs);
-        SelectObject(dc, g_font);
-        y += (cs.cy > g_lineH ? cs.cy : g_lineH) + S(6);
+        cy += big_text(dc, colX, cy, code, g_accent) + S(6);
         ULONGLONG left = g_codeEnds > now() ? g_codeEnds - now() : 0;
-        wsprintfW(line, L"Expires in %d:%02d \x00B7 one try, then it's used up", (int)(left / 60), (int)(left % 60));
-        ui_text(dc, a.left, y, line, C_DIM); y += gap;
-        ui_text(dc, a.left, y, g_conn ? L"A phone is connecting..." : L"Waiting for phone...", C_TEXT); y += gap;
+        wsprintfW(line, L"%d:%02d left \x00B7 works once", (int)(left / 60), (int)(left % 60));
+        ui_text(dc, colX, cy, line, C_DIM); cy += gap;
+        ui_text(dc, colX, cy, g_conn ? L"A phone is connecting..." : L"Waiting for your phone...", g_conn ? C_OK : C_DIM); cy += gap;
+        if (side && g_cfg.remoteBt) { ui_text(dc, colX, cy, L"(or say the code over Bluetooth)", C_DIM); cy += gap; }
+        y = (side && y + side > cy ? y + side : cy) + S(6);
     } else {
-        ui_text(dc, a.left, y, g_codeGone == 1 ? L"That pairing code is used up." :
-                               g_codeGone == 2 ? L"That pairing code ran out." : L"No pairing code open.", C_TEXT);
-        y += gap;
-        ui_text(dc, a.left, y, L"Press N for a new one.", C_DIM); y += gap;
+        const wchar_t *msg = g_codeGone == 1 ? L"That code is used up. N for a new one." :
+                             g_codeGone == 2 ? L"That code ran out. N for a new one." :
+                             !g_cfg.remoteBt && !g_cfg.remoteNet ? L"Allow Bluetooth (B) or Remote (R) to pair a phone." :
+                             L"No phone paired. N to pair one.";
+        ui_text(dc, a.left, y, msg, C_TEXT); y += gap;
     }
     if (g_btErr[0]) { ui_text(dc, a.left, y, g_btErr, C_ERR); y += gap; }
 
-    if (g_nlog) {
+    // the last few things that happened, if there's room
+    if (g_nlog && y < a.bottom - S(80)) {
         y += S(8);
-        ui_text(dc, a.left, y, L"Logs", C_DIM); y += g_lineH + S(4);
         SelectObject(dc, g_fontSmall);
         for (int i = g_nlog - 1; i >= 0 && y < a.bottom - S(40); i--) {
-            ui_text(dc, a.left, y, g_log[i], C_TEXT);
+            ui_text(dc, a.left, y, g_log[i], C_DIM);
             y += S(18);
         }
     }
 
     SelectObject(dc, g_fontSmall);
     const wchar_t *keys = g_confirm ? L"Enter yes    Esc no" :
-                          g_cfg.phoneLocked ? L"Enter turn listening back on    Esc close" :
-                          g_trust.have ? L"F forget this phone    Esc close" :
-                          L"N new code    Esc close";
+                          g_cfg.phoneLocked ? L"Enter turn it back on    Esc close" :
+                          g_trust.have ? L"B Bluetooth    R Remote    F forget    Esc close" :
+                          L"N pair a phone    B Bluetooth    R Remote    Esc close";
     ui_text(dc, a.left, a.bottom - S(16), keys, C_DIM);
-    const wchar_t *hint = L"names are what the phone claims";
-    GetTextExtentPoint32W(dc, hint, s_len(hint), &sz);
-    ui_text(dc, a.right - sz.cx, a.bottom - S(16), hint, C_DIM);
     SelectObject(dc, g_font);
 }
 

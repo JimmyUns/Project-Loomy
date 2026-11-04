@@ -141,6 +141,21 @@ static void bt_drop(void) { g_btDrops++; }
 const PhoneLink PHONE_BT = { L"Bluetooth", bt_listen, bt_unlisten, bt_listening, bt_send, bt_drop };
 void bt_event(WPARAM s, LPARAM e) {}
 void bt_shutdown(void) {}
+// 2.22: remote through Ellune (phonenet.c is Windows-only): a stand-in link the tests can watch
+int g_netListening, g_netListens, g_netCopies;
+static int  net_listen(wchar_t *err, int cap) { g_netListening = 1; g_netListens++; return 1; }
+static void net_unlisten(void) { g_netListening = 0; }
+static int  net_listening(void) { return g_netListening; }
+static int  net_send(const unsigned char *p, int n) { return 1; }
+static void net_drop(void) {}
+const PhoneLink PHONE_NET = { L"Ellune", net_listen, net_unlisten, net_listening, net_send, net_drop };
+const wchar_t *net_status(int *bad) { *bad = 0; return g_netListening ? L"remote: connected to Ellune" : L"remote: off"; }
+int  net_id(char out[10]) { memcpy(out, "NRFZ-85TB", 10); return 1; }
+int  net_copy_line(void) { g_netCopies++; return 1; }
+char g_netRoom[33]; int net_in_room(const char room[33]) { return !strcmp(g_netRoom, room); }
+int  g_netRegs; int net_register(const wchar_t *code, wchar_t *why, int cap) { g_netRegs++; if (wcscmp(code, L"123456")) { wcscpy(why, L"Wrong Authy code"); return 0; } return 1; }
+void net_event(WPARAM k, LPARAM d) {}
+void net_shutdown(void) {}
 int g_rngFail; static unsigned long long g_rs = 0x9E3779B97F4A7C15ull;
 int os_random(void *p, int n) {
     if (g_rngFail) return 0;
@@ -181,3 +196,6 @@ void ui_panel_choices(wchar_t *b, int cap) {
     else if (ui_panel_open()) wcscpy(b, L"A screen is open on the PC.");
 }
 void ui_screens_on(void) { g_screensOn++; }
+void ui_flush(void) {}
+HBRUSH CreateSolidBrush(COLORREF c) { return (HBRUSH)1; }
+int FillRect(HDC d, const RECT *r, HBRUSH b) { return 1; }

@@ -37,12 +37,20 @@
         android:dataExtractionRules="@xml/no_backup"
         android:supportsRtl="true">
         <activity
+            android:launchMode="singleTop"
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 2.22: the QR in /remote (pocketloomy://pair?c=...&r=...&n=...), scanned with the phone's camera app -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pocketloomy" android:host="pair" />
             </intent-filter>
         </activity>
 

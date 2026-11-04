@@ -22,14 +22,20 @@ class ElluneEar(
     private val level: (Float) -> Unit,
     private val heard: (List<String>) -> Unit,
     private val missed: (Int) -> Unit,
-    private val failed: (Ellune.Answer.Down) -> Unit,      // Ellune didn't answer: Voice falls back to Ear
+    private val failed: (Ellune.Answer.Down) -> Unit,      // Ellune didn't answer: Voice says so
+    private val busy: (Boolean) -> Unit = {},               // the mic is off and Ellune is working it out
 ) {
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var run = 0                          // bumped by cancel(): an old thread's results are dropped
+    @Volatile private var finish = false                   // 2.22: a tap on the mic = "that's it, send it"
+
+    /** stop listening now and send what's been said (his ask: tap = send) */
+    fun finishNow() { finish = true }
 
     @SuppressLint("MissingPermission")                     // RECORD_AUDIO is asked for before Talk works at all
     fun start() {
         val me = ++run
+        finish = false
         Thread({
             val key = ElluneKey.peek()
             if (key == null) { post(me) { failed(Ellune.Answer.Down("no key", notGuest = true)) }; return@Thread }
@@ -51,11 +57,13 @@ class ElluneEar(
             val pcm = ShortArray(Sound.RATE * 17)          // 6 s waiting + 10 s talking + slack
             var n = 0
             var ended = false
+            var forced = false
             try {
                 rec.startRecording()
                 if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IllegalStateException("not recording")
                 val frame = ShortArray(Sound.FRAME)
                 while (run == me && n + Sound.FRAME <= pcm.size) {
+                    if (finish) { forced = true; break }
                     var got = 0
                     while (got < Sound.FRAME && run == me) {
                         val r = rec.read(frame, got, Sound.FRAME - got)
@@ -68,10 +76,11 @@ class ElluneEar(
                     val rms = Sound.rms(frame)
                     val lv = Sound.level(rms)
                     post(me) { level(lv) }
-                    when (vad.push(rms)) {
-                        Vad.Event.STARTED -> post(me) { partial("Ellune is listening...") }
+                    when (vad.push(rms, Sound.zcr(frame))) {
+                        Vad.Event.STARTED -> post(me) { partial("Loomy is listening...") }
                         Vad.Event.TIMEOUT -> { post(me) { missed(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }; return@Thread }
                         Vad.Event.ENDED -> { ended = true; break }
+                        Vad.Event.NOISE -> { post(me) { missed(SpeechRecognizer.ERROR_NO_MATCH) }; return@Thread }   // typing, a knock: never sent
                         Vad.Event.NONE -> {}
                     }
                 }
@@ -83,20 +92,25 @@ class ElluneEar(
                 rec.release()
             }
             if (run != me) return@Thread
-            if (!ended) { post(me) { missed(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }; return@Thread }
-            post(me) { partial("Asking Ellune..."); level(-2f) }
-            val clip = Sound.wav(pcm, vad.start * Sound.FRAME, minOf(vad.end * Sound.FRAME, n))
+            // a tap: send from where talking started (or the last 10 s if it never decided), up to now
+            val from = if (forced) (if (vad.start >= 0) vad.start * Sound.FRAME else maxOf(0, n - Sound.MAX_SAMPLES)) else vad.start * Sound.FRAME
+            val to = if (forced) minOf(n, from + Sound.MAX_SAMPLES) else minOf(vad.end * Sound.FRAME, n)
+            if (forced && to - from < Sound.RATE / 4) { post(me) { missed(SpeechRecognizer.ERROR_NO_MATCH) }; return@Thread }   // nothing yet
+            if (!ended && !forced) { post(me) { missed(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }; return@Thread }
+            post(me) { partial("Ellune is understanding..."); level(-2f); busy(true) }
+            val clip = Sound.wav(pcm, from, to)
             when (val a = Ellune.hearNow(key.priv, key.pub, clip)) {
                 is Ellune.Answer.Ok ->
-                    post(me) { if (a.text.isBlank()) missed(SpeechRecognizer.ERROR_NO_MATCH) else heard(listOf(a.text)) }
-                is Ellune.Answer.Down -> post(me) { failed(a) }
+                    post(me) { busy(false); if (a.text.isBlank()) missed(SpeechRecognizer.ERROR_NO_MATCH) else heard(listOf(a.text)) }
+                is Ellune.Answer.Down -> post(me) { busy(false); failed(a) }
             }
         }, "ellune-ear").start()
     }
 
     private fun post(me: Int, f: () -> Unit) { main.post { if (run == me) f() } }
 
-    fun cancel() { run++ }
+    /** main thread. An upload still running is dropped, and the "working on it" state with it. */
+    fun cancel() { run++; busy(false) }
     fun destroy() = cancel()
 
     companion object {

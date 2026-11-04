@@ -3,6 +3,7 @@
 import io.github.jimmyuns.pocketloomy.Ellune
 import io.github.jimmyuns.pocketloomy.Sound
 import io.github.jimmyuns.pocketloomy.Vad
+import io.github.jimmyuns.pocketloomy.Ws
 import io.github.jimmyuns.pocketloomy.Native
 import io.github.jimmyuns.pocketloomy.Words
 
@@ -224,6 +225,10 @@ fun main() {
         val b64 = java.util.Base64.getEncoder().encodeToString(clip)
         val say = "{\"text\":${Ellune.jsonQuote("make the \"screens\" go dark")}}".toByteArray()
         val uh = Ellune.signedHeaders(kp.private, pub, "POST", "/understand", time, say)
+        // 0.5: a /register request as the app makes it (RFC 6238's 59 s code), for the Worker to check
+        val regBody = "{\"code\":${Ellune.jsonQuote("287082")},\"name\":${Ellune.jsonQuote("phone-" + id)}}".toByteArray()
+        val rh = Ellune.signedHeaders(kp.private, pub, "POST", "/register", 59_000L, regBody)
+        java.io.File("/tmp/ellune_cross_reg.json").writeText("{\"headers\":${js(rh)},\"body\":\"" + java.util.Base64.getEncoder().encodeToString(regBody) + "\"}")
         java.io.File("/tmp/ellune_cross_hear.json").writeText(
             "{\"hear\":{\"headers\":${js(hh)},\"body\":\"$b64\"},\"understand\":{\"headers\":${js(uh)},\"body\":\"" +
             java.util.Base64.getEncoder().encodeToString(say) + "\"}}")
@@ -270,6 +275,71 @@ fun main() {
 
         check(Words.knows("display off") && Words.knows("si and input next tab") && Words.knows("web youtube") && Words.knows("/pkg"), "knows: real commands")
         check(!Words.knows("make the screens go dark") && !Words.knows("") && !Words.knows("si and dance"), "knows: everything else")
+    }
+
+    // ---- 2.22: "thank you" ends a sentence, "please" never does
+    run {
+        check(Words.untilThanks("turn off the screens thank you") == ("turn off the screens" to true), "thanks: at the end")
+        check(Words.untilThanks("Loomy, open YouTube. Thank you!") == ("Loomy, open YouTube" to true), "thanks: punctuation")
+        check(Words.untilThanks("system info thanks and next tab") == ("system info" to true), "thanks: what follows is dropped")
+        check(Words.untilThanks("thank you") == ("" to true) && Words.untilThanks("thanks loomy").first == "", "thanks: alone")
+        check(Words.untilThanks("turn off the screens") == ("turn off the screens" to false), "thanks: none")
+        check(!Words.untilThanks("open thanksgiving recipes").second, "thanks: only the whole word")
+        check(Words.command(Words.untilThanks("can you please turn my screen on thank you").first) == "display on", "please + thanks: screen on")
+        check(Words.command("can you turn on my screen please") == "display on", "please at the end isn't an end")
+        // her name, however the recognizer writes it with his accent
+        for (n in listOf("Lumi", "Lumie", "Loomino", "Lumino", "Loomy's", "Lummy", "Lomi", "Lumia", "Loomie", "lumee"))
+            check(Words.addressed("$n turn off the screen") == "turn off the screen", "name: $n")
+        check(Words.addressed("lou me open youtube") == "open youtube" && Words.addressed("lu mi system info") == "system info", "name: two words")
+        check(Words.addressed("okay lumino, system info") == "system info" && Words.addressed("ayo lumie show") == "show", "name: after a greeting")
+        check(Words.addressed("loom is broken") == null && Words.addressed("luminous paint") == null && Words.addressed("lemon tea") == null, "name: not words like it")
+        check(Words.addressed("I told lumi about it") == null, "name: not in the middle")
+        // 2.22: Whisper hearing noise, and typing vs talking
+        for (n in listOf("[typing]", "(keyboard clicking)", "you", "You.", "Thanks for watching!", "  ", "...", "\u266A\u266A", "*click*", "Uh.", "Thank you."))
+            check(Words.isNoise(n), "noise: '$n'")
+        for (n in listOf("turn off the screens", "next tab", "ok", "Loomy, system info.", "back"))
+            check(!Words.isNoise(n), "not noise: '$n'")
+        check(Sound.zcr(ShortArray(320) { if (it % 2 == 0) 1000 else -1000 }) > 0.9 && Sound.zcr(ShortArray(320) { if ((it / 40) % 2 == 0) 1000 else -1000 }) < 0.05, "zcr: crackle vs a low tone")
+        run {
+            val v = Vad()
+            val ev = mutableListOf<Vad.Event>()
+            for (k in 0 until 20) v.push(50.0, 0.1)
+            for (k in 0 until 40) ev += v.push(3000.0, 0.45)          // loud but crackly: typing
+            for (k in 0 until 60) ev += v.push(50.0, 0.1)
+            check(ev.filter { it != Vad.Event.NONE } == listOf(Vad.Event.STARTED, Vad.Event.NOISE), "vad: typing ends as noise")
+            val w = Vad()
+            val ew = mutableListOf<Vad.Event>()
+            for (k in 0 until 20) w.push(50.0, 0.1)
+            for (k in 0 until 40) ew += w.push(3000.0, if (k % 3 == 0) 0.4 else 0.08)   // a voice: mostly vowels
+            for (k in 0 until 60) ew += w.push(50.0, 0.1)
+            check(ew.filter { it != Vad.Event.NONE } == listOf(Vad.Event.STARTED, Vad.Event.ENDED), "vad: a voice ends as speech")
+        }
+    }
+
+    // ---- 2.22 remote: the relay room (same vector as ellune.c on the PC) and the WebSocket frames
+    run {
+        check(Ellune.room(ByteArray(32) { it.toByte() }) == "8a0e1d384dc28f829b6dbfec15ddb06d", "room: same as the PC's")
+        check(Ws.accept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "ws: accept key (RFC 6455's example)")
+        val mk = byteArrayOf(1, 2, 3, 4)
+        val f = Ws.frame(2, byteArrayOf(10, 20, 30), mk)
+        check(f.size == 2 + 4 + 3 && f[0] == 0x82.toByte() && f[1] == 0x83.toByte() && f[6] == (10 xor 1).toByte(), "ws: a small masked binary frame")
+        val big = Ws.frame(2, ByteArray(300) { 7 }, mk)
+        check(big[1] == (0x80 or 126).toByte() && big[2] == 1.toByte() && big[3] == 44.toByte() && big.size == 4 + 4 + 300, "ws: 16-bit length")
+        fun srv(op: Int, p: ByteArray, fin: Boolean = true) = byteArrayOf(((if (fin) 0x80 else 0) or op).toByte(), p.size.toByte()) + p
+        var r = Ws.readFrame(java.io.ByteArrayInputStream(srv(2, byteArrayOf(5, 6))))
+        check(r != null && r.first == 2 && r.second.contentEquals(byteArrayOf(5, 6)), "ws: read a binary message")
+        r = Ws.readFrame(java.io.ByteArrayInputStream(srv(1, "no".toByteArray(), false) + srv(0, "pc".toByteArray())))
+        check(r != null && r.first == 1 && String(r.second) == "nopc", "ws: fragments join")
+        r = Ws.readFrame(java.io.ByteArrayInputStream(srv(9, byteArrayOf(1))))
+        check(r != null && r.first == 9, "ws: a ping comes through on its own")
+        check(Ws.readFrame(java.io.ByteArrayInputStream(ByteArray(0))) == null, "ws: end of stream")
+        val masked = Ws.frame(2, byteArrayOf(42, 43), mk)              // a masked frame reads back too
+        r = Ws.readFrame(java.io.ByteArrayInputStream(masked))
+        check(r != null && r.second.contentEquals(byteArrayOf(42, 43)), "ws: masked round trip")
+        val huge = byteArrayOf(0x82.toByte(), 127) + ByteArray(8).also { it[6] = 0x20 }
+        check(runCatching { Ws.readFrame(java.io.ByteArrayInputStream(huge)) }.isFailure, "ws: an 8 KB message is refused")
+        check(Ws.readHead(java.io.ByteArrayInputStream("HTTP/1.1 101 Switching\r\nUpgrade: websocket\r\n\r\nxx".toByteArray()))?.startsWith("HTTP/1.1 101") == true, "ws: the answer's head")
+        check(Ws.readHead(java.io.ByteArrayInputStream("HTTP/1.1 101".toByteArray())) == null, "ws: a cut-off head")
     }
 
     println("$checks checks, $fails failure(s)")

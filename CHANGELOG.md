@@ -2,6 +2,24 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.22
+- **Pocket Loomy, redesigned.** A big mic in the middle with Loomy's dots rippling out of it (they move with your voice), the latest thing said at the top (tap it for the whole history), and everything else behind the gear: your PC and the On switch, Listening, Ellune and the app settings.
+- **You can see what it's doing**: the mic breathes while it waits for "Loomy", turns purple when it's taking your command, shows a spinning ring while Ellune works it out (the mic is off then), and flashes green or red when the answer comes back. A faint grid sits behind it all.
+- **Remote**: your phone reaches your PC through Ellune, from anywhere with internet. The PC connects out to her (no open ports) and she only passes on the same end-to-end encrypted messages as Bluetooth; she can't read or fake them. Pairing still happens in person, over Bluetooth.
+- **Power button**: top left turns Pocket Loomy off; while it's off, a beating power button sits where the mic is (tap it to turn on).
+- **The mic in Ellune mode**: tap it any time to send what you've said right away (it keeps listening after); hold it until the ring fills to mute.
+- **Setup follows the mode**: purple = **Scan the QR**; blue = choose your PC and say or **type** the code.
+- **Pair by QR, no Bluetooth**: `/remote` shows a QR under the pairing code. Scan it with your phone's camera, Pocket Loomy opens and pairs through Ellune (after the Authy code if the phone is new to her), and you press Enter on the PC like before. Bluetooth pairing still works behind Allow Bluetooth. Pairing still lasts 7 days.
+- **Add devices with Authy**: a new phone (Add to guest list) or PC (`/remote add` and the code) puts itself on Ellune's guest list with the 6-digit code from your Authy app. No more copying lines into Cloudflare. **Devices on Ellune** in the app shows who's on it and removes one (with a code too).
+- **`/phone` is now `/remote`**, with **Allow Bluetooth** (B) and **Allow remote** (R) to choose what works, and C to copy this PC's line for Ellune's guest list.
+- **Online first.** Pocket Loomy now goes through Ellune by default and doesn't touch Bluetooth at all. The **Bluetooth button** over the mic switches to Bluetooth mode (the app turns blue): then it's Bluetooth only and Ellune is left alone. Only you switch it.
+- **The bar on top shows the connection**: Offline, Ellune offline, PC offline, Online, or Online BT.
+- **Solo ignores typing and noises**: a sound has to actually be a voice before it's sent anywhere, and things that aren't commands are dropped quietly.
+- **Background grid strength** is a slider under Visuals in the settings.
+- **"Loomy" is heard better**: "lumi", "lumie", "loomino", "lou me" and other ways the phone writes her name now count.
+- **Two ways to listen**, picked right under the mic: **Say "Loomy"** (everything after her name is the command; tapping the mic counts as saying it) or **Solo** (everything you say is a command). In both, a pause or "thank you" ends the sentence; "please" can go anywhere.
+- **No more silent switching:** if Ellune doesn't answer, Pocket Loomy says so and nothing is sent. Want only the phone's recognizer? Tick **Use the phone's recognizer**. With no internet it's the only option, and it tells you.
+
 ## v2.21
 - **Ellune's guest list.** Ellune now only serves devices on her list. Pocket Loomy has its own Ellune key (kept in the phone's secure Keystore, it can't be copied out): **Add to guest list** copies the line you paste into Ellune's settings, and **Ping Ellune** now also says whether the phone is on the list. It's the groundwork for Ellune understanding your voice.
 - **Ellune hears you** (Pocket Loomy, setting **Understand me through Ellune**, on by default). With internet and the phone on her guest list, a Talk tap, "Loomy" + a pause, and solo mode record what you say and Ellune turns it into text with Whisper (much better with accents). Waiting for "Loomy" still happens on the phone, so what isn't said to Loomy never leaves it.

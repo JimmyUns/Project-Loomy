@@ -153,7 +153,7 @@ static const Command COMMANDS[] = {
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig, FEAT_WEB },
     { L"Packages",     L"turn features on/off on this PC",    L"pkg",      0,                  1, ALL, L"[add|remove <feature>]",          ARGS_SELF, c_pkg },
-    { L"Phone",        L"pair your phone (Pocket Loomy)",     L"phone",    0,                  1, ALL, L"[forget]",                        ARGS_SELF, c_phone, FEAT_PHONE },
+    { L"Remote",       L"your phone: pairing, Bluetooth, remote", L"remote", 0,                  1, ALL, L"[forget | add <code>]",          ARGS_SELF, c_phone, FEAT_PHONE },
     { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, L"[general|custom]",                1,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },

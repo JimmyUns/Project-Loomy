@@ -1,4 +1,4 @@
-# Ellune — Handover (live, Worker 0.3; security talk §7; v2.21 "the brain" done; v2.22 next; Nov 2 2026)
+# Ellune — Handover (live 0.4; 0.5 Authy registration written, not deployed; remote works; Nov 4 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -48,6 +48,57 @@ doesn't cover is still his call: don't bake it in without him.
   "and"), else ""). Body read once with a size cap before the signature check (keys are public). Needs a **Workers
   AI binding named `AI`** (503 without it). `node test.mjs`: 58 checks with a stand-in AI. App side: `POCKET-HANDOVER.md`
   §11. **Deployed + tested by him Nov 2 (0.3 + the `AI` binding + the new APK): works.**
+- **Remote, being built (v2.22, started Nov 2; he said go).** Staged; each stage committed:
+  1. **Done: Ellune 0.4, the relay** (`src/index.js`, class `Room`, a Durable Object; `wrangler.toml` now has the
+     `ROOMS` binding + `new_sqlite_classes` migration + the `AI` binding). `GET /pc?room=R` (PC, WebSocket),
+     `GET /phone?room=R` (phone, WebSocket, one session), `GET /status?room=R` (`{"pc":bool}`), all guest-list
+     signed **with the query in the signed path**. R = hex(SHA-256("Loomy room" + the PC's pairing static public
+     key))[0..32]: both ends know it from the Bluetooth pairing, nothing new to exchange, a re-pair = a new room.
+     The room passes bytes (pocket.c frames, end-to-end encrypted) both ways untouched; text = signals ("phone" /
+     "gone" to the PC, "nopc" to the phone, "drop" from the PC; "ping" auto-answered "pong" without waking it).
+     One PC + one phone per room; replaced sockets are marked so their close doesn't signal twice. Frames > 1024
+     bytes close the sender. `node test.mjs`: 82 checks (fake DO runtime). **Deploy needs wrangler** (Durable
+     Objects can't be pasted in): he needs Node, the repo, `npx wrangler login`, `npx wrangler deploy` in `ellune/`.
+  2. **Done (not run on Windows yet): the PC.** Rename `/phone` → **`/remote`** (his call) with checkboxes inside: **Allow Bluetooth**,
+     **Allow remote** (+ anything else important). The PC's own Ellune key (CNG ECDSA P-256 via bcrypt, private
+     blob DPAPI-protected in `%APPDATA%\Loomy\ellune.dat`), its ID + guest line shown in `/remote` with copy to
+     clipboard (paste into `DEVICES` once; password registration later). `PHONE_NET` in a new `phonenet.c`: a
+     WinHTTP WebSocket to `/pc?room=R` on a worker thread, reconnecting with backoff, pinging "ping" every 60 s,
+     posting to the UI thread; "phone" → `phone_on_accept(&PHONE_NET, ...)`, bytes → `phone_on_data`, "gone" →
+     `phone_on_closed`; `drop` sends "drop". Listens only when a phone is trusted and Allow remote is on. Junk
+     through the relay = the normal lockout of everything (his §7 choice).
+  2b. As built: `ellune.c` (portable: SHA-256, base64url, `el_device_id`, `el_guest_line`, `el_room`,
+     `el_signed_text`; Linux-tested against the same vectors as the phone) + `phonenet.c` (Windows: CNG key in
+     `ellune.dat`, WinHTTP WebSocket on a worker thread, WM_PHONENET to the UI thread, keepalive 60 s, backoff 5 s /
+     15 s / 1 min / 2 min, 5 min after a 401). Config `remote_bluetooth` / `remote_ellune` (both default on); keys B /
+     R / C in `/remote`. Cross-compiles clean with mingw (`build.sh`).
+  3. **Done (not run end to end yet): the app.** As planned: a tiny WebSocket client (no libraries: SSLSocket, masked client frames) as an `EllunePipe`
+     next to `BluetoothPipe` in Link.kt, used in Ellune mode; `Net` asks `/status` so the bar can say Online /
+     PC offline; `Voice.send` stops saying "comes with the next step".
+  4. **WORKS END TO END (Nov 4, he tested): 0.4 deployed with wrangler, the PC in its room ("connected to Ellune"),
+     the app's bar "Online", a command with the phone's Bluetooth off reached the PC.** Gotchas from the setup: npx
+     not found until a new cmd window; wrangler's first download timed out once (just rerun); the first `DEVICES`
+     edit replaced the phone's line instead of adding (put both back, comma-separated); R had been pressed by
+     accident ("Remote not allowed" in the log). The PC is `W6VV-D6NH`, his phone `J000-NN38`.
+     Steps it took: deploy 0.4 with wrangler (Node), run the test exe, `/remote` → C → paste the PC's
+     line into `DEVICES` (comma or new line), install the dev APK, Ellune mode (purple): the bar should say Online
+     and commands should work with Bluetooth off.
+- **Registration with Authy (0.5, built Nov 4, his call instead of a master password):** `POST /register`
+  (signed by the NEW key itself + `{"code","name"}`), `GET /devices`, `POST /remove` (code). TOTP: RFC 6238,
+  SHA-1, 6 digits, 30 s, ±1 step, a used step can't be reused (`last`), 5 wrong → locked 1 h, a right code resets
+  the count. Durable Object `Guests` (one instance "guests": `devices`, `lock`, `last`), migration `v2`; the Worker
+  caches its list a minute per instance (reset on register/remove). `DEVICES` stays (the backup, shown "in
+  Cloudflare" in the app's list). Secret `TOTP_SECRET` made by `ellune/totp-setup.mjs` on his PC (never in chat),
+  added to Authy by hand, `wrangler secret put`. PC: `/remote add <code>` (`net_register` in phonenet.c,
+  reconnects right away). App: "Add to guest list" asks for the code ("Copy the line instead" kept), "Devices on
+  Ellune" lists everyone, tap an app-added one to remove it. Tests: 103 Worker checks + the app's real /register
+  request verified by the Worker. **Set up + works (Nov 4): 0.5 deployed, `/remote add <code>` put the PC on.** Gotcha:
+  his first codes were "wrong" because the key typed into Authy had a typo (or came from a second run of
+  totp-setup). Found with a one-line node check that prints the current code for a key (compare with Authy); fixed by
+  re-adding it in Authy and `wrangler secret put` with the same key. Worth adding a `totp-check.mjs` for that.
+  Also fixed: /shutdown and F in /remote froze Loomy (a blocking WebSocket close while holding the lock in
+  `net_unlisten`; now the handle is taken out under the lock and closed outside it, plus a generation counter so
+  an old worker never keeps running).
 - **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
 - **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
