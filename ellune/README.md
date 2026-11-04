@@ -22,7 +22,17 @@ The Worker → **Settings** → **Bindings** → **Add binding** → **Workers A
 two answer 503 and Pocket Loomy uses the phone's own recognizer. Free plan: 10,000 neurons a day; a 3 s command
 is about 2 for Whisper and about 3 when the AI has to pick the command, so thousands of commands a day.
 
-## The guest list (`DEVICES`)
+## Adding devices with Authy (0.5)
+A new phone ("Add to guest list") or PC (`/remote add 123456`) adds itself with the current Authy code; its request
+is signed by its own key, so nobody can add someone else's. Ellune keeps those in her own storage (the `Guests`
+object); a code works once; 5 wrong codes lock it for an hour. The app's **Devices on Ellune** lists everyone and
+removes the ones added this way (with a code). Setup, once, in this folder:
+1. `node totp-setup.mjs`: makes the secret on your PC and shows it.
+2. Authy: **Add account** → **Enter key manually** → that key, name it Ellune.
+3. `npx wrangler secret put TOTP_SECRET` → paste the same key.
+4. `npx wrangler deploy`.
+
+## The guest list (`DEVICES`, the backup)
 Each device has its own key; the list holds only the public halves, so nothing in it is secret. In Pocket Loomy,
 **Add to guest list** copies a line like `K7P2-9QXD=BOr0...`. In the dashboard: the Worker → **Settings** →
 **Variables and Secrets** → add a **Text** variable named `DEVICES` with the line as its value (more devices: one

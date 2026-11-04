@@ -225,6 +225,10 @@ fun main() {
         val b64 = java.util.Base64.getEncoder().encodeToString(clip)
         val say = "{\"text\":${Ellune.jsonQuote("make the \"screens\" go dark")}}".toByteArray()
         val uh = Ellune.signedHeaders(kp.private, pub, "POST", "/understand", time, say)
+        // 0.5: a /register request as the app makes it (RFC 6238's 59 s code), for the Worker to check
+        val regBody = "{\"code\":${Ellune.jsonQuote("287082")},\"name\":${Ellune.jsonQuote("phone-" + id)}}".toByteArray()
+        val rh = Ellune.signedHeaders(kp.private, pub, "POST", "/register", 59_000L, regBody)
+        java.io.File("/tmp/ellune_cross_reg.json").writeText("{\"headers\":${js(rh)},\"body\":\"" + java.util.Base64.getEncoder().encodeToString(regBody) + "\"}")
         java.io.File("/tmp/ellune_cross_hear.json").writeText(
             "{\"hear\":{\"headers\":${js(hh)},\"body\":\"$b64\"},\"understand\":{\"headers\":${js(uh)},\"body\":\"" +
             java.util.Base64.getEncoder().encodeToString(say) + "\"}}")

@@ -17,3 +17,12 @@ class_name = "Room"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# registration with an Authy code (0.5): the devices added that way, the lockout, the last used code
+[[durable_objects.bindings]]
+name = "GUESTS"
+class_name = "Guests"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Guests"]

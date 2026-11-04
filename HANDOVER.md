@@ -167,7 +167,7 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   call, with Allow Bluetooth / Allow remote; `phonenet.c` + `ellune.c`), the app (`EllunePipe`). **Tested end to end
   Nov 4: works** (a command with the phone's Bluetooth off reached the PC). Ellune is on 0.4 (deployed with wrangler
   from his PC; Node installed). Still on his list for **this release (v2.22)**:
-  - **Registration with Authy (his call, Nov 4; replaces the master-password idea):** a TOTP secret (6 digits, 30 s)
+  - **Registration with Authy: BUILT Nov 4 (Ellune 0.5, `ELLUNE-HANDOVER.md` §2), he hasn't set it up yet.** Plan was: a TOTP secret (6 digits, 30 s)
     in Ellune as a Cloudflare Secret and in his Authy; a new phone ("Add to guest list") or PC (C in `/remote`)
     asks for the current code, Ellune checks it (a used code can't be reused), stores the device's key herself.
     5 wrong tries → locked an hour. `DEVICES` stays as a backup. A device list with Remove in the app (needs a

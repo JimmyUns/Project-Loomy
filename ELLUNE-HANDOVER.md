@@ -1,4 +1,4 @@
-# Ellune — Handover (live 0.3, 0.4 relay written not deployed; security talk §7; remote being built; Nov 2 2026)
+# Ellune — Handover (live 0.4; 0.5 Authy registration written, not deployed; remote works; Nov 4 2026)
 
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
@@ -83,6 +83,16 @@ doesn't cover is still his call: don't bake it in without him.
      Steps it took: deploy 0.4 with wrangler (Node), run the test exe, `/remote` → C → paste the PC's
      line into `DEVICES` (comma or new line), install the dev APK, Ellune mode (purple): the bar should say Online
      and commands should work with Bluetooth off.
+- **Registration with Authy (0.5, built Nov 4, his call instead of a master password):** `POST /register`
+  (signed by the NEW key itself + `{"code","name"}`), `GET /devices`, `POST /remove` (code). TOTP: RFC 6238,
+  SHA-1, 6 digits, 30 s, ±1 step, a used step can't be reused (`last`), 5 wrong → locked 1 h, a right code resets
+  the count. Durable Object `Guests` (one instance "guests": `devices`, `lock`, `last`), migration `v2`; the Worker
+  caches its list a minute per instance (reset on register/remove). `DEVICES` stays (the backup, shown "in
+  Cloudflare" in the app's list). Secret `TOTP_SECRET` made by `ellune/totp-setup.mjs` on his PC (never in chat),
+  added to Authy by hand, `wrangler secret put`. PC: `/remote add <code>` (`net_register` in phonenet.c,
+  reconnects right away). App: "Add to guest list" asks for the code ("Copy the line instead" kept), "Devices on
+  Ellune" lists everyone, tap an app-added one to remove it. Tests: 103 Worker checks + the app's real /register
+  request verified by the Worker. **Not set up / tried by him yet.**
 - **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
 - **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,

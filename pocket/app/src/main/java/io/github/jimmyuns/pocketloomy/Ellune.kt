@@ -286,6 +286,61 @@ object Ellune {
         }
     }
 
+    // ------------------------------------------------------------------ registration with Authy (0.5)
+    /** a signed request; (HTTP status, body). 0 = couldn't reach her. Blocking. */
+    private fun request(priv: PrivateKey, pub: ByteArray, method: String, path: String, body: ByteArray?): Pair<Int, String> {
+        var c: HttpsURLConnection? = null
+        try {
+            c = URL(HOST + path).openConnection() as HttpsURLConnection
+            c.connectTimeout = 6000; c.readTimeout = 8000; c.useCaches = false; c.instanceFollowRedirects = false
+            c.requestMethod = method
+            for ((k, v) in signedHeaders(priv, pub, method, path, System.currentTimeMillis(), body ?: ByteArray(0))) c.setRequestProperty(k, v)
+            if (body != null) {
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(body.size)
+                c.setRequestProperty("Content-Type", "application/json")
+                c.outputStream.use { it.write(body) }
+            }
+            val code = c.responseCode
+            val text = (if (code < 400) c.inputStream else c.errorStream)?.use { String(it.readBytes().take(8192).toByteArray(), Charsets.UTF_8) } ?: ""
+            return code to text
+        } catch (_: Exception) {
+            return 0 to ""
+        } finally {
+            c?.disconnect()
+        }
+    }
+
+    private fun why(code: Int, text: String) = when (code) {
+        403 -> "Wrong Authy code (or one already used): wait for the next one."
+        429 -> "Locked for an hour after 5 wrong codes."
+        503 -> "Ellune's registration isn't set up yet (the Authy secret)."
+        0 -> "Couldn't reach Ellune."
+        else -> jsonString(text, "error") ?: "Ellune said $code."
+    }
+
+    /** this device onto her guest list with the current Authy code; null = done, else why not */
+    fun registerNow(priv: PrivateKey, pub: ByteArray, code: String, name: String): String? {
+        val (st, text) = request(priv, pub, "POST", "/register", "{\"code\":${jsonQuote(code)},\"name\":${jsonQuote(name)}}".toByteArray())
+        return if (st == 200) null else why(st, text)
+    }
+
+    class Guest(val name: String, val key: String, val fromApp: Boolean)
+
+    /** everyone on her guest list; null = couldn't ask */
+    fun devicesNow(priv: PrivateKey, pub: ByteArray): List<Guest>? {
+        val (st, text) = request(priv, pub, "GET", "/devices", null)
+        if (st != 200) return null
+        return Regex("\\{\"name\":\"([A-Za-z0-9._-]{1,32})\",\"key\":\"([A-Za-z0-9_-]{80,100})\",\"from\":\"(app|dashboard)\"\\}")
+            .findAll(text).map { Guest(it.groupValues[1], it.groupValues[2], it.groupValues[3] == "app") }.toList()
+    }
+
+    /** throw a device out (one added from the app); null = done */
+    fun removeNow(priv: PrivateKey, pub: ByteArray, key: String, code: String): String? {
+        val (st, text) = request(priv, pub, "POST", "/remove", "{\"key\":${jsonQuote(key)},\"code\":${jsonQuote(code)}}".toByteArray())
+        return if (st == 200) null else why(st, text)
+    }
+
     /** A clip -> what was said ("" = nothing). Blocking. */
     fun hearNow(priv: PrivateKey, pub: ByteArray, wav: ByteArray): Answer =
         post(priv, pub, "/hear", wav, "audio/wav", "heard", 8000)

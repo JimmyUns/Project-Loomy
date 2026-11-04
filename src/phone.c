@@ -691,10 +691,18 @@ void cmd_phone(wchar_t *args) {
     int n = s_words(args, w, 2);
     if (n == 0) { phone_open(); return; }
     if (n == 1 && s_ieq(w[0], L"forget")) { do_forget(); return; }
-    cmd_usage(L"[forget]");
+    if (n == 2 && s_ieq(w[0], L"add")) {                 // 2.22: this PC onto Ellune's guest list with an Authy code
+        wchar_t why[160];
+        out(OUT_DIM, L"Asking Ellune...");
+        ui_flush();
+        if (net_register(w[1], why, 160)) { out(OUT_OK, L"This PC is on Ellune's guest list now."); log_add(L"Added this PC to Ellune's guest list."); }
+        else out(OUT_ERR, why);
+        return;
+    }
+    cmd_usage(L"[forget | add <Authy code>]");
 }
 
-void phone_complete(const wchar_t *partial) { complete_add(L"forget", partial); }
+void phone_complete(const wchar_t *partial) { complete_add(L"forget", partial); complete_add(L"add", partial); }
 
 // ---------------------------------------------------------------- the screen
 static int   g_active, g_confirmForget;

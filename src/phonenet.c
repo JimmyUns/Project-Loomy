@@ -49,6 +49,8 @@ static PFN_Import bImport; static PFN_Sign bSign;
 static void *g_alg, *g_key;                 // the algorithm and this PC's key (UI thread loads it)
 static unsigned char g_pub[65];             // 04 || X || Y
 static int  g_keyTried, g_haveKey;
+static int  net_listen(wchar_t *err, int cap);
+static void net_unlisten(void);
 
 // the connection (shared with the worker thread under g_cs)
 static CRITICAL_SECTION g_cs;
@@ -180,12 +182,12 @@ static unsigned long long unix_ms(void) {
     return (t - 116444736000000000ull) / 10000;
 }
 
-// the three guest-list headers for GET path (see ellune/src/index.js)
-static int signed_headers(const char *path, wchar_t *out, int cap) {
-    char text[200], sig64[100], key64[100], tbuf[24];
+// the three guest-list headers for a request (see ellune/src/index.js)
+static int signed_headers_for(const char *method, const char *path, const unsigned char *body, int bn, wchar_t *out, int cap) {
+    char text[300], sig64[100], key64[100], tbuf[24];
     unsigned char h[32], sig[64];
     unsigned long long ms = unix_ms();
-    if (!el_signed_text("GET", path, ms, text, sizeof text)) return 0;
+    if (!el_signed_text_body(method, path, ms, body, bn, text, sizeof text)) return 0;
     el_sha256((const unsigned char *)text, s_len_a(text), h);
     ULONG got = 0;
     if (bSign(g_key, 0, h, 32, sig, sizeof sig, &got, 0) || got != 64) return 0;   // CNG gives raw r || s
@@ -198,6 +200,57 @@ static int signed_headers(const char *path, wchar_t *out, int cap) {
     char a[400];
     wsprintfA(a, "x-ellune-key: %s\r\nx-ellune-time: %s\r\nx-ellune-sig: %s\r\n", key64, tbuf, sig64);
     return MultiByteToWideChar(CP_UTF8, 0, a, -1, out, cap) > 0;
+}
+
+static int signed_headers(const char *path, wchar_t *out, int cap) { return signed_headers_for("GET", path, (const unsigned char *)"", 0, out, cap); }
+
+// /remote add <code>: this PC puts itself on Ellune's guest list with the current Authy code (0.5). Blocking,
+// a few seconds at most (like /ellune). The request is signed by this PC's own key, so only it can add itself.
+int net_register(const wchar_t *code, wchar_t *why, int cap) {
+    why[0] = 0;
+    int n = 0;
+    while (code[n]) { if (code[n] < L'0' || code[n] > L'9' || n > 6) { s_cpy(why, L"The Authy code is 6 digits.", cap); return 0; } n++; }
+    if (n != 6) { s_cpy(why, L"The Authy code is 6 digits.", cap); return 0; }
+    char id[10];
+    if (!key_ready() || !net_id(id)) { s_cpy(why, L"Couldn't make this PC's Ellune key.", cap); return 0; }
+    char body[96], c8[8];
+    for (int i = 0; i < 6; i++) c8[i] = (char)code[i];
+    c8[6] = 0;
+    wsprintfA(body, "{\"code\":\"%s\",\"name\":\"pc-%s\"}", c8, id);
+    int bn = s_len_a(body);
+    wchar_t hdr[700];
+    if (!signed_headers_for("POST", "/register", (const unsigned char *)body, bn, hdr, 600)) { s_cpy(why, L"Couldn't sign the request.", cap); return 0; }
+    s_cat(hdr, L"Content-Type: application/json\r\n", 700);
+    HINTERNET s = WinHttpOpen(L"Loomy", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, 0, 0, 0);
+    if (!s) s = WinHttpOpen(L"Loomy", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, 0, 0, 0);
+    HINTERNET c = s ? WinHttpConnect(s, ELLUNE_HOST, INTERNET_DEFAULT_HTTPS_PORT, 0) : 0;
+    HINTERNET r = c ? WinHttpOpenRequest(c, L"POST", L"/register", 0, 0, 0, WINHTTP_FLAG_SECURE) : 0;
+    DWORD status = 0;
+    char ans[300];
+    DWORD got = 0;
+    ans[0] = 0;
+    if (r) WinHttpSetTimeouts(r, 8000, 8000, 8000, 8000);
+    if (r && WinHttpSendRequest(r, hdr, (DWORD)-1, body, (DWORD)bn, (DWORD)bn, 0) && WinHttpReceiveResponse(r, 0)) {
+        DWORD sz = sizeof status;
+        WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, 0, &status, &sz, 0);
+        WinHttpReadData(r, ans, sizeof ans - 1, &got);
+        ans[got] = 0;
+    }
+    if (r) WinHttpCloseHandle(r);
+    if (c) WinHttpCloseHandle(c);
+    if (s) WinHttpCloseHandle(s);
+    if (status == 200) {                               // in: connect now instead of waiting out the 5 minutes
+        if (g_want) { net_unlisten(); wchar_t e[120]; net_listen(e, 120); }
+        return 1;
+    }
+    switch (status) {
+    case 403: s_cpy(why, L"Wrong Authy code (or one already used). Wait for the next one.", cap); break;
+    case 429: s_cpy(why, L"Locked for an hour after 5 wrong codes.", cap); break;
+    case 503: s_cpy(why, L"Ellune's registration isn't set up yet (TOTP_SECRET, see ellune/README.md).", cap); break;
+    case 0:   s_cpy(why, L"Couldn't reach Ellune.", cap); break;
+    default:  wsprintfW(why, L"Ellune said %u.", (unsigned)status); break;
+    }
+    return 0;
 }
 
 // one connection: 1 = it was up (reconnect soon), 0 = it never got up; *status gets the HTTP status
@@ -356,7 +409,7 @@ const wchar_t *net_status(int *bad) {
     switch (g_state) {
     case NS_CONNECTED:  return g_session ? L"Remote: a phone is talking through Ellune." : L"Remote: connected to Ellune, waiting for your phone.";
     case NS_CONNECTING: return L"Remote: connecting to Ellune...";
-    case NS_NOT_GUEST:  *bad = 1; return L"Remote: Ellune doesn't know this PC yet. Press C, paste the line into her DEVICES list.";
+    case NS_NOT_GUEST:  *bad = 1; return L"Remote: Ellune doesn't know this PC yet. Type /remote add and your Authy code (or C: copy the line).";
     case NS_UNREACHABLE: *bad = 1; return L"Remote: can't reach Ellune right now (no internet, or blocked). Trying again.";
     case NS_NO_KEY:     *bad = 1; return L"Remote: couldn't make this PC's Ellune key.";
     default:            return g_want ? L"Remote: starting..." : L"Remote: waiting for a paired phone.";

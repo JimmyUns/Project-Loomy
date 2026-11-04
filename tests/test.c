@@ -38,7 +38,7 @@ static void cat(const char *p) { FILE *f = fopen(p, "r"); char l[2048]; if (!f) 
 
 // ---- Pocket Loomy: a real phone-role engine talking to phone.c through the fake radio
 extern int g_shows, g_balloons, g_phoneTimer, g_btOk, g_btListening, g_btDrops, g_btSendFail, g_rngFail;
-extern int g_netListening, g_netListens, g_netCopies;
+extern int g_netListening, g_netListens, g_netCopies, g_netRegs;
 extern wchar_t g_balloonMsg[300]; extern unsigned char g_toPhone[8192]; extern int g_toPhoneN; extern ULONGLONG g_now;
 static PkConn ph; static int ph_ev[16], ph_nev;
 // move bytes both ways until nobody has anything left to say
@@ -428,6 +428,8 @@ int main(void) {
                !strcmp(t, "ellune1\nGET\n/pc?room=8a0e1d384dc28f829b6dbfec15ddb06d\n1793600000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"), "signed text");
         EXPECT(!el_signed_text("GET", "/pc", 1, t, 20), "signed text: too small a buffer");
         char b[8]; EXPECT(el_b64url((const unsigned char *)"ab", 2, b, 8) == 3 && !strcmp(b, "YWI"), "b64url, no padding");
+        EXPECT(el_signed_text_body("POST", "/register", 5, (const unsigned char *)"abc", 3, t, 200) &&
+               !strcmp(t, "ellune1\nPOST\n/register\n5\nba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "signed text over a body");
     }
 
     wprintf(L"\n== sysinfo ==\n");
@@ -608,7 +610,7 @@ int main(void) {
         { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "r"); char b[4096] = {0}; fread(b, 1, 4095, f); fclose(f);
           EXPECT(strstr(b, "features_on = phone\r\n") && strstr(b, "features_off = \r\n"), "saved as features_on = phone"); }
         cfg_load();                 EXPECT(feature_on(FEAT_PHONE), "survives a reload");
-        run(L"/remote now");         EXPECT(saw(L"Usage: /remote [forget]"), "strict args");
+        run(L"/remote now");         EXPECT(saw(L"Usage: /remote [forget | add <Authy code>]"), "strict args");
         tab(L"/rem", L"/remote ");
         tab(L"/remote f", L"/remote forget ");
 
@@ -807,6 +809,11 @@ int main(void) {
         phone_char(L'b');           EXPECT(!g_btListening && g_netListening && !g_cfg.remoteBt, "B: Bluetooth not allowed, remote stays");
         phone_char(L'b');           EXPECT(g_btListening && g_cfg.remoteBt, "B again: Bluetooth allowed");
         phone_char(L'c');           EXPECT(g_netCopies == 1, "C copies the guest line");
+        phone_key(VK_ESCAPE);
+        run(L"/remote add 123456");  EXPECT(g_netRegs == 1 && saw(L"on Ellune's guest list now"), "/remote add: the PC registers with an Authy code");
+        run(L"/remote add 000000");  EXPECT(g_netRegs == 2 && saw(L"Wrong Authy code"), "/remote add: a wrong code says so");
+        run(L"/remote add");         EXPECT(saw(L"Usage: /remote"), "/remote add needs the code");
+        phone_open();
         phone_key(VK_ESCAPE);
         run(L"/remote forget");      EXPECT(saw(L"Forgot \"Pixel 8\"") && !g_btListening, "/remote forget");
         EXPECT(!g_netListening, "forgotten: remote stops too (its room came from the pairing)");

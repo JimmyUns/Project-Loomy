@@ -105,8 +105,14 @@ void el_room(const uint8_t pc_pk[32], char out[33]) {
     hex(h, 16, out);
 }
 
-// what a request signs: "ellune1\n" METHOD "\n" path "\n" time "\n" hex(sha256(body)); here the body is empty
+// what a request signs: "ellune1\n" METHOD "\n" path "\n" time "\n" hex(sha256(body))
+int el_signed_text_body(const char *method, const char *path, unsigned long long ms,
+                        const unsigned char *bodyp, int bodyn, char *out, int cap);
 int el_signed_text(const char *method, const char *path, unsigned long long ms, char *out, int cap) {
+    return el_signed_text_body(method, path, ms, (const unsigned char *)"", 0, out, cap);
+}
+int el_signed_text_body(const char *method, const char *path, unsigned long long ms,
+                        const unsigned char *bodyp, int bodyn, char *out, int cap) {
     char t[24], body[65];
     int tn = 0;
     unsigned long long v = ms;
@@ -115,7 +121,7 @@ int el_signed_text(const char *method, const char *path, unsigned long long ms, 
     for (int i = 0; i < tn; i++) t[i] = rev[tn - 1 - i];
     t[tn] = 0;
     uint8_t h[32];
-    el_sha256((const uint8_t *)"", 0, h);
+    el_sha256(bodyp, bodyn, h);
     hex(h, 32, body);
     const char *parts[] = { "ellune1\n", method, "\n", path, "\n", t, "\n", body };
     int o = 0;

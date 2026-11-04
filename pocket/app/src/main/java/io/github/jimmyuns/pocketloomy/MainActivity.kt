@@ -377,7 +377,8 @@ class MainActivity : Activity() {
         section(box(heading("Ellune"),
                     text("Loomy's online sister. Ping checks this phone can reach her and is on her guest list.", dim, 12f),
                     elluneId, elluneLine, elluneGuest, gap(10),
-                    row(elluneBtn, space(8), button("Add to guest list", false) { addToGuestList() })))
+                    row(elluneBtn, space(8), button("Add to guest list", false) { addToGuestList() }),
+                    gap(8), button("Devices on Ellune", false) { showDevices() }))
 
         // the app itself
         fun setting(label: String, about: String, onFlip: (Boolean) -> Unit) = Switch(this).apply {
@@ -836,8 +837,15 @@ class MainActivity : Activity() {
         }, "ellune-ping").start()
     }
 
-    // Copies this phone's line for Ellune's DEVICES list and says where it goes. Only public data: the
-    // private half of the key can't leave the Keystore.
+    // 2.22: this phone puts itself on Ellune's guest list with the current Authy code (his idea). Copying the line
+    // for her DEVICES list stays as the backup.
+    private fun codeBox(): EditText = EditText(this).apply {
+        hint = "6-digit Authy code (Ellune)"
+        inputType = InputType.TYPE_CLASS_NUMBER
+        filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+        setTextColor(textC); setHintTextColor(dim); typeface = Typeface.MONOSPACE
+    }
+
     private fun addToGuestList() {
         Thread({
             val k = ElluneKey.get()
@@ -845,24 +853,83 @@ class MainActivity : Activity() {
                 if (isDestroyed) return@runOnUiThread
                 if (k == null) { problem("This phone couldn't make its Ellune key."); return@runOnUiThread }
                 showElluneId(k)
-                getSystemService(android.content.ClipboardManager::class.java)
-                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Ellune guest line", k.line))
+                val box = codeBox()
                 AlertDialog.Builder(this)
-                    .setTitle("Copied ${k.id}")
-                    .setMessage("Put it on Ellune's guest list. The Cloudflare dashboard works in the phone's browser too, or tap Share to send the line to your PC.\n\n" +
-                        "Cloudflare dashboard \u2192 Workers & Pages \u2192 ellune \u2192 Settings \u2192 Variables and Secrets.\n\n" +
-                        "No DEVICES yet: Add, type Text, name DEVICES, paste as the value.\n" +
-                        "Already there: edit it and paste on a new line.\n\n" +
-                        "Deploy, then tap Ping Ellune here to check.\n\n" +
-                        "It's only the public half of this phone's key, nothing secret.")
-                    .setPositiveButton("OK", null)
-                    .setNeutralButton("Share") { _, _ ->
-                        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, k.line) }, "Send the guest line"))
+                    .setTitle("Add ${k.id} to Ellune")
+                    .setMessage("Type the code Authy shows for Ellune.")
+                    .setView(LinearLayout(this).apply { setPadding(dp(20), 0, dp(20), 0); addView(box, LinearLayout.LayoutParams(-1, -2)) })
+                    .setPositiveButton("Add") { _, _ ->
+                        val code = box.text.toString()
+                        Thread({
+                            val why = Ellune.registerNow(k.priv, k.pub, code, "phone-${k.id}")
+                            runOnUiThread {
+                                if (isDestroyed) return@runOnUiThread
+                                elluneGuest.text = why ?: "This phone is on her guest list now (${k.id})."
+                                elluneGuest.setTextColor(if (why == null) ok else err)
+                                elluneGuest.visibility = View.VISIBLE
+                                if (why == null) { Net.refresh(this); Pocket.syncPipe(this) }
+                            }
+                        }, "ellune-register").start()
                     }
+                    .setNeutralButton("Copy the line instead") { _, _ ->
+                        getSystemService(android.content.ClipboardManager::class.java)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("Ellune guest line", k.line))
+                        elluneGuest.text = "Copied. Add it to DEVICES in Cloudflare, after a comma."
+                        elluneGuest.setTextColor(dim)
+                        elluneGuest.visibility = View.VISIBLE
+                    }
+                    .setNegativeButton("Cancel", null)
                     .show()
             }
         }, "ellune-key").start()
+    }
+
+    // everyone on Ellune's guest list; tap one added from the app to remove it (needs an Authy code)
+    private fun showDevices() {
+        val k = ElluneKey.peek()
+        if (k == null) { problem("This phone isn't on Ellune yet: Add to guest list first."); return }
+        Thread({
+            val list = Ellune.devicesNow(k.priv, k.pub)
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                if (list == null) { elluneGuest.text = "Couldn't get the list from Ellune."; elluneGuest.setTextColor(err); elluneGuest.visibility = View.VISIBLE; return@runOnUiThread }
+                val mine = Ellune.guestLine(k.pub).substringAfter("=")
+                val items = list.map { it.name + (if (it.key == mine) "  (this phone)" else "") + (if (it.fromApp) "" else "  \u00B7 in Cloudflare") }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle("On Ellune's guest list")
+                    .setItems(items) { _, i -> askRemove(k, list[i]) }
+                    .setNegativeButton("Close", null)
+                    .show()
+            }
+        }, "ellune-devices").start()
+    }
+
+    private fun askRemove(k: ElluneKey.Key, g: Ellune.Guest) {
+        if (!g.fromApp) {
+            AlertDialog.Builder(this).setTitle(g.name)
+                .setMessage("This one was added in Cloudflare (DEVICES). Remove its line there.")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        val box = codeBox()
+        AlertDialog.Builder(this)
+            .setTitle("Remove ${g.name}?")
+            .setMessage("It won't get into Ellune any more. Type the code Authy shows for Ellune.")
+            .setView(LinearLayout(this).apply { setPadding(dp(20), 0, dp(20), 0); addView(box, LinearLayout.LayoutParams(-1, -2)) })
+            .setPositiveButton("Remove") { _, _ ->
+                val code = box.text.toString()
+                Thread({
+                    val why = Ellune.removeNow(k.priv, k.pub, g.key, code)
+                    runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
+                        elluneGuest.text = why ?: "Removed ${g.name}."
+                        elluneGuest.setTextColor(if (why == null) ok else err)
+                        elluneGuest.visibility = View.VISIBLE
+                    }
+                }, "ellune-remove").start()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     // ------------------------------------------------------------------ commands

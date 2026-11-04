@@ -194,6 +194,9 @@ void el_device_id(const unsigned char pub[65], char out[10]);
 int  el_guest_line(const unsigned char pub[65], char *out, int cap);
 void el_room(const unsigned char pc_pk[32], char out[33]);
 int  el_signed_text(const char *method, const char *path, unsigned long long ms, char *out, int cap);
+int  el_signed_text_body(const char *method, const char *path, unsigned long long ms,
+                         const unsigned char *body, int n, char *out, int cap);
+int  net_register(const wchar_t *code, wchar_t *why, int cap);   // /remote add <Authy code>: 1 = this PC is a guest now
 const wchar_t *net_status(int *bad);    // the remote line in /remote ("connected to Ellune", ...)
 int  net_id(char out[10]);              // this PC's Ellune ID (makes its key the first time); 0 = no key
 int  net_copy_line(void);               // this PC's guest line -> the clipboard; 1 = done
