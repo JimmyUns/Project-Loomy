@@ -33,8 +33,10 @@ object Pocket {
     fun mark(ok: Boolean) {
         if (ok) lastSeen = System.currentTimeMillis()
         reachable = ok
+        appCtx?.let { Net.sawBt(it, ok) }
         changed()
     }
+    @Volatile var appCtx: Context? = null          // set by the app and the service, for Net.sawBt
 
     fun myName(ctx: Context): ByteArray {
         var n = Settings.Global.getString(ctx.contentResolver, "device_name") ?: Build.MODEL ?: "Android phone"
@@ -47,7 +49,8 @@ object Pocket {
     fun canConnect(ctx: Context) = Build.VERSION.SDK_INT < 31 ||
         ctx.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
 
-    /** null = good to go; otherwise why not, in words */
+    /** null = good to go; otherwise why not, in words. In Ellune mode (2.22, the default) Bluetooth isn't checked
+     *  at all: only the pairing (its keys lock the messages either way). */
     fun ready(ctx: Context): String? {
         val s = Store(ctx)
         val t = s.trust()
@@ -55,6 +58,16 @@ object Pocket {
             s.pcAddress == null -> "Choose your PC in the app first."
             t == null -> "Pair with your PC in the app first."
             !t.valid() -> "The pairing ran out (7 days). Pair again in the app."
+            !s.btMode -> null
+            else -> readyBt(ctx)
+        }
+    }
+
+    /** the Bluetooth part: for Bluetooth mode, and for pairing / forgetting (those stay Bluetooth, in person) */
+    fun readyBt(ctx: Context): String? {
+        val s = Store(ctx)
+        return when {
+            s.pcAddress == null -> "Choose your PC in the app first."
             !canConnect(ctx) -> "Allow Nearby devices for Pocket Loomy (open the app)."
             adapter(ctx) == null -> "This phone has no Bluetooth."
             adapter(ctx)?.isEnabled != true -> "Turn Bluetooth on."
@@ -140,7 +153,7 @@ object Pocket {
 
     /** a failed attempt: tell the PC so it shows there too */
     fun reportMiss(ctx: Context, heard: String) {
-        if (ready(ctx) != null) return
+        if (!Store(ctx).btMode || ready(ctx) != null) return       // Bluetooth mode only, for now
         val d = device(ctx) ?: return
         val t = Store(ctx).trust() ?: return
         link.note(d, t, myName(ctx), heard)

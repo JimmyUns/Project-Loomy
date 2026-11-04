@@ -47,8 +47,17 @@ class MainActivity : Activity() {
     private val textC = Color.rgb(0xD9, 0xCE, 0xE6)
     private val bright = Color.rgb(0xF4, 0xEE, 0xFB)
     private val dim = Color.rgb(0x84, 0x73, 0x99)
-    private val accent = Color.rgb(0xA8, 0x55, 0xF7)
-    private val accentDim = Color.rgb(0x5C, 0x33, 0x87)
+    // the theme colour: Loomy purple in Ellune mode, a blue next to it in Bluetooth mode (2.22), animated between
+    private val purple = Color.rgb(0xA8, 0x55, 0xF7)
+    private val purpleDim = Color.rgb(0x5C, 0x33, 0x87)
+    private val blue = Color.rgb(0x5A, 0x8B, 0xFF)
+    private val blueDim = Color.rgb(0x2C, 0x46, 0x8A)
+    private var accent = purple
+    private var accentDim = purpleDim
+    private val themers = mutableListOf<() -> Unit>()       // re-colour what was drawn in the theme colour
+    private val grids = mutableListOf<GridDrawable>()
+    private var themeAnim: android.animation.ValueAnimator? = null
+    private val amber = Color.rgb(0xFF, 0xC8, 0x6B)
     private val ok = Color.rgb(0x8E, 0xE3, 0xB8)
     private val err = Color.rgb(0xFF, 0x7C, 0x96)
 
@@ -69,6 +78,12 @@ class MainActivity : Activity() {
     private lateinit var pillCmd: TextView
     private lateinit var pillAns: TextView
     private lateinit var mic: MicView
+    private lateinit var bt: BtIconView
+    private lateinit var gridLabel: TextView
+    private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
+    private val recheck = object : Runnable {             // the connection bar, every 30 s while the app is open
+        override fun run() { Net.refresh(this@MainActivity); ticker.postDelayed(this, if (store.btMode) 60_000 else 30_000) }
+    }
     private lateinit var live: TextView
     private lateinit var modeBtn: TextView
     private lateinit var typing: LinearLayout
@@ -107,6 +122,8 @@ class MainActivity : Activity() {
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
         store = Store(this)
+        Pocket.appCtx = applicationContext
+        if (store.btMode) { accent = blue; accentDim = blueDim }
         Pocket.fixStaleOn(this)
         ear = Ear(this,                      // only for hearing the pairing code
             partial = { transcript = it; render() },
@@ -119,8 +136,8 @@ class MainActivity : Activity() {
         render()
     }
 
-    override fun onResume() { super.onResume(); Pocket.listen(onChange); Pocket.fixStaleOn(this); render() }
-    override fun onPause() { Pocket.unlisten(onChange); super.onPause() }
+    override fun onResume() { super.onResume(); Pocket.listen(onChange); Pocket.fixStaleOn(this); ticker.post(recheck); render() }
+    override fun onPause() { ticker.removeCallbacks(recheck); Pocket.unlisten(onChange); super.onPause() }
     override fun onDestroy() { ear.destroy(); super.onDestroy() }
 
     @Deprecated("still called with targetSdk 35 (no predictive back opt-in)")
@@ -143,6 +160,7 @@ class MainActivity : Activity() {
     private fun text(s: String, color: Int, sp: Float = 15f, bold: Boolean = false) = TextView(this).apply {
         text = s
         setTextColor(color)
+        if (color == accent) themers += { setTextColor(accent) }
         textSize = sp
         typeface = if (bold) Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) else Typeface.MONOSPACE
     }
@@ -157,10 +175,17 @@ class MainActivity : Activity() {
         text = s
         isAllCaps = false
         typeface = Typeface.MONOSPACE
-        setTextColor(if (filled) Color.WHITE else accent)
-        background = if (filled) rounded(accent) else rounded(card, accent)
+        val paint = {
+            setTextColor(if (filled) Color.WHITE else accent)
+            background = if (filled) rounded(accent) else rounded(card, accent)
+        }
+        paint()
+        themers += paint
         setOnClickListener { onClick() }
     }
+
+    /** a rounded card with a theme-coloured edge (kept in step with the theme) */
+    private fun edged(v: View, radius: Int) { val p = { v.background = rounded(card, accentDim, radius) }; p(); themers += p }
 
     private fun box(vararg views: View) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
@@ -177,14 +202,18 @@ class MainActivity : Activity() {
     // switches and checkboxes: purple when on, grey when off (the dark theme's own colours made "off" look on)
     private val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
     private fun tint(sw: Switch) {
-        sw.thumbTintList = ColorStateList(states, intArrayOf(accent, Color.rgb(0x9A, 0x8C, 0xA8)))
-        sw.trackTintList = ColorStateList(states, intArrayOf(accentDim, Color.rgb(0x3A, 0x30, 0x44)))
+        val p = {
+            sw.thumbTintList = ColorStateList(states, intArrayOf(accent, Color.rgb(0x9A, 0x8C, 0xA8)))
+            sw.trackTintList = ColorStateList(states, intArrayOf(accentDim, Color.rgb(0x3A, 0x30, 0x44)))
+        }
+        p(); themers += p
     }
     private fun check(label: String, onFlip: (Boolean) -> Unit) = CheckBox(this).apply {
         text = label
         setTextColor(textC)
         typeface = Typeface.MONOSPACE
-        buttonTintList = ColorStateList(states, intArrayOf(accent, dim))
+        val p = { buttonTintList = ColorStateList(states, intArrayOf(accent, dim)) }
+        p(); themers += p
         setOnCheckedChangeListener { _, on -> if (!settingSwitch) onFlip(on) }
     }
 
@@ -204,7 +233,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun grid() = GridDrawable(Color.argb(22, Color.red(accent), Color.green(accent), Color.blue(accent)), bg, dp(26).toFloat())
+    private fun gridColor() = Color.argb((store.gridOpacity * 255 / 100), Color.red(accent), Color.green(accent), Color.blue(accent))
+    private fun grid() = GridDrawable(gridColor(), bg, dp(26).toFloat()).also { grids += it }
 
     // Android 15 draws under the bars: keep clear of them (and of the keyboard)
     private fun insetsPadding(v: View) {
@@ -224,7 +254,7 @@ class MainActivity : Activity() {
         root.addView(main)
 
         // top: name, what's going on, the gear
-        chip = text("", dim, 12f).apply { setPadding(dp(10), dp(4), dp(10), dp(4)) }
+        chip = text("", dim, 12f).apply { setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { Net.state = Net.State.CHECKING; Net.refresh(this@MainActivity); render() } }
         val gear = GearView(this, textC).apply { setOnClickListener { openSettings() } }
         main.addView(row(text("Pocket Loomy", accent, 20f, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) },
                          chip, space(6), gear.apply { layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)) }))
@@ -235,7 +265,7 @@ class MainActivity : Activity() {
         pillAns = text("", textC, 13f).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_HORIZONTAL }
         pill = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded(card, accentDim, 16)
+            edged(this, 16)
             setPadding(dp(14), dp(10), dp(14), dp(10))
             addView(pillCmd); addView(pillAns)
             setOnClickListener { if (Voice.history.isNotEmpty()) { logLayer.visibility = View.VISIBLE; renderHistory(true); render() } }
@@ -257,8 +287,10 @@ class MainActivity : Activity() {
             })
             isFillViewport = true
         }
+        bt = BtIconView(this, accent).apply { active = store.btMode; setOnClickListener { toggleBt() } }
         main.addView(FrameLayout(this).apply {
             addView(mic, FrameLayout.LayoutParams(-1, -1))
+            addView(bt, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { topMargin = dp(8) })
             addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         }, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -266,7 +298,7 @@ class MainActivity : Activity() {
         live = text("", accent, 15f).apply { gravity = Gravity.CENTER_HORIZONTAL; minLines = 2; maxLines = 3 }
         main.addView(live, LinearLayout.LayoutParams(-1, -2))
         modeBtn = text("", textC, 13f).apply {
-            background = rounded(card, accentDim, 20)
+            edged(this, 20)
             setPadding(dp(16), dp(8), dp(16), dp(8))
             setOnClickListener { chooseMode() }
         }
@@ -325,7 +357,7 @@ class MainActivity : Activity() {
 
         // listening: the mode (same as the button under the mic) and who hears you
         modeBtn2 = text("", textC, 13f).apply {
-            background = rounded(card, accentDim, 20)
+            edged(this, 20)
             setPadding(dp(16), dp(8), dp(16), dp(8))
             setOnClickListener { chooseMode() }
         }
@@ -367,10 +399,78 @@ class MainActivity : Activity() {
         }
         swNotif = n1; swCard = n3; swSpeed = n4
         section(box(heading("App"), n1, n1a, n3, n3a, n4, n4a))
+
+        // visuals: how strong the background grid is
+        gridLabel = text("", textC, 14f)
+        val slider = android.widget.SeekBar(this).apply {
+            max = 100
+            progress = store.gridOpacity
+            val p = { progressTintList = ColorStateList.valueOf(accent); thumbTintList = ColorStateList.valueOf(accent) }
+            p(); themers += p
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: android.widget.SeekBar, v: Int, user: Boolean) {
+                    if (!user) return
+                    store.gridOpacity = v
+                    gridLabel.text = "Background grid: $v%"
+                    for (g in grids) g.setLine(gridColor())
+                }
+                override fun onStartTrackingTouch(sb: android.widget.SeekBar) {}
+                override fun onStopTrackingTouch(sb: android.widget.SeekBar) {}
+            })
+        }
+        gridLabel.text = "Background grid: ${store.gridOpacity}%"
+        section(box(heading("Visuals"), gridLabel, gap(4), slider))
         return col
     }
 
     private fun openSettings() { settingsLayer.visibility = View.VISIBLE; render() }
+
+    // ------------------------------------------------------------------ Ellune mode / Bluetooth mode
+    private fun toggleBt() {
+        val toBt = !store.btMode
+        store.btMode = toBt
+        bt.active = toBt
+        Net.state = Net.State.CHECKING
+        Net.refresh(this)
+        if (Voice.state != Voice.State.OFF) { Pocket.stopTalking(this); Pocket.talk(this, true) }   // listen the new way
+        Pocket.sync(this)
+        android.widget.Toast.makeText(this,
+            if (toBt) "Bluetooth mode: everything goes over Bluetooth, Ellune is left alone."
+            else "Ellune mode: online first, Bluetooth isn't used.", android.widget.Toast.LENGTH_SHORT).show()
+        animateTheme(toBt)
+    }
+
+    private fun animateTheme(toBt: Boolean) {
+        themeAnim?.cancel()
+        val from = accent
+        val fromDim = accentDim
+        val to = if (toBt) blue else purple
+        val toDim = if (toBt) blueDim else purpleDim
+        themeAnim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 650
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener {
+                val k = it.animatedValue as Float
+                accent = blend(from, to, k)
+                accentDim = blend(fromDim, toDim, k)
+                applyTheme()
+            }
+            start()
+        }
+    }
+
+    private fun applyTheme() {
+        for (t in themers) t()
+        for (g in grids) g.setLine(gridColor())
+        mic.accent = accent
+        bt.accent = accent
+        render()
+    }
+
+    private fun blend(a: Int, b: Int, k: Float) = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * k).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * k).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).toInt())
 
     // ------------------------------------------------------------------ the mode
     private fun modeName(solo: Boolean) = if (solo) "Solo" else "Say \u201CLoomy\u201D"
@@ -400,26 +500,23 @@ class MainActivity : Activity() {
         swNotif.isChecked = store.showNotif
         swCard.isChecked = store.talkCard
         swSpeed.isChecked = store.netSpeed
-        cbPhone.isChecked = store.phoneEar
+        cbPhone.isChecked = store.phoneEar || store.btMode
+        cbPhone.isEnabled = !store.btMode                       // Bluetooth mode never uses Ellune
+        cbPhone.alpha = if (store.btMode) 0.45f else 1f
         settingSwitch = false
 
-        // chip
+        // the bar on top: the connection (his five states); the mic shows the listening
         val (chipText, chipColor) = when {
-            phase == Phase.LISTEN_CODE -> "listening" to accent
+            phase == Phase.LISTEN_CODE -> "pairing" to accent
             phase == Phase.PAIRING -> "pairing" to accent
             phase == Phase.FORGETTING -> "forgetting" to accent
-            Voice.sending -> "talking to Loomy" to accent
-            listening && Voice.inputMode -> "input mode" to accent
-            Voice.thinking -> "Ellune is understanding" to accent
-            listening && Voice.takingCommand(this) -> "Loomy is listening" to accent
-            listening && Voice.keep -> "waiting for \u201CLoomy\u201D" to accent
-            listening -> "listening" to accent
             !isPaired -> (if (t != null) "pairing ran out" else "not paired") to dim
-            Pocket.linkState == LinkState.CONNECTING -> "connecting" to accent
-            !Pocket.reachable -> "can't reach PC" to err
-            Pocket.linkState == LinkState.CONNECTED -> "connected" to ok
-            store.on -> "on" to ok
-            else -> "off" to dim
+            else -> Net.state.label to when (Net.state) {
+                Net.State.ONLINE, Net.State.ONLINE_BT -> ok
+                Net.State.PC_OFFLINE -> amber
+                Net.State.CHECKING -> dim
+                else -> err
+            }
         }
         chip.text = chipText
         chip.setTextColor(chipColor)
@@ -453,7 +550,8 @@ class MainActivity : Activity() {
         if (store.on) onProblem = ""
         onLine.text = when {
             onProblem.isNotEmpty() -> "Couldn't turn on: $onProblem"
-            store.on -> "On: Talk is in your notifications and the Loomy tile, and it checks in with the PC every 5 minutes.$seen"
+            store.on && store.btMode -> "On: Talk is in your notifications and the Loomy tile, and it checks in with the PC over Bluetooth every 5 minutes.$seen"
+            store.on -> "On: Talk is in your notifications and the Loomy tile, and it checks on Ellune every 5 minutes."
             else -> "Off: turn on to Talk from the notification or the Loomy quick-settings tile.$seen"
         }
         onLine.setTextColor(if (onProblem.isNotEmpty()) err else dim)

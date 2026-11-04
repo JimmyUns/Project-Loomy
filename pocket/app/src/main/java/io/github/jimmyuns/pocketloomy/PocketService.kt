@@ -41,6 +41,7 @@ class PocketService : Service() {
     override fun onCreate() {
         super.onCreate()
         running = true
+        Pocket.appCtx = applicationContext
         Voice.onChange = { main.post { sync() } }
     }
 
@@ -92,6 +93,7 @@ class PocketService : Service() {
 
     // ------------------------------------------------------------------ check-ins with the PC
     private fun ping() {
+        if (!Store(this).btMode) { Net.refresh(this); main.post { sync() }; return }   // Ellune mode: no Bluetooth at all
         val why = Pocket.ready(this)
         if (why != null) { main.post { Pocket.turnOff(this, why) }; return }
         val device = Pocket.device(this) ?: return

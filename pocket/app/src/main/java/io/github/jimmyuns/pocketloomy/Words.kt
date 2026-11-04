@@ -214,6 +214,19 @@ object Words {
         }
     }
 
+    // what Whisper writes when nobody really said anything (typing, a cough, music, silence)
+    private val NOISE_TAGS = Regex("\\[[^\\]]*]|\\([^)]*\\)|\\*[^*]*\\*|[\u266A\u266B\u266C]")
+    private val NOISE_LINES = setOf("you", "thank you", "thanks", "thanks for watching", "thank you for watching",
+        "bye", "bye bye", "uh", "um", "hmm", "mm", "oh", "ah", "so", "the", "i", "a",
+        "please subscribe", "subscribe", "silence", "music", "applause", "laughter")
+
+    /** 2.22: is this just Whisper hearing a noise? (nothing but tags like "[typing]", one filler word, a classic
+     *  "Thanks for watching!", or no letters at all). Real commands are never this. */
+    fun isNoise(heard: String): Boolean {
+        val t = NOISE_TAGS.replace(heard, " ").lowercase().replace(Regex("[^a-z' ]"), " ").replace(Regex("\\s+"), " ").trim()
+        return t.length < 2 || t in NOISE_LINES
+    }
+
     private val THANKS = Regex("\\b(thank you|thank u|thanks|thx)\\b", RegexOption.IGNORE_CASE)
 
     /** 2.22: "thank you" ends a sentence. What came before it, and whether it was there at all.

@@ -69,10 +69,11 @@ class ElluneEar(
                     val rms = Sound.rms(frame)
                     val lv = Sound.level(rms)
                     post(me) { level(lv) }
-                    when (vad.push(rms)) {
+                    when (vad.push(rms, Sound.zcr(frame))) {
                         Vad.Event.STARTED -> post(me) { partial("Loomy is listening...") }
                         Vad.Event.TIMEOUT -> { post(me) { missed(SpeechRecognizer.ERROR_SPEECH_TIMEOUT) }; return@Thread }
                         Vad.Event.ENDED -> { ended = true; break }
+                        Vad.Event.NOISE -> { post(me) { missed(SpeechRecognizer.ERROR_NO_MATCH) }; return@Thread }   // typing, a knock: never sent
                         Vad.Event.NONE -> {}
                     }
                 }

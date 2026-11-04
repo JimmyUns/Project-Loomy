@@ -26,7 +26,10 @@ import kotlin.math.sin
 //   THINKING   mic dimmed, a ring spinning round it, dots still      (Ellune working it out / sending to the PC)
 //   flash()    the ring goes green (done) or red (didn't work) for a moment, with a ripple
 // Only the circle itself is the button. Animates only while it's on screen and not covered.
-class MicView(ctx: Context, private val accent: Int, private val card: Int, private val bright: Int) : View(ctx) {
+class MicView(ctx: Context, accent: Int, private val card: Int, private val bright: Int) : View(ctx) {
+    /** the theme colour (purple, or blue in Bluetooth mode); the switch is animated by the screen */
+    var accent = accent
+        set(v) { field = v; invalidate() }
     enum class Mode { IDLE, WAITING, LISTENING, THINKING, DISABLED }
 
     var mode = Mode.IDLE
@@ -208,8 +211,10 @@ class GearView(ctx: Context, private val color: Int) : View(ctx) {
 }
 
 // The background (2.22, his ask): faint grid lines, like graph paper in the dark, fading out towards the edges
-class GridDrawable(private val line: Int, private val bg: Int, private val cell: Float) : android.graphics.drawable.Drawable() {
+class GridDrawable(line: Int, private val bg: Int, private val cell: Float) : android.graphics.drawable.Drawable() {
     private val p = Paint().apply { color = line; strokeWidth = 1f }
+    /** the lines' colour, alpha included (the theme and the Visuals slider change it) */
+    fun setLine(c: Int) { p.color = c; invalidateSelf() }
     private val fade = Paint()
     override fun draw(c: Canvas) {
         val b = bounds
@@ -228,4 +233,39 @@ class GridDrawable(private val line: Int, private val bg: Int, private val cell:
     override fun setColorFilter(cf: android.graphics.ColorFilter?) {}
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = android.graphics.PixelFormat.OPAQUE
+}
+
+// The Bluetooth button over the mic (2.22): the Bluetooth rune, plain when Ellune mode is on, filled when
+// Bluetooth mode is (then everything goes over Bluetooth and Ellune is left alone)
+class BtIconView(ctx: Context, private val plain: Int) : View(ctx) {
+    var active = false
+        set(v) { field = v; invalidate() }
+    var accent = plain
+        set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND }
+    private val f = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val path = Path()
+
+    init { isClickable = true; contentDescription = "Bluetooth mode" }
+
+    override fun onDraw(c: Canvas) {
+        val cx = width / 2f
+        val cy = height / 2f
+        val r = min(width, height) * 0.46f
+        f.color = if (active) accent else Color.argb(0, 0, 0, 0)
+        if (active) c.drawCircle(cx, cy, r, f)
+        p.color = if (active) Color.WHITE else accent
+        p.strokeWidth = r * 0.11f
+        if (!active) { p.alpha = 150; c.drawCircle(cx, cy, r - p.strokeWidth, p); p.alpha = 255 }
+        val h = r * 0.55f
+        val w = r * 0.3f
+        path.reset()                                     // the rune: up the spine, two arrows back across it
+        path.moveTo(cx - w, cy - h * 0.5f)
+        path.lineTo(cx + w, cy + h * 0.5f)
+        path.lineTo(cx, cy + h)
+        path.lineTo(cx, cy - h)
+        path.lineTo(cx + w, cy - h * 0.5f)
+        path.lineTo(cx - w, cy + h * 0.5f)
+        c.drawPath(path, p)
+    }
 }

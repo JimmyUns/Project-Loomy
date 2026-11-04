@@ -65,7 +65,7 @@ object Voice {
         keep = keepListening
         errors = 0
         val st = Store(c)
-        phoneEar = st.phoneEar
+        phoneEar = st.phoneEar || st.btMode                        // Bluetooth mode: Ellune isn't used at all
         elluneKey = if (!phoneEar) ElluneKey.peek() else null
         if (state == State.LISTENING) { changed(); return }
         if (keep && !st.solo) { armed = true; armedUntil = SystemClock.elapsedRealtime() + 8000 }   // the tap = her name
@@ -172,6 +172,8 @@ object Voice {
         errors = 0
         val now = SystemClock.elapsedRealtime()
         val solo = Store(ctx).solo
+        // Whisper on a noise writes things like "[typing]", "you", "Thanks for watching!": not speech
+        if (viaEllune && raw.all { Words.isNoise(it) }) { next(100); return }
         // "thank you" ends the sentence: keep what came before it
         val cut = raw.map { Words.untilThanks(it) }
         val all = cut.map { it.first }
@@ -216,9 +218,11 @@ object Voice {
         // the rules don't know it: ask Ellune's AI (only what was said TO Loomy gets here)
         val k = elluneKey
         if (!Words.knows(cmd) && k != null && elluneUp()) {
-            understand(k, said)                                     // listening resumes when she's answered
+            understand(k, said, quiet = solo && !following)          // listening resumes when she's answered
             return
         }
+        // Solo hears everything: what isn't a command is dropped quietly (talking, typing, the TV), not a red miss
+        if (solo && !following && !Words.knows(cmd)) { next(150); return }
         if (cmd.isEmpty()) { miss(said); next(150); return }
         send(cmd)
         next(150)
@@ -231,7 +235,7 @@ object Voice {
 
     // Ellune's AI picks the command; it's sent as is ("said -> sent" in the history). If she can't answer,
     // it says so and nothing is sent (no falling back to the rules' guess: his call, 2.22).
-    private fun understand(k: ElluneKey.Key, said: String) {
+    private fun understand(k: ElluneKey.Key, said: String, quiet: Boolean = false) {
         // the mic is off meanwhile (his ask: a loading sign, then back to how it was)
         ear?.cancel(); eEar?.cancel()
         thinking = true
@@ -244,7 +248,7 @@ object Voice {
                 partial = ""
                 if (state == State.LISTENING) next(150) else changed()
                 when (a) {
-                    is Ellune.Answer.Ok -> if (a.text.isNotEmpty()) send(a.text, "$said \u2192 ${a.text}") else miss(said)
+                    is Ellune.Answer.Ok -> if (a.text.isNotEmpty()) send(a.text, "$said \u2192 ${a.text}") else if (!quiet) miss(said)
                     is Ellune.Answer.Down -> add(said, "Ellune couldn't answer (${a.why}). Nothing was sent.", true)
                 }
             }
@@ -321,6 +325,10 @@ object Voice {
     private fun send(cmd: String, shown: String = cmd) {
         val why = Pocket.ready(ctx)
         if (why != null) { add(shown, why, true); return }
+        if (!Store(ctx).btMode) {                                   // remote (through Ellune) is the next step
+            add(shown, "Sending through Ellune comes with the next step (remote). Tap the Bluetooth button over the mic to use Bluetooth for now.", true)
+            return
+        }
         val device = Pocket.device(ctx) ?: return
         val trust = Store(ctx).trust() ?: return
         val e = Entry(shown, "...", false)

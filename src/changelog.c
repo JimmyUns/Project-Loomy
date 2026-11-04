@@ -18,6 +18,9 @@ static const Release RELEASES[] = {
         L"The mic shows what's happening: waiting, listening, thinking, done.",
         L"Her name is caught better: lumi, lumie, loomino and friends count.",
         L"Two ways to listen: Say \"Loomy\" or Solo; \"thank you\" ends a sentence.",
+        L"Online first: Ellune by default; the Bluetooth button turns the app blue.",
+        L"The top bar shows the connection: Offline, Ellune / PC offline, Online (BT).",
+        L"Solo ignores typing and noises; a background grid slider in settings.",
         L"No silent switching: tick Use the phone's recognizer if you want it.",
         0 } },
     { L"2.21", L"2026-11-02", {

@@ -289,6 +289,26 @@ fun main() {
         check(Words.addressed("okay lumino, system info") == "system info" && Words.addressed("ayo lumie show") == "show", "name: after a greeting")
         check(Words.addressed("loom is broken") == null && Words.addressed("luminous paint") == null && Words.addressed("lemon tea") == null, "name: not words like it")
         check(Words.addressed("I told lumi about it") == null, "name: not in the middle")
+        // 2.22: Whisper hearing noise, and typing vs talking
+        for (n in listOf("[typing]", "(keyboard clicking)", "you", "You.", "Thanks for watching!", "  ", "...", "\u266A\u266A", "*click*", "Uh.", "Thank you."))
+            check(Words.isNoise(n), "noise: '$n'")
+        for (n in listOf("turn off the screens", "next tab", "ok", "Loomy, system info.", "back"))
+            check(!Words.isNoise(n), "not noise: '$n'")
+        check(Sound.zcr(ShortArray(320) { if (it % 2 == 0) 1000 else -1000 }) > 0.9 && Sound.zcr(ShortArray(320) { if ((it / 40) % 2 == 0) 1000 else -1000 }) < 0.05, "zcr: crackle vs a low tone")
+        run {
+            val v = Vad()
+            val ev = mutableListOf<Vad.Event>()
+            for (k in 0 until 20) v.push(50.0, 0.1)
+            for (k in 0 until 40) ev += v.push(3000.0, 0.45)          // loud but crackly: typing
+            for (k in 0 until 60) ev += v.push(50.0, 0.1)
+            check(ev.filter { it != Vad.Event.NONE } == listOf(Vad.Event.STARTED, Vad.Event.NOISE), "vad: typing ends as noise")
+            val w = Vad()
+            val ew = mutableListOf<Vad.Event>()
+            for (k in 0 until 20) w.push(50.0, 0.1)
+            for (k in 0 until 40) ew += w.push(3000.0, if (k % 3 == 0) 0.4 else 0.08)   // a voice: mostly vowels
+            for (k in 0 until 60) ew += w.push(50.0, 0.1)
+            check(ew.filter { it != Vad.Event.NONE } == listOf(Vad.Event.STARTED, Vad.Event.ENDED), "vad: a voice ends as speech")
+        }
     }
 
     println("$checks checks, $fails failure(s)")

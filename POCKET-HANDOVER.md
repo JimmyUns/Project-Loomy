@@ -302,6 +302,21 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   = taking the command), THINKING (dimmed, spinning ring = Ellune / sending), plus `flash()` green/red ring + ripple
   when an answer comes back. `Voice.takingCommand()` decides WAITING vs LISTENING. Live text is 2-3 words; partial
   transcripts only show while taking the command (no more random words while waiting). 225 checks.
+- **2.22 feedback round 2 (Nov 2), his calls:** **online first.** `Store.btMode` (default false = **Ellune mode**):
+  Bluetooth isn't checked at all (`Pocket.ready` only checks the pairing; `readyBt` holds the Bluetooth part, used
+  in Bluetooth mode and for pairing / forget, which stay Bluetooth). **Bluetooth mode** = the Bluetooth button
+  (`BtIconView`, top right of the mic area): Bluetooth only, Ellune ignored (phone recognizer, no /hear,
+  /understand), and the theme animates purple → blue (`#5A8BFF`; `themers` re-colour everything drawn in the theme
+  colour, 650 ms). Only he switches modes; nothing switches by itself. **The bar on top = the connection only**
+  (`Net.kt`, his five states): Offline / Ellune offline / PC offline / Online / Online BT; checked every 30 s while
+  the app is open (60 s in Bluetooth mode, a real Bluetooth ping), on tap, and by the service every 5 min when On
+  (Ellune mode: no Bluetooth pings). **Until remote exists, Ellune mode can't deliver commands**: `Voice.send` says
+  "comes with the next step (remote), tap the Bluetooth button", and the bar tops out at "PC offline". **Grid**: a
+  Visuals slider (`Store.gridOpacity`, default 50 % = line alpha 50 %; it was 9 %, "too dim"). **Solo picked up
+  typing / noises**: `Vad` now needs 80 ms to start and, to count as speech, ≥ 8 loud *voiced* frames (zero-crossing
+  rate < 0.25: vowels; keyboard taps and knocks are crackly) → else `NOISE`, never uploaded; `Words.isNoise` drops
+  Whisper's noise outputs ("[typing]", "you", "Thanks for watching!"); in Solo, anything that isn't a command (rules
+  don't know it / the AI says NONE) is dropped quietly, no red miss. 244 checks.
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").

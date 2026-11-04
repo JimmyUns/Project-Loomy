@@ -50,6 +50,16 @@ class Store(ctx: Context) {
     var solo: Boolean
         get() = prefs.getBoolean("solo", false)
         set(v) { prefs.edit().putBoolean("solo", v).apply() }
+    /** 2.22: how Pocket Loomy reaches the PC. false (default) = through Ellune (online first, his call): no
+     *  Bluetooth checks at all. true = Bluetooth mode (the blue theme): Bluetooth only, Ellune ignored entirely.
+     *  Only he switches it (the Bluetooth button over the mic); nothing switches it by itself. */
+    var btMode: Boolean
+        get() = prefs.getBoolean("bt_mode", false)
+        set(v) { prefs.edit().putBoolean("bt_mode", v).apply() }
+    /** 2.22: the background grid's strength, 0..100 (Visuals in the settings) */
+    var gridOpacity: Int
+        get() = prefs.getInt("grid_opacity", 50)
+        set(v) { prefs.edit().putInt("grid_opacity", v.coerceIn(0, 100)).apply() }
     /** 2.22: ticked = only the phone's own recognizer and phrase rules, Ellune never hears anything.
      *  Unticked (default) = Ellune hears the command and her AI picks it; offline the phone is the only option. */
     var phoneEar: Boolean

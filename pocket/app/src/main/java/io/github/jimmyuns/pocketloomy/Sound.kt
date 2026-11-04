@@ -32,19 +32,30 @@ object Sound {
         return sqrt(s / n)
     }
 
+    /** how often the wave crosses zero, 0..1. Voices (vowels) are low, around 0.02-0.15 at 16 kHz; clicks, keyboard
+     *  taps and hiss are high (0.3+). Vad uses it to tell talking from typing. */
+    fun zcr(f: ShortArray, n: Int = f.size): Double {
+        if (n < 2) return 0.0
+        var c = 0
+        for (i in 1 until n) if ((f[i] >= 0) != (f[i - 1] >= 0)) c++
+        return c.toDouble() / (n - 1)
+    }
+
     /** rms -> roughly the -2..10 range Android's recognizer reports, so the mic bars look the same */
     fun level(rms: Double) = ((20 * kotlin.math.log10(maxOf(rms, 1.0)) - 40) / 2.5).coerceIn(-2.0, 10.0).toFloat()
 }
 
 /**
  * Talking or not, frame by frame (20 ms each). Learns the room's noise while waiting, starts when the level
- * stays well above it for 60 ms, ends after a second of quiet, or at 10 s. Indices are frame numbers.
+ * stays well above it for 80 ms, ends after a second of quiet, or at 10 s. Indices are frame numbers.
+ * 2.22: a clip must also hold real voice (at least 160 ms of loud, low-zero-crossing frames, i.e. vowels):
+ * typing and knocks are loud but crackly, so they end as NOISE and are never sent anywhere.
  */
 class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
           private val endFrames: Int = 50,         // 1 s of quiet ends it
           private val maxFrames: Int = 500,        // 10 s of talking at most
           private val preFrames: Int = 15) {       // keep 300 ms before the start (the first sound)
-    enum class Event { NONE, STARTED, ENDED, TIMEOUT }
+    enum class Event { NONE, STARTED, ENDED, TIMEOUT, NOISE }
 
     var frame = 0; private set
     var start = -1; private set                    // first frame kept (pre-roll included)
@@ -54,27 +65,30 @@ class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
     private var quiet = 0
     private var talking = false
     private var done = false
+    var voiced = 0; private set                    // loud frames that sound like a voice
 
-    fun push(rms: Double): Event {
+    fun push(rms: Double, zcr: Double = 0.1): Event {
         if (done) return Event.NONE
         val i = frame++
         if (!talking) {
             noise = if (noise < 0) rms else if (rms < noise * 4) noise * 0.95 + rms * 0.05 else noise
-            if (rms > maxOf(noise * 2.5, 300.0) && i >= 3) loud++ else loud = 0
-            if (loud >= 3) {
+            val voice = rms > maxOf(noise * 2.5, 300.0) && i >= 3
+            if (voice) { loud++; if (zcr < 0.25) voiced++ } else { loud = 0; voiced = 0 }
+            if (loud >= 4) {
                 talking = true
-                start = maxOf(0, i - 2 - preFrames)
+                start = maxOf(0, i - 3 - preFrames)
                 return Event.STARTED
             }
             if (i + 1 >= waitFrames) { done = true; return Event.TIMEOUT }
             return Event.NONE
         }
         quiet = if (rms < maxOf(noise * 1.8, 200.0)) quiet + 1 else 0
+        if (quiet == 0 && rms > maxOf(noise * 2.5, 300.0) && zcr < 0.25) voiced++
         if (quiet >= endFrames || i + 1 - start >= maxFrames) {
             done = true
             end = if (quiet >= endFrames) i + 1 - quiet + 15 else i + 1     // keep 300 ms of the quiet
             end = minOf(end, start + maxFrames)
-            return Event.ENDED
+            return if (voiced >= 8) Event.ENDED else Event.NOISE
         }
         return Event.NONE
     }
