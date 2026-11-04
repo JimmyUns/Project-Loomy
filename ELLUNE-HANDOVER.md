@@ -59,7 +59,7 @@ doesn't cover is still his call: don't bake it in without him.
      One PC + one phone per room; replaced sockets are marked so their close doesn't signal twice. Frames > 1024
      bytes close the sender. `node test.mjs`: 82 checks (fake DO runtime). **Deploy needs wrangler** (Durable
      Objects can't be pasted in): he needs Node, the repo, `npx wrangler login`, `npx wrangler deploy` in `ellune/`.
-  2. **Next: the PC.** Rename `/phone` → **`/remote`** (his call) with checkboxes inside: **Allow Bluetooth**,
+  2. **Done (not run on Windows yet): the PC.** Rename `/phone` → **`/remote`** (his call) with checkboxes inside: **Allow Bluetooth**,
      **Allow remote** (+ anything else important). The PC's own Ellune key (CNG ECDSA P-256 via bcrypt, private
      blob DPAPI-protected in `%APPDATA%\Loomy\ellune.dat`), its ID + guest line shown in `/remote` with copy to
      clipboard (paste into `DEVICES` once; password registration later). `PHONE_NET` in a new `phonenet.c`: a
@@ -67,6 +67,11 @@ doesn't cover is still his call: don't bake it in without him.
      posting to the UI thread; "phone" → `phone_on_accept(&PHONE_NET, ...)`, bytes → `phone_on_data`, "gone" →
      `phone_on_closed`; `drop` sends "drop". Listens only when a phone is trusted and Allow remote is on. Junk
      through the relay = the normal lockout of everything (his §7 choice).
+  2b. As built: `ellune.c` (portable: SHA-256, base64url, `el_device_id`, `el_guest_line`, `el_room`,
+     `el_signed_text`; Linux-tested against the same vectors as the phone) + `phonenet.c` (Windows: CNG key in
+     `ellune.dat`, WinHTTP WebSocket on a worker thread, WM_PHONENET to the UI thread, keepalive 60 s, backoff 5 s /
+     15 s / 1 min / 2 min, 5 min after a 401). Config `remote_bluetooth` / `remote_ellune` (both default on); keys B /
+     R / C in `/remote`. Cross-compiles clean with mingw (`build.sh`).
   3. **Then the app:** a tiny WebSocket client (no libraries: SSLSocket, masked client frames) as an `EllunePipe`
      next to `BluetoothPipe` in Link.kt, used in Ellune mode; `Net` asks `/status` so the bar can say Online /
      PC offline; `Voice.send` stops saying "comes with the next step".

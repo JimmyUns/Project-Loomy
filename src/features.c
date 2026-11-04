@@ -16,7 +16,7 @@ static const wchar_t *NAME[NFEATURES]  = { 0, L"Websites", L"Loomy's Path", L"Ne
 static const wchar_t *ABOUT[NFEATURES] = { 0, L"web + /webconfig, saved sites", L"lp, browse your folders",
                                            L"net, what's using the internet", L"rb, open the recycle bin",
                                            L"display / dp, screen layouts", L"sysinfo / si, live CPU and GPU",
-                                           L"github / gh (core mode)", L"/phone, Pocket Loomy remote" };
+                                           L"github / gh (core mode)", L"/remote, Pocket Loomy" };
 
 int feature_on(int f) {
     if (f <= FEAT_CORE || f >= NFEATURES) return 1;
@@ -77,7 +77,7 @@ void cmd_pkg(wchar_t *args) {
         if (feature_on(f)) { outf(OUT_DIM, L"%s is already on.", NAME[f]); return; }
         set_on(f, 1);
         outf(OUT_OK, L"%s is on.", NAME[f]);
-        if (f == FEAT_PHONE) out(OUT_DIM, L"Type /phone to pair your phone.");
+        if (f == FEAT_PHONE) out(OUT_DIM, L"Type /remote to pair your phone.");
     } else {
         if (!feature_on(f)) { outf(OUT_DIM, L"%s is already off.", NAME[f]); return; }
         set_on(f, 0);

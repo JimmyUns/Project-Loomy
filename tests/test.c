@@ -38,6 +38,7 @@ static void cat(const char *p) { FILE *f = fopen(p, "r"); char l[2048]; if (!f) 
 
 // ---- Pocket Loomy: a real phone-role engine talking to phone.c through the fake radio
 extern int g_shows, g_balloons, g_phoneTimer, g_btOk, g_btListening, g_btDrops, g_btSendFail, g_rngFail;
+extern int g_netListening, g_netListens, g_netCopies;
 extern wchar_t g_balloonMsg[300]; extern unsigned char g_toPhone[8192]; extern int g_toPhoneN; extern ULONGLONG g_now;
 static PkConn ph; static int ph_ev[16], ph_nev;
 // move bytes both ways until nobody has anything left to say
@@ -403,6 +404,32 @@ int main(void) {
     }
 
 
+    wprintf(L"\n== ellune (remote, 2.22) ==\n");
+    {
+        unsigned char h[32], buf[1000];
+        el_sha256((const unsigned char *)"abc", 3, h);
+        EXPECT(h[0] == 0xba && h[1] == 0x78 && h[31] == 0xad, "sha256 abc");
+        memset(buf, 'a', sizeof buf);
+        static const struct { int n; const char *hex8; } V[] = { { 55, "9f4390f8" }, { 56, "b35439a4" }, { 63, "7d3e74a0" }, { 64, "ffe054fe" }, { 1000, "41edece4" } };
+        for (int i = 0; i < 5; i++) {
+            el_sha256(buf, V[i].n, h);
+            char got[9]; sprintf(got, "%02x%02x%02x%02x", h[0], h[1], h[2], h[3]);
+            EXPECT(!strcmp(got, V[i].hex8), "sha256 block edges");
+        }
+        unsigned char pk[32], pub[65];
+        for (int i = 0; i < 32; i++) pk[i] = (unsigned char)i;
+        pub[0] = 4; for (int i = 1; i < 65; i++) pub[i] = (unsigned char)i;
+        char room[33], id[10], line[120], t[200];
+        el_room(pk, room);          EXPECT(!strcmp(room, "8a0e1d384dc28f829b6dbfec15ddb06d"), "room name (same as the phone's)");
+        el_device_id(pub, id);      EXPECT(!strcmp(id, "NRFZ-85TB"), "Ellune ID (same as the phone's)");
+        EXPECT(el_guest_line(pub, line, 120) && !strcmp(line, "NRFZ-85TB=BAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0A"), "guest line");
+        EXPECT(!el_guest_line(pub, line, 50), "guest line: too small a buffer");
+        EXPECT(el_signed_text("GET", "/pc?room=8a0e1d384dc28f829b6dbfec15ddb06d", 1793600000000ull, t, 200) &&
+               !strcmp(t, "ellune1\nGET\n/pc?room=8a0e1d384dc28f829b6dbfec15ddb06d\n1793600000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"), "signed text");
+        EXPECT(!el_signed_text("GET", "/pc", 1, t, 20), "signed text: too small a buffer");
+        char b[8]; EXPECT(el_b64url((const unsigned char *)"ab", 2, b, 8) == 3 && !strcmp(b, "YWI"), "b64url, no padding");
+    }
+
     wprintf(L"\n== sysinfo ==\n");
     run(L"sysinfo");
     EXPECT(sysinfo_active() && !sysinfo_expanded() && g_sysOpen && g_timer && !g_big, "bare sysinfo: picker at normal size, sensors on");
@@ -574,19 +601,19 @@ int main(void) {
         run(L"/m switch home");
         EXPECT(!feature_on(FEAT_PHONE) && g_cfg.featuresOff == 0, "phone is opt-in: off on a fresh config");
         phone_startup();            EXPECT(!g_btListening, "off: nothing listens");
-        run(L"/phone");             EXPECT(saw(L"don't know '/phone'") && !phone_active(), "off: /phone doesn't exist");
+        run(L"/remote");             EXPECT(saw(L"don't know '/remote'") && !phone_active(), "off: /remote doesn't exist");
         run(L"help");               EXPECT(!saw(L"turned off"), "an opt-in feature being off isn't nagged about");
-        run(L"/pkg add phone");     EXPECT(feature_on(FEAT_PHONE) && saw(L"Type /phone to pair"), "/pkg add phone");
+        run(L"/pkg add phone");     EXPECT(feature_on(FEAT_PHONE) && saw(L"Type /remote to pair"), "/pkg add phone");
         EXPECT(!g_btListening, "on, but nothing to listen for yet (no phone, no code)");
         { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "r"); char b[4096] = {0}; fread(b, 1, 4095, f); fclose(f);
           EXPECT(strstr(b, "features_on = phone\r\n") && strstr(b, "features_off = \r\n"), "saved as features_on = phone"); }
         cfg_load();                 EXPECT(feature_on(FEAT_PHONE), "survives a reload");
-        run(L"/phone now");         EXPECT(saw(L"Usage: /phone [forget]"), "strict args");
-        tab(L"/pho", L"/phone ");
-        tab(L"/phone f", L"/phone forget ");
+        run(L"/remote now");         EXPECT(saw(L"Usage: /remote [forget]"), "strict args");
+        tab(L"/rem", L"/remote ");
+        tab(L"/remote f", L"/remote forget ");
 
         // ---- pairing
-        run(L"/phone");             EXPECT(phone_active() && g_btListening && g_phoneTimer == 1000, "/phone: code open, listening, ticking");
+        run(L"/remote");             EXPECT(phone_active() && g_btListening && g_phoneTimer == 1000, "/remote: code open, listening, ticking");
         PkConn spy; (void)spy;
         extern int phone_code_for_tests(char *out);
         char code[9] = {0}; EXPECT(phone_code_for_tests(code) && strlen(code) == 8 && strspn(code, "0123456789") == 8, "8-digit code");
@@ -706,7 +733,7 @@ int main(void) {
         EXPECT(!phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01"), "nothing gets in while shut down");
         cfg_load();                 EXPECT(g_cfg.phoneLocked, "shut down survives a restart");
         phone_startup();            EXPECT(!g_btListening, "and stays off after one");
-        run(L"/phone");             EXPECT(phone_active() && !g_btListening, "/phone shows it, doesn't reopen by itself");
+        run(L"/remote");             EXPECT(phone_active() && !g_btListening, "/remote shows it, doesn't reopen by itself");
         phone_key(VK_RETURN);       EXPECT(!g_cfg.phoneLocked && g_btListening, "Enter turns listening back on");
         phone_key(VK_ESCAPE);
 
@@ -761,7 +788,7 @@ int main(void) {
         g_now += 7ull * 24 * 3600;
         EXPECT(!phone_on_accept(&PHONE_BT, L"AA:BB:CC:DD:EE:01") && !g_btListening && !g_cfg.phoneLocked, "after 7 days: turned away quietly, listening stops");
         { FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); EXPECT(!f, "trust file deleted"); if (f) fclose(f); }
-        run(L"/phone");             EXPECT(phone_code_for_tests(code), "/phone offers a new code");
+        run(L"/remote");             EXPECT(phone_code_for_tests(code), "/remote offers a new code");
         EXPECT(phone_pair(code), "pair again");
         phone_key(VK_ESCAPE);
 
@@ -770,25 +797,35 @@ int main(void) {
         { last_out = g_nout; pk_send_forget(&ph); pump();
           EXPECT(saw(L"\"Pixel 8\" unpaired from the phone, so Loomy forgot it too.") && !g_btListening, "phone's Forget reaches the PC");
           FILE *f = fopen("/tmp/loomytest\\phone.dat", "rb"); EXPECT(!f, "trust file gone"); if (f) fclose(f); }
-        run(L"/phone"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again after"); phone_key(VK_ESCAPE);
+        run(L"/remote"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again after"); phone_key(VK_ESCAPE);
         // forget
-        run(L"/phone forget");      EXPECT(saw(L"Forgot \"Pixel 8\"") && !g_btListening, "/phone forget");
-        run(L"/phone forget");      EXPECT(saw(L"No phone is trusted"), "nothing to forget");
-        run(L"/phone"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again"); phone_key(VK_ESCAPE);
-        run(L"/phone");             phone_char(L'f'); EXPECT(g_btListening, "F once only asks");
+        // 2.22 /remote: Bluetooth and remote each allowed or not (B, R), C copies this PC's guest line
+        EXPECT(g_netListening && g_btListening, "trusted: Bluetooth and remote both listen");
+        phone_open();
+        phone_char(L'r');           EXPECT(!g_netListening && g_btListening && !g_cfg.remoteNet, "R: remote not allowed");
+        phone_char(L'r');           EXPECT(g_netListening && g_cfg.remoteNet, "R again: remote allowed");
+        phone_char(L'b');           EXPECT(!g_btListening && g_netListening && !g_cfg.remoteBt, "B: Bluetooth not allowed, remote stays");
+        phone_char(L'b');           EXPECT(g_btListening && g_cfg.remoteBt, "B again: Bluetooth allowed");
+        phone_char(L'c');           EXPECT(g_netCopies == 1, "C copies the guest line");
+        phone_key(VK_ESCAPE);
+        run(L"/remote forget");      EXPECT(saw(L"Forgot \"Pixel 8\"") && !g_btListening, "/remote forget");
+        EXPECT(!g_netListening, "forgotten: remote stops too (its room came from the pairing)");
+        run(L"/remote forget");      EXPECT(saw(L"No phone is trusted"), "nothing to forget");
+        run(L"/remote"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again"); phone_key(VK_ESCAPE);
+        run(L"/remote");             phone_char(L'f'); EXPECT(g_btListening, "F once only asks");
         phone_char(L'f');           EXPECT(!g_btListening, "F twice forgets");
         phone_key(VK_ESCAPE);
 
         // /pkg remove phone drops everything
-        run(L"/phone"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again"); phone_key(VK_ESCAPE);
+        run(L"/remote"); phone_code_for_tests(code); EXPECT(phone_pair(code), "pair again"); phone_key(VK_ESCAPE);
         EXPECT(phone_connect(), "connected");
         { int d = g_btDrops; run(L"/pkg remove phone"); EXPECT(!feature_on(FEAT_PHONE) && !g_btListening && g_btDrops == d + 1, "/pkg remove phone: hung up, not listening"); }
         EXPECT(saw(L"paired phone is kept"), "says the pairing is kept");
         run(L"/pkg add phone");     EXPECT(g_btListening, "back on: listens for the kept phone");
 
         // no Bluetooth
-        run(L"/phone forget"); g_btOk = 0;
-        run(L"/phone");             EXPECT(!g_btListening, "no radio: not listening");
+        run(L"/remote forget"); g_btOk = 0;
+        run(L"/remote");             EXPECT(!g_btListening, "no radio: not listening");
         g_btOk = 1; phone_key(VK_ESCAPE);
         run(L"/pkg remove phone");
     }

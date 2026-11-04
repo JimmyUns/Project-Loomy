@@ -1,19 +1,19 @@
 // phone.c - Pocket Loomy, PC side. Your Android phone hears "Loomy, display extend" and sends it
 // here over Bluetooth; Loomy runs it like you typed it and answers. Opt-in: /pkg add phone.
 //
-//   /phone            the connection screen: a pairing code (no phone trusted yet) or the trusted
+//   /remote            the connection screen: a pairing code (no phone trusted yet) or the trusted
 //                     phone and whether it's around. N = new code, F = forget phone, Enter = turn
 //                     listening back on after a shutdown, Esc closes.
-//   /phone forget     drop the trusted phone
+//   /remote forget     drop the trusted phone
 //
 // The rules (POCKET-HANDOVER.md has the why):
 //   - Listening only happens with the feature on, not shut down, and either a trusted phone or an
 //     open pairing code. No timers run while it just waits.
 //   - A code is 8 random digits, lives 2 minutes, and is used up by the first try, right or wrong.
-//     A new one only comes from you (opening /phone, or N).
+//     A new one only comes from you (opening /remote, or N).
 //   - A paired phone is trusted for 7 days from pairing, then it has to pair again.
 //   - Any failed check, bad frame or unknown phone shuts the listener down completely, prints who
-//     tried (the name is only what the phone claimed) and pops a tray note. Only /phone reopens it.
+//     tried (the name is only what the phone claimed) and pops a tray note. Only /remote reopens it.
 //   - Only plain commands marked .phone in commands.c run, through the normal cmd_run.
 // The protocol is pocket.c; the Windows Bluetooth and OS bits are phonebt.c.
 #include "loomy.h"
@@ -47,7 +47,7 @@ static wchar_t g_btErr[120];
 static int     g_rngBad;
 
 // every pipe a phone can come through (only Bluetooth today; a relay would be added here)
-static const PhoneLink *LINKS[] = { &PHONE_BT };
+static const PhoneLink *LINKS[] = { &PHONE_BT, &PHONE_NET };   // 2.22: + remote through Ellune
 #define NLINKS ((int)(sizeof LINKS / sizeof LINKS[0]))
 static const PhoneLink *g_via;                // the link the connected phone came through
 
@@ -217,13 +217,18 @@ static void update_listener(void) {
         forget_trust();
     }
     if (g_codeLive && now() >= g_codeEnds) { burn_code(2); log_add(L"The pairing code ran out."); }
-    int want = feature_on(FEAT_PHONE) && !g_cfg.phoneLocked && (g_trust.have || g_codeLive);
+    // 2.22 /remote: Bluetooth and remote are each allowed or not (his checkboxes). Pairing is Bluetooth only, in
+    // person; remote (through Ellune) needs a trusted phone, since the relay room comes from the pairing.
+    int base = feature_on(FEAT_PHONE) && !g_cfg.phoneLocked;
     for (int i = 0; i < NLINKS; i++) {
         const PhoneLink *l = LINKS[i];
-        if (want && !l->listening()) { if (l->listen(g_btErr, 120)) g_btErr[0] = 0; }
+        int net = l == &PHONE_NET;
+        int want = base && (net ? g_cfg.remoteNet && g_trust.have : g_cfg.remoteBt && (g_trust.have || g_codeLive));
+        wchar_t err[120] = { 0 };
+        if (want && !l->listening()) { if (!l->listen(err, 120) && !net) s_cpy(g_btErr, err, 120); else if (!net) g_btErr[0] = 0; }
         if (!want && l->listening()) l->unlisten();
+        if (!want && !net) g_btErr[0] = 0;
     }
-    if (!want) g_btErr[0] = 0;
     timer_update();
     ui_redraw();
 }
@@ -238,7 +243,7 @@ static void lockout(const wchar_t *what) {
     update_listener();
     log_add(L"Shut down: %s", what);
     outf(OUT_ERR, L"Phone listener shut down: %s", what);
-    out(OUT_DIM, L"Nothing got in. /phone turns listening back on.");
+    out(OUT_DIM, L"Nothing got in. /remote turns listening back on.");
     ui_balloon(L"Loomy: phone listener shut down", what);
 }
 
@@ -280,6 +285,8 @@ static void flush(void) {
     g_pk.outlen = 0;
     if (!ok) { log_add(L"Couldn't send to %s; hung up.", g_connAddr); drop_conn(); }
 }
+
+const unsigned char *phone_pc_pub(void) { return g_trust.have ? g_trust.pc_pk : 0; }
 
 int phone_on_accept(const PhoneLink *via, const wchar_t *addr) {
     if (g_conn) { log_add(L"Turned away %s: already talking to a phone.", addr); return 0; }
@@ -540,7 +547,7 @@ static void ask_confirm(void) {
     for (int i = 0; i < 10; i++) id[i] = (wchar_t)g_confirmId[i];
     name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
     log_add(L"\"%s\" (%s) has the right code. Waiting for Enter.", nm, g_connAddr);
-    outf(OUT_OK, L"\"%s\" (%s) has the right code. Its ID is %s: if your phone shows the same, press Enter in /phone.",
+    outf(OUT_OK, L"\"%s\" (%s) has the right code. Its ID is %s: if your phone shows the same, press Enter in /remote.",
          nm, g_connAddr, id);
     if (!phone_active()) phone_open();                   // the question has to be on screen
     ui_show();
@@ -553,6 +560,7 @@ static void accept_pairing(void) {
     paired();                                            // saves the trust
     flush();                                             // the PC's key goes out only now: the phone is paired
     g_connStart = now();                                 // it gets a moment to hang up by itself
+    if (PHONE_NET.listening()) PHONE_NET.unlisten();     // a new pairing = a new relay room
     update_listener();
 }
 
@@ -561,7 +569,7 @@ static void refuse_pairing(const wchar_t *why) {
     name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
     g_confirm = 0;
     log_add(L"Didn't pair \"%s\": %s.", nm, why);
-    outf(OUT_ERR, L"Didn't pair \"%s\": %s. /phone, N for a new code.", nm, why);
+    outf(OUT_ERR, L"Didn't pair \"%s\": %s. /remote, N for a new code.", nm, why);
     drop_conn();                                         // its keys are wiped with the connection
     update_listener();
 }
@@ -622,7 +630,7 @@ void phone_on_closed(void) {
     if (g_confirm) { refuse_pairing(L"the phone hung up before you confirmed it"); return; }
     if (pk_mid_pairing(&g_pk)) {
         log_add(L"Pairing from %s stopped halfway. That code is used up.", g_connAddr);
-        out(OUT_ERR, L"A phone used the pairing code but hung up before finishing. /phone, N for a new code.");
+        out(OUT_ERR, L"A phone used the pairing code but hung up before finishing. /remote, N for a new code.");
     } else if (!g_wasReady && !pk_done(&g_pk)) {
         log_add(L"%s hung up during the handshake.", g_connAddr);
     }
@@ -637,7 +645,7 @@ void phone_tick(void) {
     else if (g_conn && !g_confirm) {
         int ready = pk_ready(&g_pk);
         if (!ready && t - g_connStart >= HANDSHAKE_SECS) {
-            if (pk_mid_pairing(&g_pk)) out(OUT_ERR, L"A phone used the pairing code but stalled. /phone, N for a new code.");
+            if (pk_mid_pairing(&g_pk)) out(OUT_ERR, L"A phone used the pairing code but stalled. /remote, N for a new code.");
             log_add(L"%s took too long; hung up.", g_connAddr);
             drop_conn();
             update_listener();
@@ -667,14 +675,14 @@ void phone_feature_changed(void) {
     update_listener();
 }
 
-// ---------------------------------------------------------------- /phone
+// ---------------------------------------------------------------- /remote
 static void do_forget(void) {
     if (!g_trust.have) { out(OUT_DIM, L"No phone is trusted."); return; }
     wchar_t nm[64]; trust_name(nm, 64);
     drop_conn();
     forget_trust();
     log_add(L"Forgot \"%s\".", nm);
-    outf(OUT_OK, L"Forgot \"%s\". It can't connect any more; /phone to pair again.", nm);
+    outf(OUT_OK, L"Forgot \"%s\". It can't connect any more; /remote to pair again.", nm);
     update_listener();
 }
 
@@ -736,6 +744,19 @@ int phone_key(WPARAM vk) {
 
 int phone_char(WPARAM ch) {
     wchar_t c = s_low((wchar_t)ch);
+    if (!g_confirm && (c == L'b' || c == L'r')) {         // 2.22: allow Bluetooth / remote
+        if (c == L'b') g_cfg.remoteBt = !g_cfg.remoteBt; else g_cfg.remoteNet = !g_cfg.remoteNet;
+        cfg_save();
+        log_add(L"%s %s.", c == L'b' ? L"Bluetooth" : L"Remote", (c == L'b' ? g_cfg.remoteBt : g_cfg.remoteNet) ? L"allowed" : L"not allowed");
+        g_confirmForget = 0;
+        update_listener();
+        return 1;
+    }
+    if (!g_confirm && c == L'c') {                       // this PC's line for Ellune's guest list
+        log_add(net_copy_line() ? L"Copied this PC's guest line: paste it into Ellune's DEVICES (a new line)." : L"Couldn't copy the guest line.");
+        ui_redraw();
+        return 1;
+    }
     if (c == L'n' && !g_cfg.phoneLocked && !g_trust.have) { burn_code(0); new_code(); }
     else if (c == L'f' && g_trust.have) {
         if (g_confirmForget) { g_confirmForget = 0; do_forget(); }
@@ -754,14 +775,38 @@ void phone_wheel(int notches) {}
 void phone_paint(HDC dc, RECT a) {
     SelectObject(dc, g_font);
     int y = a.top, gap = g_lineH + S(6);
-    int tw = ui_text(dc, a.left, y, L"Phone", g_accent);
-    ui_text(dc, a.left + tw + S(12), y, L"Pocket Loomy over Bluetooth", C_DIM);
+    int tw = ui_text(dc, a.left, y, L"Remote", g_accent);
+    ui_text(dc, a.left + tw + S(12), y, L"Pocket Loomy: Bluetooth and remote through Ellune", C_DIM);
     const wchar_t *st = g_cfg.phoneLocked ? L"shut down" : any_listening() ? L"listening" : L"not listening";
     SIZE sz; GetTextExtentPoint32W(dc, st, s_len(st), &sz);
     ui_text(dc, a.right - sz.cx, y, st, g_cfg.phoneLocked ? C_ERR : any_listening() ? C_OK : C_DIM);
-    y += g_lineH + S(18);
+    y += g_lineH + S(14);
 
+    // 2.22: what's allowed (his checkboxes), and this PC on Ellune
     wchar_t line[260], t[48];
+    {
+        int x = a.left + ui_text(dc, a.left, y, g_cfg.remoteBt ? L"[x] " : L"[ ] ", g_cfg.remoteBt ? g_accent : C_DIM);
+        x += ui_text(dc, x, y, L"Allow Bluetooth", C_TEXT);
+        x += ui_text(dc, x, y, L"  B", C_DIM);
+        x += S(28);
+        x += ui_text(dc, x, y, g_cfg.remoteNet ? L"[x] " : L"[ ] ", g_cfg.remoteNet ? g_accent : C_DIM);
+        x += ui_text(dc, x, y, L"Allow remote (through Ellune)", C_TEXT);
+        ui_text(dc, x, y, L"  R", C_DIM);
+        y += gap;
+        int bad = 0;
+        const wchar_t *ns = net_status(&bad);
+        char id[10];
+        if (net_id(id)) {
+            wchar_t wid[10];
+            for (int i = 0; i < 10; i++) wid[i] = (wchar_t)id[i];
+            x = a.left + ui_text(dc, a.left, y, L"This PC on Ellune  ", C_DIM);
+            x += ui_text(dc, x, y, wid, C_BRIGHT);
+            ui_text(dc, x, y, L"   C copies its guest line", C_DIM);
+            y += g_lineH + S(2);
+        }
+        ui_text(dc, a.left, y, ns, bad ? C_ERR : C_DIM);
+        y += gap + S(6);
+    }
     if (g_confirm) {                                     // the right code came in: is it really your phone?
         wchar_t nm[64], id[10];
         name_w(g_pk.peer_name, g_pk.peer_namelen, nm, 64);
@@ -831,7 +876,7 @@ void phone_paint(HDC dc, RECT a) {
         ui_text(dc, a.left, y, g_codeGone == 1 ? L"That pairing code is used up." :
                                g_codeGone == 2 ? L"That pairing code ran out." : L"No pairing code open.", C_TEXT);
         y += gap;
-        ui_text(dc, a.left, y, L"Press N for a new one.", C_DIM); y += gap;
+        ui_text(dc, a.left, y, g_cfg.remoteBt ? L"Press N for a new one." : L"Pairing happens over Bluetooth: press B to allow it, then N.", C_DIM); y += gap;
     }
     if (g_btErr[0]) { ui_text(dc, a.left, y, g_btErr, C_ERR); y += gap; }
 
@@ -848,8 +893,8 @@ void phone_paint(HDC dc, RECT a) {
     SelectObject(dc, g_fontSmall);
     const wchar_t *keys = g_confirm ? L"Enter yes    Esc no" :
                           g_cfg.phoneLocked ? L"Enter turn listening back on    Esc close" :
-                          g_trust.have ? L"F forget this phone    Esc close" :
-                          L"N new code    Esc close";
+                          g_trust.have ? L"B Bluetooth    R remote    C copy guest line    F forget    Esc close" :
+                          L"N new code    B Bluetooth    R remote    Esc close";
     ui_text(dc, a.left, a.bottom - S(16), keys, C_DIM);
     const wchar_t *hint = L"names are what the phone claims";
     GetTextExtentPoint32W(dc, hint, s_len(hint), &sz);
