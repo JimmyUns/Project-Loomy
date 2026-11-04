@@ -79,6 +79,8 @@ class MainActivity : Activity() {
     private lateinit var pillAns: TextView
     private lateinit var mic: MicView
     private lateinit var bt: BtIconView
+    private lateinit var powerBig: PowerView         // 2.22: off = a beating power button where the mic is
+    private lateinit var powerSmall: PowerView       // on = a small power button at the top left (tap: off)
     private lateinit var gridLabel: TextView
     private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
     private val recheck = object : Runnable {             // the connection bar, every 30 s while the app is open
@@ -355,7 +357,9 @@ class MainActivity : Activity() {
         // top: name, what's going on, the gear
         chip = text("", dim, 12f).apply { setPadding(dp(10), dp(4), dp(10), dp(4)); setOnClickListener { Net.state = Net.State.CHECKING; Net.refresh(this@MainActivity); render() } }
         val gear = GearView(this, textC).apply { setOnClickListener { openSettings() } }
-        main.addView(row(text("Pocket Loomy", accent, 20f, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) },
+        powerSmall = PowerView(this, accent, card, false).apply { setOnClickListener { toggleOn(false) } }
+        main.addView(row(powerSmall.apply { layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply { rightMargin = dp(8) } },
+                         text("Pocket Loomy", accent, 20f, true).apply { layoutParams = LinearLayout.LayoutParams(0, -2, 1f) },
                          chip, space(6), gear.apply { layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)) }))
         main.addView(gap(10))
 
@@ -372,7 +376,11 @@ class MainActivity : Activity() {
         main.addView(pill, LinearLayout.LayoutParams(-1, -2))
 
         // the middle: the mic (or, until paired, the setup steps over it)
-        mic = MicView(this, accent, card, bright).apply { onTap = { talkPressed() } }
+        mic = MicView(this, accent, card, bright).apply {
+            onTap = { talkPressed() }
+            onHold = { if (Voice.state != Voice.State.OFF) Pocket.stopTalking(this@MainActivity) }   // hold = mute
+        }
+        powerBig = PowerView(this, accent, card, true).apply { setOnClickListener { toggleOn(true) } }
         step1 = text("", textC)
         step2 = text("", textC)
         codeBtn = button("Say the code", true) { startPairing() }
@@ -413,6 +421,7 @@ class MainActivity : Activity() {
         bt = BtIconView(this, accent).apply { active = store.btMode; setOnClickListener { toggleBt() } }
         main.addView(FrameLayout(this).apply {
             addView(mic, FrameLayout.LayoutParams(-1, -1))
+            addView(powerBig, FrameLayout.LayoutParams(-1, -1))
             addView(bt, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { topMargin = dp(8) })
             addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
             bt.bringToFront()                                   // the mode button works on the setup screen too
@@ -586,6 +595,8 @@ class MainActivity : Activity() {
         for (g in grids) g.setLine(gridColor())
         mic.accent = accent
         bt.accent = accent
+        powerBig.accent = accent
+        powerSmall.accent = accent
         render()
     }
 
@@ -684,6 +695,8 @@ class MainActivity : Activity() {
         modeBtn2.text = modeBtn.text
 
         if (!isPaired || phase == Phase.PAIRING) {
+            powerBig.visibility = View.GONE
+            powerSmall.visibility = View.INVISIBLE
             setup.visibility = View.VISIBLE
             setupBt.visibility = if (store.btMode) View.VISIBLE else View.GONE
             setupNet.visibility = if (store.btMode) View.GONE else View.VISIBLE
@@ -725,7 +738,10 @@ class MainActivity : Activity() {
         }
 
         setup.visibility = View.GONE
-        mic.visibility = View.VISIBLE
+        // off: the beating power button instead of the mic, and no off button at the top
+        mic.visibility = if (store.on) View.VISIBLE else View.INVISIBLE
+        powerBig.visibility = if (store.on) View.GONE else View.VISIBLE
+        powerSmall.visibility = if (store.on) View.VISIBLE else View.INVISIBLE
         typing.visibility = View.VISIBLE
         modeBtn.visibility = View.VISIBLE
         val taking = Voice.takingCommand(this)
@@ -752,9 +768,11 @@ class MainActivity : Activity() {
             Voice.sending -> "Sending to your PC\u2026" to accent
             heardWords != null -> "\u201C$heardWords\u201D" to textC
             listening && Voice.inputMode -> "Input mode" to accent
+            listening && taking && !store.btMode -> "Loomy is listening \u00B7 tap: send \u00B7 hold: mute" to accent
             listening && taking -> "Loomy is listening" to accent
             listening -> "Say \u201CLoomy\u201D" to dim
             answer.isNotEmpty() -> answer to (if (answerBad) err else ok)
+            !store.on -> "Off. Tap the power button to turn Pocket Loomy on." to dim
             else -> "Tap the mic" to dim
         }
         live.text = liveText
@@ -884,8 +902,7 @@ class MainActivity : Activity() {
         val why = Pocket.turnOn(this)
         if (why != null) {                       // say why where he's looking (it used to land behind the settings)
             onProblem = why
-            android.widget.Toast.makeText(this, why, android.widget.Toast.LENGTH_LONG).show()
-            render()
+            problem(why)
             return
         }
         askBatteryOnce()
@@ -1071,7 +1088,10 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ commands
     private fun talkPressed() {
         answer = ""
-        if (Voice.state != Voice.State.OFF) { Pocket.stopTalking(this); return }
+        if (Voice.state != Voice.State.OFF) {
+            if (store.btMode) Pocket.stopTalking(this) else Voice.tap(this)   // Ellune mode: tap = send now, hold = mute
+            return
+        }
         Pocket.talk(this, true)?.let { problem(it) }
     }
 

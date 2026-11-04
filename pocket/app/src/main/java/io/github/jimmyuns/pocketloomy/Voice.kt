@@ -55,6 +55,22 @@ object Voice {
 
     fun last(): Entry? = history.lastOrNull()
 
+    /** 2.22, Ellune mode: a tap on the mic while listening = "send it now" (Ellune's ear stops and sends what was said;
+     *  the phone's ear waiting for her name: the tap counts as her name, Ellune takes the next sentence). Listening
+     *  then carries on; holding the mic is what mutes. */
+    fun tap(c: Context) {
+        if (state != State.LISTENING || thinking) return
+        val e = eEar
+        if (viaEllune && e != null) { e.finishNow(); return }
+        ctx = c.applicationContext
+        armed = true
+        armedUntil = SystemClock.elapsedRealtime() + 8000
+        ear?.cancel()
+        partial = ""
+        startEar()
+        changed()
+    }
+
     /** listening for the command itself right now (after her name, a mic tap, or in Solo), not for her name */
     fun takingCommand(c: Context): Boolean =
         state == State.LISTENING && (inputMode || !keep || (armed && SystemClock.elapsedRealtime() < armedUntil) || Store(c).solo)

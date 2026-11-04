@@ -159,7 +159,13 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.22 in progress (Nov 2), branch `claude/v2.22`.** Part 1 (items 1-3 below: redesign, modes, checkbox) built;
+- **v2.22 ENDED (Nov 4), PR #21 ready.** He called it done after the power button + tap-to-send / hold-to-mute.
+  Built but not all tried by him yet: QR pairing (after the mid-confirm fix), the setup screens by mode, the simpler
+  `/remote`, /shutdown no longer freezing, the net speed fix, power + tap/hold. **Next release's first job: the
+  APK in releases** (he has the steps: make `pocket-release.keystore` with `keytool` (Java), back it up, base64 it,
+  GitHub secrets `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD`; the release APK has another signature than the
+  dev one, so the dev app must be uninstalled once and the phone paired again).
+- **(the v2.22 history:) branch `claude/v2.22`.** Part 1 (items 1-3 below: redesign, modes, checkbox) built;
   he tried it, feedback rounds 1 + 2 done (`POCKET-HANDOVER.md` §11), round 2 not tried yet.
   **Round 2 made Ellune mode the default and Bluetooth an opt-in mode (blue theme)**: until remote exists, Ellune
   mode can't deliver commands, so **remote is now the urgent next step** (he called it "the mailing system").

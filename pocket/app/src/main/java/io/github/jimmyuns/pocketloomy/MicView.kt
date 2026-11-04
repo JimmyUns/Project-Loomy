@@ -37,6 +37,11 @@ class MicView(ctx: Context, accent: Int, private val card: Int, private val brig
     /** the mic level, -2..10 like Android's recognizer reports it */
     var level = 0f
     var onTap: () -> Unit = {}
+    /** 2.22: holding the mic (HOLD_MS) mutes; a ring fills round it meanwhile. null = holding does nothing */
+    var onHold: (() -> Unit)? = null
+    private var holdStart = 0L
+    private var held = false
+    private val HOLD_MS = 800L
     /** false while something covers it (settings, history): no animating behind them */
     var running = true
         set(v) { if (field != v) { field = v; lastT = 0L; invalidate() } }
@@ -68,8 +73,22 @@ class MicView(ctx: Context, accent: Int, private val card: Int, private val brig
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val inside = hypot(e.x - width / 2f, e.y - height / 2f) <= radius * 1.15f
-        if (e.action == MotionEvent.ACTION_DOWN) return inside
-        if (e.action == MotionEvent.ACTION_UP && inside) { performClick(); onTap() }
+        when (e.action) {
+            MotionEvent.ACTION_DOWN -> {
+                if (!inside) return false
+                held = false
+                holdStart = if (onHold != null) SystemClock.uptimeMillis() else 0L
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                val wasHeld = held
+                holdStart = 0L; held = false
+                invalidate()
+                if (!wasHeld && inside) { performClick(); onTap() }
+            }
+            MotionEvent.ACTION_CANCEL -> { holdStart = 0L; held = false; invalidate() }
+        }
         return true
     }
 
@@ -168,7 +187,18 @@ class MicView(ctx: Context, accent: Int, private val card: Int, private val brig
         c.drawLine(cx, cy + u * 3.0f, cx, cy + u * 4.6f, glyph)
         c.drawLine(cx - u * 1.8f, cy + u * 4.6f, cx + u * 1.8f, cy + u * 4.6f, glyph)
 
-        if (mode != Mode.DISABLED && running && isShown) postInvalidateOnAnimation()
+        // holding: a ring fills round the button; full = muted
+        if (holdStart > 0L && !held) {
+            val k = ((now - holdStart).toFloat() / HOLD_MS).coerceIn(0f, 1f)
+            ring.color = bright
+            ring.alpha = 255
+            ring.strokeWidth = radius * 0.07f
+            box.set(cx - swell * 1.22f, cy - swell * 1.22f, cx + swell * 1.22f, cy + swell * 1.22f)
+            c.drawArc(box, -90f, 360f * k, false, ring)
+            if (k >= 1f) { held = true; onHold?.invoke() }
+        }
+
+        if ((mode != Mode.DISABLED || holdStart > 0L) && running && isShown) postInvalidateOnAnimation()
     }
 
     private fun blend(a: Int, b: Int, k: Float) = Color.rgb(
@@ -267,5 +297,44 @@ class BtIconView(ctx: Context, private val plain: Int) : View(ctx) {
         path.lineTo(cx + w, cy - h * 0.5f)
         path.lineTo(cx - w, cy + h * 0.5f)
         c.drawPath(path, p)
+    }
+}
+
+// 2.22: the power symbol. Big and beating in the middle while Pocket Loomy is off (tap: on); small at the top left
+// while it's on (tap: off).
+class PowerView(ctx: Context, accent: Int, private val card: Int, private val big: Boolean) : View(ctx) {
+    var accent = accent
+        set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val f = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val box = RectF()
+
+    init { isClickable = true; contentDescription = if (big) "Turn on" else "Turn off" }
+
+    override fun onDraw(c: Canvas) {
+        val now = SystemClock.uptimeMillis()
+        val cx = width / 2f
+        val cy = height / 2f
+        var r = min(width, height) * (if (big) 0.16f else 0.4f)
+        if (big) {
+            val beat = (0.5f + 0.5f * sin(now / 380.0).toFloat())           // a slow heartbeat
+            f.color = accent
+            for (i in 3 downTo 1) {                                          // a soft glow that breathes
+                f.alpha = (26 * beat / i).toInt()
+                c.drawCircle(cx, cy, r * (1.2f + 0.25f * i + 0.08f * beat), f)
+            }
+            r *= 1f + 0.05f * beat
+            f.alpha = 255; f.color = card
+            c.drawCircle(cx, cy, r, f)
+            p.color = accent; p.strokeWidth = r * 0.05f
+            c.drawCircle(cx, cy, r, p)
+        }
+        p.color = accent
+        p.strokeWidth = r * (if (big) 0.1f else 0.14f)
+        val g = r * (if (big) 0.42f else 0.62f)
+        box.set(cx - g, cy - g, cx + g, cy + g)
+        c.drawArc(box, -60f, 300f, false, p)                                   // the open circle
+        c.drawLine(cx, cy - g * 1.15f, cx, cy - g * 0.15f, p)                  // the line through the gap
+        if (big && isShown) postInvalidateOnAnimation()
     }
 }

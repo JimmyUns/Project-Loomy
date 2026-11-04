@@ -335,6 +335,12 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   the camera app, `INTENT_ACTION_STILL_IMAGE_CAMERA`; the QR link brings it back, the step shows the progress / ID);
   Bluetooth mode = Your PC + Pair with the code **said or typed** (`typedCode`). The Bluetooth button sits on top
   of the setup too.
+- **Last two asks for 2.22 (Nov 4):** (1) **power button**: `PowerView` small at the top left while On (tap = off);
+  while Off the mic is replaced by a big beating `PowerView` (tap = on), the small one hidden. (2) **the mic in Ellune
+  mode**: tap while listening = send now (`Voice.tap`: Ellune's ear `finishNow()` sends from where talking started, or
+  the last 10 s; the phone's ear waiting for her name: the tap arms, Ellune takes the next sentence), listening
+  carries on; **hold 800 ms = mute** (a ring fills round the button, `MicView.onHold`). Bluetooth mode: tap starts /
+  stops like before, hold also mutes. No anti-spam (his call).
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").
