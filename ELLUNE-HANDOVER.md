@@ -92,7 +92,13 @@ doesn't cover is still his call: don't bake it in without him.
   added to Authy by hand, `wrangler secret put`. PC: `/remote add <code>` (`net_register` in phonenet.c,
   reconnects right away). App: "Add to guest list" asks for the code ("Copy the line instead" kept), "Devices on
   Ellune" lists everyone, tap an app-added one to remove it. Tests: 103 Worker checks + the app's real /register
-  request verified by the Worker. **Not set up / tried by him yet.**
+  request verified by the Worker. **Set up + works (Nov 4): 0.5 deployed, `/remote add <code>` put the PC on.** Gotcha:
+  his first codes were "wrong" because the key typed into Authy had a typo (or came from a second run of
+  totp-setup). Found with a one-line node check that prints the current code for a key (compare with Authy); fixed by
+  re-adding it in Authy and `wrangler secret put` with the same key. Worth adding a `totp-check.mjs` for that.
+  Also fixed: /shutdown and F in /remote froze Loomy (a blocking WebSocket close while holding the lock in
+  `net_unlisten`; now the handle is taken out under the lock and closed outside it, plus a generation counter so
+  an old worker never keeps running).
 - **Next, v2.22 (agreed Nov 2):** master-password registration, then remote. Full list in `HANDOVER.md` §6.
 - **Plan he OK'd for v2.21 (Nov 2), "the brain" (done):** 1 guest list (done, above) → 2 `/hear` on Ellune: audio →
   Whisper → small LLM picks a Loomy command (Workers AI, free 10k neurons/day; Whisper ~45 neurons per audio minute,
