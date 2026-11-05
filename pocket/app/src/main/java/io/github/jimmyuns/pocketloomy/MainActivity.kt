@@ -121,6 +121,10 @@ class MainActivity : Activity() {
     private lateinit var elluneId: TextView
     private lateinit var elluneBtn: Button
     private var pinging = false
+    private lateinit var updateVer: TextView
+    private lateinit var updateLine: TextView
+    private lateinit var updateBtn: Button
+    private var waitingApk: java.io.File? = null   // downloaded + checked, waiting for "allow installing apps"
 
     private val onChange: () -> Unit = { render() }
 
@@ -237,7 +241,14 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onResume() { super.onResume(); Pocket.listen(onChange); Pocket.fixStaleOn(this); ticker.post(recheck); render() }
+    override fun onResume() {
+        super.onResume(); Pocket.listen(onChange); Pocket.fixStaleOn(this); ticker.post(recheck); render()
+        waitingApk?.let { f ->                              // back from "Install unknown apps"
+            waitingApk = null
+            if (packageManager.canRequestPackageInstalls()) installUpdate(f)
+            else { Updater.busy = false; Updater.clean(this); Updater.say("Not installed: Android still says Pocket Loomy may not install apps.", true) }
+        }
+    }
     override fun onPause() { ticker.removeCallbacks(recheck); Pocket.unlisten(onChange); super.onPause() }
     override fun onDestroy() { ear.destroy(); super.onDestroy() }
 
@@ -494,12 +505,16 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(8), dp(16), dp(8))
             setOnClickListener { chooseMode() }
         }
-        cbPhone = check("Use the phone's recognizer") { store.phoneEar = it; render() }
+        cbPhone = check("Ellune hears you") {
+            store.elluneHears = it
+            if (Voice.state != Voice.State.OFF) { Pocket.stopTalking(this); Pocket.talk(this, true) }   // listen the new way
+            render()
+        }
         section(box(heading("Listening"),
                     row(modeBtn2), gap(6),
                     text("Say \u201CLoomy\u201D: everything you say after her name is the command (tapping the mic counts as saying it). Solo: everything you say is a command. A pause or \u201Cthank you\u201D ends the sentence.", dim, 12f),
                     gap(12), cbPhone,
-                    text("Off (normal): Ellune hears what you say to Loomy (much better with accents) and her AI understands phrases the phone doesn't know. Listening for \u201CLoomy\u201D stays on the phone. With no internet the phone's recognizer is the only option.\nOn: only the phone's recognizer and its set phrases.", dim, 12f)))
+                    text("Off (normal): the phone hears you, fast. When it hears something its set phrases don't know, Ellune's AI works out the command.\nOn: Ellune records the command and hears it herself (Whisper). Can be better with accents, but slower: a second or two more for each command. Listening for \u201CLoomy\u201D always stays on the phone. Bluetooth mode and no internet: the phone only.", dim, 12f)))
 
         // Ellune
         elluneLine = text("", dim, 13f).apply { setPadding(0, dp(6), 0, 0); visibility = View.GONE }
@@ -533,6 +548,14 @@ class MainActivity : Activity() {
         }
         swNotif = n1; swCard = n3; swSpeed = n4
         section(box(heading("App"), n1, n1a, n3, n3a, n4, n4a))
+
+        // 2.23: updates from GitHub's releases (Updater.kt)
+        updateVer = text("", textC, 14f)
+        updateLine = text("", dim, 12f).apply { setPadding(0, dp(6), 0, 0) }
+        updateBtn = button("Check for updates", false) { checkUpdate() }
+        section(box(heading("Updates"), updateVer,
+                    text("Asks GitHub for the newest release. It's only trusted if Jimmy published it and GitHub's build made the app; the file is checked before Android installs it, and Android only takes it if it's signed with your key.", dim, 12f),
+                    updateLine, gap(10), row(updateBtn)))
 
         // visuals: how strong the background grid is
         gridLabel = text("", textC, 14f)
@@ -633,7 +656,14 @@ class MainActivity : Activity() {
         swNotif.isChecked = store.showNotif
         swCard.isChecked = store.talkCard
         swSpeed.isChecked = store.netSpeed
-        cbPhone.isChecked = store.phoneEar || store.btMode
+        cbPhone.isChecked = store.elluneHears && !store.btMode
+        val mine = Updater.installed(this)
+        updateVer.text = if (Updater.isDev(this)) "This is the dev app (${mine?.first ?: "?"})."
+                         else "Pocket Loomy v${mine?.first ?: "?"}"
+        updateLine.text = Updater.line
+        updateLine.setTextColor(if (Updater.lineBad) err else dim)
+        updateLine.visibility = if (Updater.line.isEmpty()) View.GONE else View.VISIBLE
+        updateBtn.isEnabled = !Updater.busy
         cbPhone.isEnabled = !store.btMode                       // Bluetooth mode never uses Ellune
         cbPhone.alpha = if (store.btMode) 0.45f else 1f
         settingSwitch = false
@@ -956,6 +986,71 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ Ellune
     private fun showElluneId(k: ElluneKey.Key?) {
         elluneId.text = if (k != null) "This phone's Ellune ID: ${k.id}" else "This phone gets its Ellune ID the first time you tap."
+    }
+
+    // ------------------------------------------------------------------ updates (2.23, Updater.kt)
+    private fun checkUpdate() {
+        if (Updater.busy) return
+        Updater.busy = true
+        Updater.say("Checking GitHub...")
+        Thread({
+            val r = Updater.checkNow()
+            runOnUiThread {
+                if (isDestroyed) { Updater.busy = false; return@runOnUiThread }
+                if (r is Update.Check.Bad) { Updater.busy = false; Updater.say(r.why, true); return@runOnUiThread }
+                val ok = r as Update.Check.Ok
+                val dev = Updater.isDev(this)
+                val have = Updater.installed(this, Updater.target(this))
+                if (!dev && have != null && have.second >= ok.code) {
+                    Updater.busy = false
+                    Updater.say("You're on the newest version (${ok.tag}).")
+                    return@runOnUiThread
+                }
+                Updater.say("${ok.tag} is out.")
+                val (title, body) = if (dev) {
+                    val now = if (have == null) "isn't on this phone" else "is on v${have.first}"
+                    "Release app ${ok.tag}" to "This is the dev app, which updates from branch builds, not releases. The release app (Pocket Loomy) is a separate app and $now.\n\nDownload ${ok.tag} (${Update.size(ok.size)}) and install it? (It also tries out the update button.)"
+                } else "Update to ${ok.tag}?" to "You have v${have?.first ?: "?"}. Download ${ok.tag} (${Update.size(ok.size)}) and install it?\n\nPocket Loomy turns off while it updates: turn it on again afterwards."
+                AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setMessage(body)
+                    .setPositiveButton(if (dev) "Install" else "Update") { _, _ -> downloadUpdate(ok) }
+                    .setNegativeButton("Not now") { _, _ -> Updater.busy = false; Updater.say("${ok.tag} is out. Tap Check for updates when you want it.") }
+                    .setOnCancelListener { Updater.busy = false; Updater.say("${ok.tag} is out. Tap Check for updates when you want it.") }
+                    .show()
+            }
+        }, "update-check").start()
+    }
+
+    private fun downloadUpdate(ok: Update.Check.Ok) {
+        Updater.say("Downloading ${ok.tag}...")
+        Thread({
+            val f = try { Updater.downloadNow(applicationContext, ok) { pct -> Updater.say("Downloading ${ok.tag}... $pct%") } }
+                    catch (e: Exception) { Updater.busy = false; Updater.say(e.message ?: "The download failed.", true); return@Thread }
+            runOnUiThread { if (!isDestroyed) installUpdate(f) else Updater.busy = false }
+        }, "update-download").start()
+    }
+
+    private fun installUpdate(f: java.io.File) {
+        // Android asks once whether Pocket Loomy may install apps
+        if (!packageManager.canRequestPackageInstalls()) {
+            AlertDialog.Builder(this)
+                .setTitle("Allow installing the update")
+                .setMessage("Android needs your OK once: turn on \u201CAllow from this source\u201D for ${applicationInfo.loadLabel(packageManager)}, then come back. The update carries on by itself.")
+                .setPositiveButton("Open settings") { _, _ ->
+                    waitingApk = f
+                    Updater.say("Checked and ready. Waiting for you to allow installing apps...")
+                    try { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
+                    catch (_: Exception) { waitingApk = null; Updater.busy = false; Updater.say("Couldn't open that setting. Allow \u201CInstall unknown apps\u201D for Pocket Loomy in Android's settings, then try again.", true) }
+                }
+                .setNegativeButton("Not now") { _, _ -> Updater.busy = false; Updater.clean(this); Updater.say("Not installed. Android needs that OK first.", true) }
+                .setOnCancelListener { Updater.busy = false; Updater.clean(this); Updater.say("Not installed. Android needs that OK first.", true) }
+                .show()
+            return
+        }
+        Updater.say("Handing it to Android...")
+        val why = Updater.install(this, f)
+        if (why != null) { Updater.busy = false; Updater.clean(this); Updater.say(why, true) }
     }
 
     private fun pingEllune() {

@@ -18,11 +18,13 @@ import android.os.SystemClock
 //   By voice: "solo mode" / "solo mode off", "input mode" / "input mode off" (name optional).
 //   "turn off the mic" / "stop listening" = mic off until Talk; "stop the connection" = Loomy off.
 //   What means what is in Phrases.kt.
-// Who hears (2.22): the checkbox "Use the phone's recognizer" (Store.phoneEar) = only Android's recognizer and the
-//   phone's rules. Unticked (default): the command itself goes to Ellune (ElluneEar records it, Whisper), and
-//   phrases the rules don't know go to her AI (/understand), sent as is (his call; the PC refuses anything that
-//   isn't a real command). Waiting for "Loomy" always stays on the phone. No silent switching: if Ellune fails,
-//   it says so and tries her again next time. Offline the phone's recognizer is the only option, and it says so.
+// Who hears (2.23, his feedback: Whisper felt slow and noise kept it open): by default the phone hears everything
+//   (Android's recognizer: fast, ends the sentence itself). If none of what it heard is a command the phone's rules
+//   know ("display extent", "make the screens dark"), the text goes to Ellune's AI (/understand) and her answer is
+//   sent as is (his call; the PC refuses anything that isn't a real command). The setting "Ellune hears you"
+//   (Store.elluneHears) is the 2.21/2.22 way: she records the command herself (ElluneEar, Whisper). Waiting for
+//   "Loomy" always stays on the phone. No silent switching: if Ellune fails, it says so and tries her again next
+//   time. Offline, or in Bluetooth mode, it's the phone and its rules only.
 object Voice {
     enum class State { OFF, LISTENING }
 
@@ -47,7 +49,7 @@ object Voice {
     private var ear: Ear? = null
     private var eEar: ElluneEar? = null
     private var elluneKey: ElluneKey.Key? = null
-    private var phoneEar = false
+    private var whisper = false                // "Ellune hears you" is on (and not Bluetooth mode)
     private lateinit var ctx: Context
     private var armedUntil = 0L
     private var followUp = false
@@ -81,8 +83,8 @@ object Voice {
         keep = keepListening
         errors = 0
         val st = Store(c)
-        phoneEar = st.phoneEar || st.btMode                        // Bluetooth mode: Ellune isn't used at all
-        elluneKey = if (!phoneEar) ElluneKey.peek() else null
+        whisper = st.elluneHears && !st.btMode
+        elluneKey = if (!st.btMode) ElluneKey.peek() else null    // Bluetooth mode: Ellune isn't used at all
         if (state == State.LISTENING) { changed(); return }
         if (keep && !st.solo) { armed = true; armedUntil = SystemClock.elapsedRealtime() + 8000 }   // the tap = her name
         listenNow()
@@ -114,13 +116,14 @@ object Voice {
         startEar()
     }
 
-    // ---- which ear: Ellune's (better, online) or Android's (on the phone)
-    /** Ellune can listen right now: the checkbox unticked, a key, internet */
-    private fun elluneUp() = !phoneEar && elluneKey != null && ElluneEar.online(ctx)
+    // ---- which ear: Android's (on the phone, the default) or Ellune's ("Ellune hears you")
+    /** Ellune can help right now: not Bluetooth mode, a key, internet */
+    private fun elluneUp() = elluneKey != null && ElluneEar.online(ctx)
 
-    /** this listen goes to Ellune: never while waiting for "Loomy" (that stays on the phone) or in input mode */
+    /** this listen goes to Ellune's ear: only with "Ellune hears you" on, and never while waiting for "Loomy"
+     *  (that stays on the phone) or in input mode */
     private fun wantEllune(): Boolean {
-        if (inputMode || !elluneUp()) return false
+        if (!whisper || inputMode || !elluneUp()) return false
         val armedNow = armed && SystemClock.elapsedRealtime() < armedUntil
         return !keep || armedNow || Store(ctx).solo
     }
@@ -150,7 +153,7 @@ object Voice {
             missed = { missed(it) }).also { ear = it }
         // Ellune would hear this one but can't: say why (the phone's recognizer only knows set phrases)
         val armedNow = armed && SystemClock.elapsedRealtime() < armedUntil
-        if (partial.isEmpty() && !phoneEar && !inputMode && (!keep || armedNow || Store(ctx).solo))
+        if (partial.isEmpty() && whisper && !inputMode && (!keep || armedNow || Store(ctx).solo))
             partial = when {
                 !ElluneEar.online(ctx) -> "Offline: the phone's recognizer, set phrases only"
                 elluneKey == null -> "Not on Ellune's guest list yet: the phone's recognizer"
@@ -230,16 +233,26 @@ object Voice {
         val key = all.firstNotNullOfOrNull { h -> (Words.addressed(h) ?: if (following || solo || inputMode || !keep) h else null)?.let { Words.key(it) } }
         if (key != null) { send(key); next(150); return }
 
-        val cmd = Words.command(said)
+        // the phone's recognizer gives a few guesses ("display extent", "display extend"): the first one the rules
+        // know wins, so a slip of the accent costs nothing when one of the guesses got it right
+        var text: String = said
+        var cmd = Words.command(text)
+        if (!Words.knows(cmd)) {
+            for (h in all.drop(1)) {
+                val t = Words.addressed(h) ?: (if (following || solo || !keep) h else null) ?: continue
+                val c = Words.command(t)
+                if (t.isNotBlank() && Words.knows(c)) { text = t; cmd = c; break }
+            }
+        }
         // the rules don't know it: ask Ellune's AI (only what was said TO Loomy gets here)
         val k = elluneKey
         if (!Words.knows(cmd) && k != null && elluneUp()) {
-            understand(k, said, quiet = solo && !following)          // listening resumes when she's answered
+            understand(k, text, quiet = solo && !following)          // listening resumes when she's answered
             return
         }
         // Solo hears everything: what isn't a command is dropped quietly (talking, typing, the TV), not a red miss
         if (solo && !following && !Words.knows(cmd)) { next(150); return }
-        if (cmd.isEmpty()) { miss(said); next(150); return }
+        if (cmd.isEmpty()) { miss(text); next(150); return }
         send(cmd)
         next(150)
     }

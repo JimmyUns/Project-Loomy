@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.22b", L"2026-11-05", {
+        L"Pocket Loomy updates itself: Settings, Updates, Check for updates.",
+        L"Only your release, built by GitHub, checked, signed with your key.",
+        L"Listening is fast again: the phone hears you, Ellune's AI fills gaps.",
+        L"\"Ellune hears you\" (Whisper) is a setting now, off by default.",
+        L"With it on, it notices you stopped sooner, even with an engine outside.",
+        0 } },
     { L"2.22", L"2026-11-02", {
         L"Pocket Loomy redesigned: a mic with Loomy's dots, settings behind a gear.",
         L"The mic shows what's happening; \"Loomy\" is caught better (lumi, lumie...).",

@@ -159,7 +159,49 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.22 ENDED (Nov 4), PR #21 ready.** He called it done after the power button + tap-to-send / hold-to-mute.
+- **v2.22b (Nov 5): a test release, his call.** He can't open Actions artifacts on his phone, so the update
+  button + faster listening below ship as **v2.22b** (branch `claude/v2.22b`, its own PR) for him to install from the
+  release page. **Letters now also mean "a release mid-version so he can test on the phone"** (not only fix builds).
+  Why 2.22b and not 2.23b: 2.22 < 2.22b < 2.23, so the real v2.23 later is newer and the update button in 2.22b can
+  update to it (the first real self-update test). After he merges + tags: rebase `claude/v2.23` on main (PR #22) and
+  carry on there; v2.23 gets its own changelog entry for whatever comes next.
+- **The update button + faster listening (Nov 5), shipped in v2.22b, not tried by him yet.**
+  He said "build the update button and the faster Ellune listening": taken as the proposal below, as is.
+  - **Update button** (`Update.kt` = plain checks, tested in tests/jni against `tests/fixtures/release_v2.22.json`
+    + tampered copies; `Updater.kt` = Android part + `UpdateDone` receiver). Settings → **Updates** → Check for
+    updates: GitHub's latest release must be by JimmyUns, `pocket-loomy.apk` uploaded by `github-actions[bot]`,
+    state uploaded, URL exactly `.../releases/download/<tag>/pocket-loomy.apk`, sane size, a `sha256:` digest.
+    Compares `Update.code(tag)` (same formula as pocket.yml) with the installed versionCode. Downloads to
+    `cacheDir/update`, checks size + sha256, then the archive's package name, versionCode (must equal the tag's) and
+    signer (vs the installed app, when Android reports both). PackageInstaller session (REQUEST_INSTALL_PACKAGES);
+    `UpdateDone` opens Android's confirm screen. If "Install unknown apps" isn't allowed: a dialog → Android's setting
+    → `onResume` carries on. **The dev app** (`.dev`) can't update itself from releases; the button installs /
+    reinstalls the *release* app instead (`<queries>` lists it): that's how he can try the whole flow before a
+    newer release exists. After a real self-update Pocket Loomy is off (`Boot` sets on=false, his earlier design).
+  - **Listening (his feedback Nov 5: "a motorcycle outside stops it from running a command", spoken commands
+    didn't work in Ellune mode, while the phone's recognizer "hears everything ... very fast").** Now: **the phone
+    hears by default** (Android's recognizer + endpointing); when no guess makes a command the rules know, the text
+    goes to Ellune's AI (`/understand`, as before). `Voice.heard` first tries the recognizer's other guesses
+    ("display extent" / "display extend"). `Words.knows` now checks arguments too (display/dp args, si
+    general|cpu|gpu [1-9], no-arg commands take none), so accent slips go to the AI instead of a PC refusal.
+    `Store.phoneEar` is gone; **`Store.elluneHears`** ("Ellune hears you", default off) = Whisper as in 2.21/2.22.
+    Bluetooth mode: phone + rules only, no AI (unchanged). Flipping the box restarts listening.
+    **Vad** (only used with "Ellune hears you"): ends after 0.7 s quiet (was 1 s); while talking the room level
+    updates (a steady 0.6 s within 6 dB under the voice = the room; the quietest frame of the last second when
+    clearly under the voice); quiet also = under 16 % of the speech level. tests/jni: the old Vad held a mid-sentence
+    engine open to 10 s (his bug reproduced), the new one ends ~1.3 s after you stop.
+  - Ask him: does the phone-first listening feel fast and catch his accent with the AI behind it; does Check for
+    updates in the dev app install the release app; Android's "install unknown apps" prompt. Real self-update can
+    only be tried once a release newer than his app exists (v2.23 installed by hand → v2.24).
+  Other things he might add (offered, not asked for yet): `ellune/totp-check.mjs` (prints the current code for a key,
+  to compare with Authy: it found his typo); parked ideas: fingerprint lock on the app, "open steam"-style launching,
+  Pocket Loomy auto-off after idle, `timer 10m`, the `audio` output switch, "Loomy ping Ellune" by voice. Still to be
+  confirmed by him from v2.22: /shutdown no longer freezing, the net speed fix, Solo ignoring typing, the grid slider.
+- **v2.22 RELEASED (Nov 4/5), with the signed APK.** He made `pocket-release.keystore` (keytool, CN=Pocket Loomy,
+  backed up as base64 in a Bitwarden secure note) and set `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD`; the
+  tag build ran before the secrets, so he re-ran it and the APK got attached. He uninstalled the dev app, installed
+  the release one, re-paired by QR (new Ellune key → Authy code): **Online, works.**
+- **v2.22 ENDED (Nov 4), PR #21 merged.** He called it done after the power button + tap-to-send / hold-to-mute.
   Built but not all tried by him yet: QR pairing (after the mid-confirm fix), the setup screens by mode, the simpler
   `/remote`, /shutdown no longer freezing, the net speed fix, power + tap/hold. **Next release's first job: the
   APK in releases** (he has the steps: make `pocket-release.keystore` with `keytool` (Java), back it up, base64 it,

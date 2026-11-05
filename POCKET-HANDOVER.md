@@ -341,6 +341,10 @@ reason, and logged in `/phone` Recent. Slash commands get "Slash commands only w
   the last 10 s; the phone's ear waiting for her name: the tap arms, Ellune takes the next sentence), listening
   carries on; **hold 800 ms = mute** (a ring fills round the button, `MicView.onHold`). Bluetooth mode: tap starts /
   stops like before, hold also mutes. No anti-spam (his call).
+- **2.23: the phone hears by default, Ellune's AI fills the gaps; "Ellune hears you" (Whisper) is opt-in with a
+  better Vad; the update button (`Update.kt` / `Updater.kt`).** Details in `HANDOVER.md` §6. This replaces the
+  "Ellune listening (2.21, reworked 2.22)" default above: `Store.phoneEar` is gone, `Store.elluneHears` (default
+  false) decides whether `ElluneEar` is used at all. tests/jni: 286 checks.
 - **v2.22 (in progress):** part 1 built (the redesign, the two modes, the checkbox: above). Next: password
   registration, then remote. Full list in `HANDOVER.md` §6. The notification stays as it is (only the solo wording
   in it changed: "Solo mode: listening").
