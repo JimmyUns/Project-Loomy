@@ -164,6 +164,10 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   sha256 must match the download), compares with the app's versionName, downloads to the app's cache, hands it to
   Android's installer (PackageInstaller session; REQUEST_INSTALL_PACKAGES; he allows "install unknown apps" once).
   Android refuses anything not signed with his release key: that's the real guard. Not built yet.
+  Other things he might add (offered, not asked for yet): `ellune/totp-check.mjs` (prints the current code for a key,
+  to compare with Authy: it found his typo); parked ideas: fingerprint lock on the app, "open steam"-style launching,
+  Pocket Loomy auto-off after idle, `timer 10m`, the `audio` output switch, "Loomy ping Ellune" by voice. Still to be
+  confirmed by him from v2.22: /shutdown no longer freezing, the net speed fix, Solo ignoring typing, the grid slider.
 - **v2.22 RELEASED (Nov 4/5), with the signed APK.** He made `pocket-release.keystore` (keytool, CN=Pocket Loomy,
   backed up as base64 in a Bitwarden secure note) and set `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD`; the
   tag build ran before the secrets, so he re-ran it and the APK got attached. He uninstalled the dev app, installed
