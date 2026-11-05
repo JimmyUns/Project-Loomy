@@ -164,6 +164,14 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   sha256 must match the download), compares with the app's versionName, downloads to the app's cache, hands it to
   Android's installer (PackageInstaller session; REQUEST_INSTALL_PACKAGES; he allows "install unknown apps" once).
   Android refuses anything not signed with his release key: that's the real guard. Not built yet.
+  **His feedback Nov 5 (important): Ellune listening feels bad** ("a motorcycle outside stops it from running a
+  command", spoken commands don't work), while the phone's recognizer (Bluetooth mode) "hears everything, gets it
+  wrong sometimes because of a slight accent but it's very fast". Why: `Vad` learns the noise floor only before
+  speech and ends after 1 s below it, so steady noise (an engine) keeps the clip open to 10 s, then the upload +
+  Whisper wait. Proposed (waiting for his answer): **default = the phone hears, Ellune understands** (Android's fast
+  recognizer does the hearing + endpointing; the text goes to her AI when the phone's rules don't know it, which also
+  fixes accent slips like "display extent"); Whisper becomes an opt-in "Ellune hears you" with a better Vad (noise
+  floor tracked during speech, end on a drop from the speech level, ~0.7 s).
   Other things he might add (offered, not asked for yet): `ellune/totp-check.mjs` (prints the current code for a key,
   to compare with Authy: it found his typo); parked ideas: fingerprint lock on the app, "open steam"-style launching,
   Pocket Loomy auto-off after idle, `timer 10m`, the `audio` output switch, "Loomy ping Ellune" by voice. Still to be
