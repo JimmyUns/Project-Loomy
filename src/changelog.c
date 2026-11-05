@@ -13,7 +13,7 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
-    { L"2.23", L"2026-11-05", {
+    { L"2.22b", L"2026-11-05", {
         L"Pocket Loomy updates itself: Settings, Updates, Check for updates.",
         L"Only your release, built by GitHub, checked, signed with your key.",
         L"Listening is fast again: the phone hears you, Ellune's AI fills gaps.",

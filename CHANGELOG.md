@@ -2,7 +2,7 @@
 
 All notable changes to Loomy, newest first.
 
-## v2.23
+## v2.22b
 - **Pocket Loomy updates itself**: Settings → Updates → **Check for updates**. It asks GitHub for the newest release, only trusts it if you published it and GitHub's build made the app, checks the file against GitHub's checksum, and hands it to Android, which only installs it if it's signed with your key. The first time, Android asks you to allow Pocket Loomy to install apps. In the dev app, the same button installs or updates the release app.
 - **Listening is fast again**: the phone hears you by default (like Bluetooth mode), and when it hears something its set phrases don't know, Ellune's AI works out the command. If one of the phone's guesses is a real command ("display extend" next to "display extent"), that one wins without asking her.
 - **"Ellune hears you"** (Whisper) is now a setting you tick, off by default. When it's on, it notices you've stopped talking sooner (0.7 s instead of 1 s) and an engine or a fan outside no longer keeps it listening for 10 seconds.

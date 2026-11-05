@@ -159,7 +159,13 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.23 in progress (Nov 5): the update button + faster listening, both BUILT, not tried by him yet.**
+- **v2.22b (Nov 5): a test release, his call.** He can't open Actions artifacts on his phone, so the update
+  button + faster listening below ship as **v2.22b** (branch `claude/v2.22b`, its own PR) for him to install from the
+  release page. **Letters now also mean "a release mid-version so he can test on the phone"** (not only fix builds).
+  Why 2.22b and not 2.23b: 2.22 < 2.22b < 2.23, so the real v2.23 later is newer and the update button in 2.22b can
+  update to it (the first real self-update test). After he merges + tags: rebase `claude/v2.23` on main (PR #22) and
+  carry on there; v2.23 gets its own changelog entry for whatever comes next.
+- **The update button + faster listening (Nov 5), shipped in v2.22b, not tried by him yet.**
   He said "build the update button and the faster Ellune listening": taken as the proposal below, as is.
   - **Update button** (`Update.kt` = plain checks, tested in tests/jni against `tests/fixtures/release_v2.22.json`
     + tampered copies; `Updater.kt` = Android part + `UpdateDone` receiver). Settings → **Updates** → Check for
