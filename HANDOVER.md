@@ -159,7 +159,16 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.22 ENDED (Nov 4), PR #21 ready.** He called it done after the power button + tap-to-send / hold-to-mute.
+- **v2.23 started (Nov 5): the in-app update button (his ask).** Plan agreed: Settings → **Check for updates** asks
+  GitHub's latest release (like `/update` on the PC: the release must be by JimmyUns, the APK asset's `digest`
+  sha256 must match the download), compares with the app's versionName, downloads to the app's cache, hands it to
+  Android's installer (PackageInstaller session; REQUEST_INSTALL_PACKAGES; he allows "install unknown apps" once).
+  Android refuses anything not signed with his release key: that's the real guard. Not built yet.
+- **v2.22 RELEASED (Nov 4/5), with the signed APK.** He made `pocket-release.keystore` (keytool, CN=Pocket Loomy,
+  backed up as base64 in a Bitwarden secure note) and set `POCKET_KEYSTORE_B64` + `POCKET_KEYSTORE_PASSWORD`; the
+  tag build ran before the secrets, so he re-ran it and the APK got attached. He uninstalled the dev app, installed
+  the release one, re-paired by QR (new Ellune key → Authy code): **Online, works.**
+- **v2.22 ENDED (Nov 4), PR #21 merged.** He called it done after the power button + tap-to-send / hold-to-mute.
   Built but not all tried by him yet: QR pairing (after the mid-confirm fix), the setup screens by mode, the simpler
   `/remote`, /shutdown no longer freezing, the net speed fix, power + tap/hold. **Next release's first job: the
   APK in releases** (he has the steps: make `pocket-release.keystore` with `keytool` (Java), back it up, base64 it,
