@@ -159,19 +159,34 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
-- **v2.23 started (Nov 5): the in-app update button (his ask).** Plan agreed: Settings → **Check for updates** asks
-  GitHub's latest release (like `/update` on the PC: the release must be by JimmyUns, the APK asset's `digest`
-  sha256 must match the download), compares with the app's versionName, downloads to the app's cache, hands it to
-  Android's installer (PackageInstaller session; REQUEST_INSTALL_PACKAGES; he allows "install unknown apps" once).
-  Android refuses anything not signed with his release key: that's the real guard. Not built yet.
-  **His feedback Nov 5 (important): Ellune listening feels bad** ("a motorcycle outside stops it from running a
-  command", spoken commands don't work), while the phone's recognizer (Bluetooth mode) "hears everything, gets it
-  wrong sometimes because of a slight accent but it's very fast". Why: `Vad` learns the noise floor only before
-  speech and ends after 1 s below it, so steady noise (an engine) keeps the clip open to 10 s, then the upload +
-  Whisper wait. Proposed (waiting for his answer): **default = the phone hears, Ellune understands** (Android's fast
-  recognizer does the hearing + endpointing; the text goes to her AI when the phone's rules don't know it, which also
-  fixes accent slips like "display extent"); Whisper becomes an opt-in "Ellune hears you" with a better Vad (noise
-  floor tracked during speech, end on a drop from the speech level, ~0.7 s).
+- **v2.23 in progress (Nov 5): the update button + faster listening, both BUILT, not tried by him yet.**
+  He said "build the update button and the faster Ellune listening": taken as the proposal below, as is.
+  - **Update button** (`Update.kt` = plain checks, tested in tests/jni against `tests/fixtures/release_v2.22.json`
+    + tampered copies; `Updater.kt` = Android part + `UpdateDone` receiver). Settings → **Updates** → Check for
+    updates: GitHub's latest release must be by JimmyUns, `pocket-loomy.apk` uploaded by `github-actions[bot]`,
+    state uploaded, URL exactly `.../releases/download/<tag>/pocket-loomy.apk`, sane size, a `sha256:` digest.
+    Compares `Update.code(tag)` (same formula as pocket.yml) with the installed versionCode. Downloads to
+    `cacheDir/update`, checks size + sha256, then the archive's package name, versionCode (must equal the tag's) and
+    signer (vs the installed app, when Android reports both). PackageInstaller session (REQUEST_INSTALL_PACKAGES);
+    `UpdateDone` opens Android's confirm screen. If "Install unknown apps" isn't allowed: a dialog → Android's setting
+    → `onResume` carries on. **The dev app** (`.dev`) can't update itself from releases; the button installs /
+    reinstalls the *release* app instead (`<queries>` lists it): that's how he can try the whole flow before a
+    newer release exists. After a real self-update Pocket Loomy is off (`Boot` sets on=false, his earlier design).
+  - **Listening (his feedback Nov 5: "a motorcycle outside stops it from running a command", spoken commands
+    didn't work in Ellune mode, while the phone's recognizer "hears everything ... very fast").** Now: **the phone
+    hears by default** (Android's recognizer + endpointing); when no guess makes a command the rules know, the text
+    goes to Ellune's AI (`/understand`, as before). `Voice.heard` first tries the recognizer's other guesses
+    ("display extent" / "display extend"). `Words.knows` now checks arguments too (display/dp args, si
+    general|cpu|gpu [1-9], no-arg commands take none), so accent slips go to the AI instead of a PC refusal.
+    `Store.phoneEar` is gone; **`Store.elluneHears`** ("Ellune hears you", default off) = Whisper as in 2.21/2.22.
+    Bluetooth mode: phone + rules only, no AI (unchanged). Flipping the box restarts listening.
+    **Vad** (only used with "Ellune hears you"): ends after 0.7 s quiet (was 1 s); while talking the room level
+    updates (a steady 0.6 s within 6 dB under the voice = the room; the quietest frame of the last second when
+    clearly under the voice); quiet also = under 16 % of the speech level. tests/jni: the old Vad held a mid-sentence
+    engine open to 10 s (his bug reproduced), the new one ends ~1.3 s after you stop.
+  - Ask him: does the phone-first listening feel fast and catch his accent with the AI behind it; does Check for
+    updates in the dev app install the release app; Android's "install unknown apps" prompt. Real self-update can
+    only be tried once a release newer than his app exists (v2.23 installed by hand → v2.24).
   Other things he might add (offered, not asked for yet): `ellune/totp-check.mjs` (prints the current code for a key,
   to compare with Authy: it found his typo); parked ideas: fingerprint lock on the app, "open steam"-style launching,
   Pocket Loomy auto-off after idle, `timer 10m`, the `audio` output switch, "Loomy ping Ellune" by voice. Still to be

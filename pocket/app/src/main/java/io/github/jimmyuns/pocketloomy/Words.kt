@@ -209,10 +209,22 @@ object Words {
     fun knows(cmd: String): Boolean {
         if (cmd.isBlank()) return false
         return cmd.split(" and ").all { p ->
-            val w = p.trim().split(' ').firstOrNull() ?: ""
-            w.startsWith("/") || w in Phrases.KNOWN || w in setOf("input", "display", "sysinfo", "dp", "si", "web", "lp")
+            val w = p.trim().split(' ').filter { it.isNotEmpty() }
+            val first = w.firstOrNull() ?: ""
+            val args = w.drop(1)
+            when {
+                first.startsWith("/") || first in setOf("input", "web", "lp") -> true
+                // 2.23: the arguments have to be real too, so an accent slip ("display extent", "si cpus") goes to
+                // Ellune's AI instead of reaching the PC as a command it refuses
+                first == "display" || first == "dp" -> args.isEmpty() || (args.size == 1 && args[0] in DISPLAY_ARGS)
+                first == "si" || first == "sysinfo" -> args.isEmpty() || (args.size == 1 && args[0] in setOf("general", "cpu", "gpu")) ||
+                    (args.size == 2 && args[0] == "gpu" && args[1].length == 1 && args[1][0] in '1'..'9')
+                first in Phrases.KNOWN -> args.isEmpty()                    // help, net, rb, hide, open...: no words after
+                else -> false
+            }
         }
     }
+    private val DISPLAY_ARGS = setOf("extend", "second", "pc", "duplicate", "off", "on")
 
     // what Whisper writes when nobody really said anything (typing, a cough, music, silence)
     private val NOISE_TAGS = Regex("\\[[^\\]]*]|\\([^)]*\\)|\\*[^*]*\\*|[\u266A\u266B\u266C]")

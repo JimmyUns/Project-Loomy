@@ -60,11 +60,13 @@ class Store(ctx: Context) {
     var gridOpacity: Int
         get() = prefs.getInt("grid_opacity", 50)
         set(v) { prefs.edit().putInt("grid_opacity", v.coerceIn(0, 100)).apply() }
-    /** 2.22: ticked = only the phone's own recognizer and phrase rules, Ellune never hears anything.
-     *  Unticked (default) = Ellune hears the command and her AI picks it; offline the phone is the only option. */
-    var phoneEar: Boolean
-        get() = prefs.getBoolean("phone_ear", false)
-        set(v) { prefs.edit().putBoolean("phone_ear", v).apply() }
+    /** 2.23 (his feedback: Ellune listening was slow and a motorcycle outside kept it open): unticked (default) =
+     *  the phone hears you (Android's recognizer, fast) and Ellune's AI only works out what the phone's rules
+     *  don't know. Ticked = "Ellune hears you": she records the command herself (Whisper), slower. Replaces 2.22's
+     *  "Use the phone's recognizer" (phone_ear), whose unticked default was Whisper. */
+    var elluneHears: Boolean
+        get() = prefs.getBoolean("ellune_hears", false)
+        set(v) { prefs.edit().putBoolean("ellune_hears", v).apply() }
     /** the phone's up/down speed in the status bar */
     var netSpeed: Boolean
         get() = prefs.getBoolean("net_speed", false)

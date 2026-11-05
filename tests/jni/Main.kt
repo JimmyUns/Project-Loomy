@@ -3,6 +3,8 @@
 import io.github.jimmyuns.pocketloomy.Ellune
 import io.github.jimmyuns.pocketloomy.Sound
 import io.github.jimmyuns.pocketloomy.Vad
+import io.github.jimmyuns.pocketloomy.Update
+import io.github.jimmyuns.pocketloomy.Json
 import io.github.jimmyuns.pocketloomy.Ws
 import io.github.jimmyuns.pocketloomy.Native
 import io.github.jimmyuns.pocketloomy.Words
@@ -265,6 +267,35 @@ fun main() {
         val (_, e6) = runVad(List(400) { 0.0 })
         check(e6 == listOf(Vad.Event.TIMEOUT), "vad: digital silence times out")
         check(Vad().let { it.push(1.0); it.frame } == 1, "vad: counts frames")
+        // 2.23: noise that starts while you talk (his motorcycle) must not keep the clip open to 10 s
+        run {
+            val f = List(20) { 50.0 } +
+                List(40) { if (it % 5 == 4) 60.0 else 3000.0 } +             // talking, gaps between words
+                List(40) { if (it % 5 == 4) 1200.0 else 3200.0 } +           // still talking, an engine starts
+                List(400) { 1200.0 + (it % 4) * 60 }                        // you stopped; the engine goes on
+            val (v, e) = runVad(f)
+            check(e == listOf(Vad.Event.STARTED, Vad.Event.ENDED) && v.frame < 100 + 70, "vad: an engine starting mid-sentence doesn't hold it open (ended at frame ${v.frame}, $e)")
+            check(v.end in 100..100 + 50, "vad: the clip ends near where you stopped (${v.end})")
+        }
+        run {   // an engine already running when you start: learned before, ends like a quiet room
+            val f = List(40) { 1000.0 + (it % 3) * 50 } + List(50) { if (it % 6 == 5) 1100.0 else 5000.0 } + List(200) { 1050.0 }
+            val (v, e) = runVad(f)
+            check(e == listOf(Vad.Event.STARTED, Vad.Event.ENDED) && v.frame <= 90 + 36, "vad: a steady engine from the start (frame ${v.frame})")
+        }
+        run {   // a quiet room ends 0.7 s after you stop (was 1 s)
+            val (v, e) = runVad(List(30) { 50.0 } + List(50) { if (it % 7 == 6) 80.0 else 2500.0 } + List(100) { 55.0 })
+            check(e == listOf(Vad.Event.STARTED, Vad.Event.ENDED) && v.frame == 80 + 35, "vad: 0.7 s of quiet ends it (frame ${v.frame})")
+        }
+        run {   // loud talking with short pauses isn't cut: pauses are short, and the voice keeps coming back
+            val f = List(20) { 50.0 } + List(300) { k -> if (k % 40 in 30..39) 400.0 else 2000.0 + (k % 7) * 300 } + List(60) { 50.0 }
+            val (v, e) = runVad(f)
+            check(e == listOf(Vad.Event.STARTED, Vad.Event.ENDED) && v.frame > 320, "vad: a long sentence with pauses isn't cut (frame ${v.frame})")
+        }
+        run {   // the room goes quieter than your voice by a lot (a fan), but stays far above the old floor: still ends
+            val f = List(20) { 30.0 } + List(60) { if (it % 5 == 4) 300.0 else 6000.0 } + List(200) { 700.0 + (it % 2) * 40 }
+            val (v, e) = runVad(f)
+            check(e == listOf(Vad.Event.STARTED, Vad.Event.ENDED) && v.frame < 80 + 50, "vad: -18 dB under the voice is quiet (frame ${v.frame})")
+        }
 
         check(Ellune.jsonString("{\"ok\":true,\"heard\":\"Loomy, turn the screens off.\"}", "heard") == "Loomy, turn the screens off.", "json: plain")
         check(Ellune.jsonString("{\"heard\" : \"it\\u2019s \\\"x\\\" a\\\\b\"}", "heard") == "it\u2019s \"x\" a\\b", "json: escapes")
@@ -275,6 +306,12 @@ fun main() {
 
         check(Words.knows("display off") && Words.knows("si and input next tab") && Words.knows("web youtube") && Words.knows("/pkg"), "knows: real commands")
         check(!Words.knows("make the screens go dark") && !Words.knows("") && !Words.knows("si and dance"), "knows: everything else")
+        check(!Words.knows("display extent") && !Words.knows("dp extend now") && !Words.knows("si cpus") && !Words.knows("help me"),
+              "knows: 2.23, the words after it must be real too")
+        check(Words.knows("display") && Words.knows("dp off") && Words.knows("display on") && Words.knows("si gpu 2") &&
+              Words.knows("sysinfo general") && Words.knows("lp games") && Words.knows("input down 3") && Words.knows("hide"),
+              "knows: 2.23, real arguments still pass")
+        check(!Words.knows("si gpu 12") && !Words.knows("rb now"), "knows: 2.23, odd arguments")
     }
 
     // ---- 2.22: "thank you" ends a sentence, "please" never does
@@ -340,6 +377,39 @@ fun main() {
         check(runCatching { Ws.readFrame(java.io.ByteArrayInputStream(huge)) }.isFailure, "ws: an 8 KB message is refused")
         check(Ws.readHead(java.io.ByteArrayInputStream("HTTP/1.1 101 Switching\r\nUpgrade: websocket\r\n\r\nxx".toByteArray()))?.startsWith("HTTP/1.1 101") == true, "ws: the answer's head")
         check(Ws.readHead(java.io.ByteArrayInputStream("HTTP/1.1 101".toByteArray())) == null, "ws: a cut-off head")
+    }
+
+    // ---- 2.23: the update button's checks (Update.kt), against GitHub's real answer for v2.22
+    run {
+        check(Update.code("2.23") == 22300 && Update.code("v2.9b") == 20902 && Update.code("V2.10") == 21000, "update: version codes like pocket.yml")
+        check(Update.code("2.9")!! < Update.code("2.9b")!! && Update.code("2.9c")!! < Update.code("2.10")!!, "update: 2.9 < 2.9b < 2.9c < 2.10")
+        check(Update.code("dev-abc1234") == null && Update.code("2.100") == null && Update.code("2.22-rc") == null && Update.code("") == null, "update: odd versions")
+        val real = java.io.File("../fixtures/release_v2.22.json").readText()
+        val ok = Update.check(real)
+        check(ok is Update.Check.Ok && ok.tag == "v2.22" && ok.version == "2.22" && ok.code == 22200 && ok.size == 216739L &&
+              ok.sha256 == "ed7796061e844571ffc4b498c2999bd04b4433ba5b4d6369bb8e76ee9e0c6c99" &&
+              ok.url == "https://github.com/JimmyUns/Project-Loomy/releases/download/v2.22/pocket-loomy.apk", "update: the real v2.22 release ($ok)")
+        fun bad(json: String, what: String) { val r = Update.check(json); check(r is Update.Check.Bad, "update refuses: $what ($r)") }
+        bad(real.replaceFirst("\"login\": \"JimmyUns\"", "\"login\": \"LoomyBot\"").replaceFirst("\"login\":\"JimmyUns\"", "\"login\":\"LoomyBot\""), "someone else's release")
+        val apkAt = real.indexOf("\"pocket-loomy.apk\"")
+        val upl = real.indexOf("github-actions[bot]", apkAt)
+        bad(real.substring(0, upl) + "LoomyBot" + real.substring(upl + "github-actions[bot]".length), "the APK uploaded by hand")
+        bad(real.replace("pocket-loomy.apk", "other.apk"), "no APK yet")
+        bad(real.replace("sha256:ed7796061e844571ffc4b498c2999bd04b4433ba5b4d6369bb8e76ee9e0c6c99", "sha256:xyz"), "a broken checksum")
+        bad(real.replace("\"digest\": \"sha256:ed7796061e844571ffc4b498c2999bd04b4433ba5b4d6369bb8e76ee9e0c6c99\"", "\"digest\": null")
+                .replace("\"digest\":\"sha256:ed7796061e844571ffc4b498c2999bd04b4433ba5b4d6369bb8e76ee9e0c6c99\"", "\"digest\":null"), "no checksum")
+        bad(real.replace("JimmyUns/Project-Loomy/releases/download/v2.22/pocket-loomy.apk", "evil/x/releases/download/v2.22/pocket-loomy.apk"), "a download link elsewhere")
+        bad(real.replace("\"size\": 216739", "\"size\": 0").replace("\"size\":216739", "\"size\":0"), "an empty file")
+        bad(real.replace("\"draft\": false", "\"draft\": true").replace("\"draft\":false", "\"draft\":true"), "a draft")
+        bad(real.replace("\"tag_name\": \"v2.22\"", "\"tag_name\": \"latest\"").replace("\"tag_name\":\"v2.22\"", "\"tag_name\":\"latest\""), "an odd tag")
+        bad("<html><body>Sign in to the wifi</body></html>", "a wifi login page")
+        bad("", "nothing"); bad("{\"message\":\"Not Found\"}", "GitHub's 'not found'"); bad(real.dropLast(40), "a cut-off answer")
+        check(Update.hex(byteArrayOf(0, 15, -1, 16)) == "000fff10" && Update.size(216739) == "212 KB" && Update.size(3L * 1048576) == "3.0 MB", "update: hex, sizes")
+        // the little JSON reader
+        val j = Json.parse("{\"a\": [1, 2.5, true, null, \"x\\\"y\\u00e9\\n\"], \"b\": {\"c\": -3}}") as Map<*, *>
+        check((j["a"] as List<*>) == listOf(1L, 2.5, true, null, "x\"y\u00e9\n") && (j["b"] as Map<*, *>)["c"] == -3L, "json: values")
+        check(Json.parse("{\"a\":1,}") == null && Json.parse("[1 2]") == null && Json.parse("{\"a\":1} x") == null && Json.parse("\"\u0001\"") == null, "json: malformed")
+        check(Json.parse("[".repeat(100) + "]".repeat(100)) == null && Json.parse(" [ ] ") == listOf<Any?>(), "json: too deep / empty")
     }
 
     println("$checks checks, $fails failure(s)")

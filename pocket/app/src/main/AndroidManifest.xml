@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Commands to your PC only ever go over Bluetooth. INTERNET is only for Ellune (Ellune.kt):
      Ping / guest list when you tap them (2.20), and listening through her (2.21, a setting) when you Talk.
-     ACCESS_NETWORK_STATE: is there internet right now (else the phone's own recognizer). No plain http (usesCleartextTraffic="false"). -->
+     ACCESS_NETWORK_STATE: is there internet right now (else the phone's own recognizer). No plain http (usesCleartextTraffic="false").
+     2.23: INTERNET also reaches GitHub when you tap Check for updates (Updater.kt), and REQUEST_INSTALL_PACKAGES lets
+     the checked APK go to Android's installer (Android still asks you, and only takes your own signed app). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -17,6 +19,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -26,6 +29,8 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- 2.23: the dev app looks for the release app (Check for updates installs / updates it) -->
+        <package android:name="io.github.jimmyuns.pocketloomy" />
     </queries>
 
     <application
@@ -86,6 +91,9 @@
             </intent-filter>
             <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
         </service>
+
+        <!-- 2.23: Android's installer reports back (its confirm screen, or how the update went) -->
+        <receiver android:name=".UpdateDone" android:exported="false" />
 
         <!-- the notification's buttons -->
         <receiver android:name=".Actions" android:exported="false" />

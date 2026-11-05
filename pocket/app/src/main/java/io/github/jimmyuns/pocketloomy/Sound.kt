@@ -47,12 +47,21 @@ object Sound {
 
 /**
  * Talking or not, frame by frame (20 ms each). Learns the room's noise while waiting, starts when the level
- * stays well above it for 80 ms, ends after a second of quiet, or at 10 s. Indices are frame numbers.
+ * stays well above it for 80 ms, ends after 0.7 s of quiet, or at 10 s. Indices are frame numbers.
  * 2.22: a clip must also hold real voice (at least 160 ms of loud, low-zero-crossing frames, i.e. vowels):
  * typing and knocks are loud but crackly, so they end as NOISE and are never sent anywhere.
+ * 2.23 (his feedback: "a motorcycle outside stops it from running a command"): the 2.22 Vad froze the noise level
+ * once you started talking, so a noise that started or grew meanwhile (an engine) never counted as quiet and the
+ * clip ran to 10 s. Now, while you talk, the room's level is kept up to date:
+ *  - a steady sound (the last 0.6 s within 6 dB, and under your voice) is the room, not you: voices go up and down
+ *    every syllable, an engine or a fan doesn't;
+ *  - the quietest moment of the last second (there's always a gap between words) is the room too, when it's
+ *    clearly under your voice;
+ *  - quiet also means "far under how loud you were talking" (-16 dB);
+ *  - 0.7 s of quiet ends it (was 1 s).
  */
 class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
-          private val endFrames: Int = 50,         // 1 s of quiet ends it
+          private val endFrames: Int = 35,         // 0.7 s of quiet ends it
           private val maxFrames: Int = 500,        // 10 s of talking at most
           private val preFrames: Int = 15) {       // keep 300 ms before the start (the first sound)
     enum class Event { NONE, STARTED, ENDED, TIMEOUT, NOISE }
@@ -60,11 +69,14 @@ class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
     var frame = 0; private set
     var start = -1; private set                    // first frame kept (pre-roll included)
     var end = -1; private set                      // one past the last frame kept
-    private var noise = -1.0
+    var noise = -1.0; private set                  // the room's level
+    var speech = 0.0; private set                  // how loud the talking is (a peak that slowly fades)
     private var loud = 0
     private var quiet = 0
     private var talking = false
     private var done = false
+    private val recent = DoubleArray(WINDOW)       // the last second while talking, for the room's level
+    private var nRecent = 0
     var voiced = 0; private set                    // loud frames that sound like a voice
 
     fun push(rms: Double, zcr: Double = 0.1): Event {
@@ -73,7 +85,7 @@ class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
         if (!talking) {
             noise = if (noise < 0) rms else if (rms < noise * 4) noise * 0.95 + rms * 0.05 else noise
             val voice = rms > maxOf(noise * 2.5, 300.0) && i >= 3
-            if (voice) { loud++; if (zcr < 0.25) voiced++ } else { loud = 0; voiced = 0 }
+            if (voice) { loud++; if (zcr < 0.25) voiced++; speech = maxOf(speech, rms) } else { loud = 0; voiced = 0; speech = 0.0 }
             if (loud >= 4) {
                 talking = true
                 start = maxOf(0, i - 3 - preFrames)
@@ -82,7 +94,21 @@ class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
             if (i + 1 >= waitFrames) { done = true; return Event.TIMEOUT }
             return Event.NONE
         }
-        quiet = if (rms < maxOf(noise * 1.8, 200.0)) quiet + 1 else 0
+        // how loud the talking is: jumps up with the voice, fades slowly (about -2 dB a second)
+        speech = if (rms > speech) speech * 0.5 + rms * 0.5 else speech * 0.995
+        // the room while you talk (see above)
+        recent[nRecent++ % WINDOW] = rms
+        if (nRecent >= STEADY) {
+            var lo = Double.MAX_VALUE; var hi = 0.0
+            for (k in 1..STEADY) { val x = recent[(nRecent - k) % WINDOW]; if (x < lo) lo = x; if (x > hi) hi = x }
+            if (hi <= lo * 2 && hi < speech * 0.7 && lo > noise) noise = lo
+        }
+        if (nRecent >= WINDOW) {
+            var lo = recent[0]
+            for (x in recent) if (x < lo) lo = x
+            if (lo > noise && lo * 1.8 < speech * 0.5) noise = lo
+        }
+        quiet = if (rms < maxOf(noise * 1.8, 200.0, speech * 0.16)) quiet + 1 else 0
         if (quiet == 0 && rms > maxOf(noise * 2.5, 300.0) && zcr < 0.25) voiced++
         if (quiet >= endFrames || i + 1 - start >= maxFrames) {
             done = true
@@ -92,4 +118,6 @@ class Vad(private val waitFrames: Int = 300,       // 6 s to start talking
         }
         return Event.NONE
     }
+
+    private companion object { const val WINDOW = 50; const val STEADY = 30 }   // 1 s, 0.6 s
 }
