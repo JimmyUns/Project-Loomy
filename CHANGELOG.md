@@ -2,6 +2,10 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24
+External packages, finished (everything from v2.23a and v2.23b, plus):
+- In `/pkg`, **Phone** is now called **Remote** (it's `/remote`), and **Phone Screen** is **Android Screen Mirroring**.
+
 ## v2.23b
 A test build on the way to v2.24.
 - `/pkg`: **Enter** opens a package's info (what it does + its commands), **Left / Right** turn it on and off (in the info view too). The list is just names now, with **External** in its own column (it used to run into the text).

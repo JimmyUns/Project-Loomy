@@ -17,7 +17,7 @@
 
 static const wchar_t *ID[NFEATURES]    = { 0, L"web", L"lp", L"net", L"rb", L"display", L"sysinfo", L"github", L"phone", L"scrcpy" };
 static const wchar_t *NAME[NFEATURES]  = { 0, L"Websites", L"Loomy's Path", L"Network", L"Recycle Bin",
-                                           L"Display", L"System Info", L"GitHub", L"Phone", L"Phone Screen" };
+                                           L"Display", L"System Info", L"GitHub", L"Remote", L"Android Screen Mirroring" };
 // the I view: what it does, in a sentence or three (\n = new line)
 static const wchar_t *DESC[NFEATURES] = { 0,
     L"Your favourite websites, opened by a short name. /webconfig adds and removes them; each mode has its own list.",
@@ -373,7 +373,7 @@ void pkg_paint(HDC dc, RECT a) {
             int ty = y + (rowH - g_lineH) / 2;
             if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
             ui_text(dc, a.left + S(28), ty, NAME[f], sel ? C_BRIGHT : on ? C_TEXT : C_DIM);
-            if (feature_external(f)) ui_text(dc, a.left + S(200), ty, L"External", g_accent);   // 2.23b: its own column
+            if (feature_external(f)) ui_text(dc, a.left + S(300), ty, L"External", g_accent);   // 2.23b: its own column (clear of the longest name)
             const wchar_t *st = state_of(f, &col);
             SIZE sz; GetTextExtentPoint32W(dc, st, s_len(st), &sz);
             ui_text(dc, a.right - S(12) - sz.cx, ty, st, col);

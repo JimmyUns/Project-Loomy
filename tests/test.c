@@ -632,7 +632,7 @@ int main(void) {
             extern int g_extInstalls, g_extRemoves, g_extRuns;
             pkg_close();
             EXPECT(!feature_on(FEAT_SCRCPY) && feature_external(FEAT_SCRCPY) && !feature_external(FEAT_WEB), "scrcpy: external, off until added");
-            run(L"scrcpy");              EXPECT(saw(L"Phone Screen is off on this PC.") && saw(L"/pkg add scrcpy turns it on.") && g_extRuns == 0, "scrcpy off: says how");
+            run(L"scrcpy");              EXPECT(saw(L"Android Screen Mirroring is off on this PC.") && saw(L"/pkg add scrcpy turns it on.") && g_extRuns == 0, "scrcpy off: says how");
             run(L"/packages add scrcpy"); EXPECT(g_extInstalls == 1 && feature_on(FEAT_SCRCPY), "/packages works, add downloads + turns on");
             run(L"scrcpy");              EXPECT(g_extRuns == 1, "scrcpy runs");
             run(L"mirror");              EXPECT(g_extRuns == 2, "mirror is its other name");
@@ -671,7 +671,7 @@ int main(void) {
         run(L"/m switch home");
         EXPECT(!feature_on(FEAT_PHONE) && g_cfg.featuresOff == 0, "phone is opt-in: off on a fresh config");
         phone_startup();            EXPECT(!g_btListening, "off: nothing listens");
-        run(L"/remote");             EXPECT(saw(L"Phone is off on this PC.") && !phone_active(), "off: /remote says how to turn it on");
+        run(L"/remote");             EXPECT(saw(L"Remote is off on this PC.") && !phone_active(), "off: /remote says how to turn it on");
         run(L"help");               EXPECT(!saw(L"turned off"), "an opt-in feature being off isn't nagged about");
         run(L"/pkg add phone");     EXPECT(feature_on(FEAT_PHONE) && saw(L"Type /remote to pair"), "/pkg add phone");
         EXPECT(!g_btListening, "on, but nothing to listen for yet (no phone, no code)");

@@ -155,7 +155,7 @@ static const Command COMMANDS[] = {
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig, FEAT_WEB },
     { L"Packages",     L"turn features on/off on this PC",    L"pkg",      L"packages",        1, ALL, L"[add|remove|update <feature>]",   ARGS_SELF, c_pkg },
     { L"Remote",       L"your phone: pairing, Bluetooth, remote", L"remote", 0,                  1, ALL, L"[forget | add <code>]",          ARGS_SELF, c_phone, FEAT_PHONE },
-    { L"Phone Screen", L"your phone's screen on the PC",      L"scrcpy",   L"mirror",          0, ALL, 0,                                  0,         c_scrcpy, FEAT_SCRCPY },
+    { L"Android Mirroring", L"your phone's screen on the PC",  L"scrcpy",   L"mirror",          0, ALL, 0,                                  0,         c_scrcpy, FEAT_SCRCPY },
     { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, L"[general|custom]",                1,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
