@@ -15,6 +15,8 @@ questions and wanted a security talk as its own conversation: **done Nov 2 2026,
 doesn't cover is still his call: don't bake it in without him.
 
 ## 2. Status
+- **0.8 (Nov 8, not deployed yet):** `POST /game` + the Riot logbook cron (see HANDOVER.md §6). `npx wrangler deploy`
+  picks up the `[triggers]` cron from wrangler.toml; the logbook starts from that moment.
 - **0.7 (Nov 7, not deployed yet):** `GET/POST /prefs` (guest list): small settings shared by his devices, in the
   Guests object's storage under "prefs" (key `^[a-z0-9][a-z0-9._-]{0,59}$`, value `^[A-Za-z0-9._*+() -]{0,95}$`,
   "" removes, 50 at most). First user: which release file an external package downloads (`pkg.scrcpy.file.x64`).

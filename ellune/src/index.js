@@ -15,6 +15,11 @@
 // POST /remove      {"key":"...","code":"123456"} (guest list): throw a device out (one added from the app)
 // GET  /prefs       (guest list) -> {"ok":true,"prefs":{"pkg.scrcpy.file.x64":"scrcpy-win64-*.zip"}}       \ 0.7: small
 // POST /prefs       {"key":"...","value":"..."} (guest list), "" removes it                               / shared settings
+// POST /game        {"q":"league"} (guest list) -> {"ok":true,"name":"League of Legends","kind":"riot","time":ms|null,
+//                   "version":"...","since":ms|null}: when the game last updated (0.8; only when asked, no alerts).
+//                   Steam: looked up on the spot (store search -> api.steamcmd.net's public build time).
+//                   Riot (League/TFT, Valorant): Riot only says the current version, so a cron every 15 min writes
+//                   down when it changes (the "logbook", in the Guests object); "since" = when the logbook started.
 // anything else on a known path -> 405, any other path -> 404.
 // No storage, no logging of who asked or what was said. Audio and text only go to Cloudflare's Workers AI
 // (it doesn't train on them) and are gone after the answer. Needs a Workers AI binding named AI
@@ -30,7 +35,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.7";
+const VERSION = "0.8";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -96,6 +101,17 @@ export class Guests {
     try { b = await request.json(); } catch {}
     // 0.7: small settings all his devices share (which file of a package to download...). No code needed: only
     // guest-list devices get here, like every other guest call.
+    // 0.8: the Riot logbook (the cron writes, /game reads)
+    if (what === "/riot-log") {
+      const log = (await st.get("riot")) || {};
+      const cur = log[b.product], t = Number(b.now) || Date.now();
+      if (!cur) log[b.product] = { url: b.url, version: b.version || "", changed: null, since: t, checked: t };
+      else if (cur.url !== b.url) log[b.product] = { url: b.url, version: b.version || "", changed: t, prev: cur.changed, since: cur.since, checked: t };
+      else cur.checked = t;
+      await st.put("riot", log);
+      return reply(200, { ok: true, entry: log[b.product] });
+    }
+    if (what === "/riot-get") return reply(200, { ok: true, log: (await st.get("riot")) || {} });
     if (what === "/prefs-get") return reply(200, { ok: true, prefs: (await st.get("prefs")) || {} });
     if (what === "/prefs-set") {
       const prefs = (await st.get("prefs")) || {};
@@ -486,8 +502,98 @@ async function prefs(request, env, path, now) {
   return guestsStub(env).fetch(new Request("https://guests/prefs-set", { method: "POST", body: JSON.stringify({ key, value }) }));
 }
 
+// ---------------------------------------------------------------- 0.8: when did a game last update (his ask)
+// Only when he asks; nothing is ever pushed to him. Riot has no public "when", so the cron below keeps a logbook.
+const UA = "Ellune/0.8 (personal assistant for one user; checks game versions every 15 minutes)";
+export const RIOT = {
+  league_of_legends: { name: "League of Legends", says: /^(league( of legends)?|lol|tft|teamfight tactics|league of legend)$/ },
+  valorant: { name: "VALORANT", says: /^(valorant|val|valorent|valerant)$/ },
+};
+
+// Riot's public patchline config -> the live Windows build: {url, version} or null
+export function riotLive(json, product) {
+  const live = json && json[`keystone.products.${product}.patchlines.live`];
+  const cfgs = live && live.platforms && live.platforms.win && live.platforms.win.configurations;
+  const cfg = Array.isArray(cfgs) && cfgs[0];
+  const url = cfg && cfg.patch_url;
+  if (typeof url !== "string" || !/^https:\/\//.test(url) || url.length > 400) return null;
+  const v = cfg.version || (cfg.metadata && cfg.metadata.version) || "";
+  return { url, version: typeof v === "string" ? v.slice(0, 40) : "" };
+}
+
+async function riotNow(product, fetchFn) {
+  try {
+    const r = await fetchFn(`https://clientconfig.rpg.riotgames.com/api/v1/config/public?namespace=keystone.products.${product}.patchlines`,
+                            { headers: { "user-agent": UA, accept: "application/json" } });
+    return r.ok ? riotLive(await r.json(), product) : null;
+  } catch { return null; }
+}
+
+// the cron (wrangler.toml [triggers]): every 15 min, each Riot game's live build into the logbook
+export async function riotTick(env, now = Date.now(), fetchFn = fetch) {
+  if (!env || !env.GUESTS) return 0;
+  let n = 0;
+  for (const product of Object.keys(RIOT)) {
+    const live = await riotNow(product, fetchFn);
+    if (!live) continue;
+    await guestsStub(env).fetch(new Request("https://guests/riot-log", { method: "POST",
+      body: JSON.stringify({ product, url: live.url, version: live.version, now }) }));
+    n++;
+  }
+  return n;
+}
+
+// "rust" -> the Steam game: {id, name} (an exact name wins over the first result)
+const simple = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+export function steamPick(search, q) {
+  const items = (search && Array.isArray(search.items) ? search.items : []).filter((i) => i && Number.isInteger(i.id) && typeof i.name === "string");
+  if (!items.length) return null;
+  const want = simple(q);
+  const it = items.find((i) => simple(i.name) === want) || items[0];
+  return { id: it.id, name: it.name.slice(0, 80) };
+}
+// api.steamcmd.net's answer -> {time (ms), build} of the public branch, or null
+export function steamBuild(info, id) {
+  const app = info && info.data && info.data[String(id)];
+  const pub = app && app.depots && app.depots.branches && app.depots.branches.public;
+  const t = pub && Number(pub.timeupdated);
+  return t > 0 ? { time: t * 1000, build: String(pub.buildid || "").slice(0, 20) } : null;
+}
+
+async function game(request, env, path, now, fetchFn = fetch) {
+  if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" });
+  const body = await readCapped(request, 512);
+  if (!body) return reply(413, { ok: false, error: "too big" });
+  const g = await guest(request, env, path, now, body);
+  if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
+  let b = {};
+  try { b = JSON.parse(new TextDecoder().decode(body)); } catch {}
+  const q = simple(b.q || "").slice(0, 60);
+  if (!q) return reply(400, { ok: false, error: "which game?" });
+  for (const [product, r] of Object.entries(RIOT)) {
+    if (!r.says.test(q)) continue;
+    if (!env || !env.GUESTS) return reply(503, { ok: false, error: "no guests binding" });
+    const res = await guestsStub(env).fetch(new Request("https://guests/riot-get", { method: "POST", body: "{}" }));
+    const e = ((await res.json()).log || {})[product];
+    return reply(200, { ok: true, name: r.name, kind: "riot", time: e ? e.changed : null, version: e ? e.version : "", since: e ? e.since : null });
+  }
+  try {
+    const s = await fetchFn(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&l=english&cc=US`, { headers: { "user-agent": UA } });
+    const hit = s.ok ? steamPick(await s.json(), q) : null;
+    if (!hit) return reply(404, { ok: false, error: `no game called ${q}` });
+    const i = await fetchFn(`https://api.steamcmd.net/v1/info/${hit.id}`, { headers: { "user-agent": UA } });
+    const bl = i.ok ? steamBuild(await i.json(), hit.id) : null;
+    if (!bl) return reply(502, { ok: false, error: `couldn't get ${hit.name}'s builds right now` });
+    return reply(200, { ok: true, name: hit.name, kind: "steam", time: bl.time, version: bl.build, since: null });
+  } catch {
+    return reply(502, { ok: false, error: "couldn't reach Steam right now" });
+  }
+}
+
 // ---------------------------------------------------------------- routes
 export default {
+  // 0.8: the Riot logbook, every 15 min (wrangler.toml [triggers])
+  async scheduled(event, env, ctx) { ctx.waitUntil(riotTick(env)); },
   async fetch(request, env, ctx, now = Date.now()) {
     const path = new URL(request.url).pathname;
     const get = request.method === "GET" || request.method === "HEAD";
@@ -510,6 +616,7 @@ export default {
     if (path === "/register") return register(request, env, path, now);
     if (path === "/devices" || path === "/remove") return devices(request, env, path, now);
     if (path === "/prefs") return prefs(request, env, path, now);
+    if (path === "/game") return game(request, env, path, now, (ctx && ctx.fetch) || fetch);
 
     if (path === "/hear" || path === "/understand") {
       if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" }, { allow: "POST" });

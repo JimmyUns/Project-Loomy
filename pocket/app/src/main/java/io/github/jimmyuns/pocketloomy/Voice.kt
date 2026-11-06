@@ -46,6 +46,10 @@ object Voice {
     class Ask(val cmd: String, val options: List<String>, val until: Long)
     @Volatile var asking: Ask? = null
     fun askingNow(): Ask? = asking?.takeIf { SystemClock.elapsedRealtime() < it.until }
+    /** 2.25: an answer shown big above the mic for a while ("Yes, at 6:12 PM"); tap it away */
+    class Shown(val big: String, val small: String, val until: Long)
+    @Volatile var shown: Shown? = null
+    fun shownNow(): Shown? = shown?.takeIf { SystemClock.elapsedRealtime() < it.until }
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
     /** PocketService hears about start/stop here, to add or drop the microphone */
@@ -105,6 +109,7 @@ object Voice {
         inputMode = false
         asking = null
         main.removeCallbacksAndMessages(null)
+        if (shown != null && shownNow() == null) shown = null
         ear?.cancel()
         ear?.destroy()
         ear = null
@@ -250,6 +255,9 @@ object Voice {
 
         // the phone's recognizer gives a few guesses ("display extent", "display extend"): the first one the rules
         // know wins, so a slip of the accent costs nothing when one of the guesses got it right
+        // 2.25: "did League drop an update today?" is a question for Ellune, not a command for the PC
+        // (not from Solo's overhearing: only when it was said to Loomy)
+        if (!(solo && !following)) Words.gameQuestion(said)?.let { gameAsk(it, said); return }
         var text: String = said
         var cmd = Words.command(text)
         if (!Words.knows(cmd)) {
@@ -297,6 +305,34 @@ object Voice {
                 }
             }
         }, "ellune-understand").start()
+    }
+
+    private fun gameAsk(q: Games.Question, said: String) {
+        val k = elluneKey
+        if (k == null || !ElluneEar.online(ctx)) {
+            add(said, if (Store(ctx).btMode) "Game updates come from Ellune, and Bluetooth mode doesn't use her."
+                      else "Game updates come from Ellune: this needs internet (and the phone on her guest list).", true)
+            next(150)
+            return
+        }
+        ear?.cancel(); eEar?.cancel()
+        thinking = true
+        partial = "Ellune is checking ${q.game}..."
+        changed()
+        Thread({
+            val (info, why) = Ellune.gameNow(k.priv, k.pub, q.game)
+            main.post {
+                thinking = false
+                partial = ""
+                if (info != null) {
+                    val (big, small) = Games.answer(q.kind, info, System.currentTimeMillis(), java.time.ZoneId.systemDefault())
+                    shown = Shown(big, small, SystemClock.elapsedRealtime() + SHOW_MS)
+                    main.postDelayed({ if (shown != null && shownNow() == null) { shown = null; changed() } }, SHOW_MS + 100)
+                    add(said, "$big \u00B7 ${small.replace("\n", " \u00B7 ")}", false)
+                } else add(said, why ?: "Ellune couldn't answer.", true)
+                if (state == State.LISTENING) next(150) else changed()
+            }
+        }, "ellune-game").start()
     }
 
     // phone-side controls: "turn off the mic" / "stop listening" stop listening (Talk starts it again);
@@ -374,6 +410,7 @@ object Voice {
         if (device == null && Store(ctx).btMode) { add(shown, "Choose your PC (Bluetooth) in the app first.", true); return }
         val trust = Store(ctx).trust() ?: return
         asking = null                                               // a new command: the old question is over
+        this.shown = null                                           // (and an answer above the mic)
         val keys = cmd.split(" and ").all { it.trim().startsWith("input ") }
         val e = Entry(shown, "...", false)
         history += e
@@ -406,4 +443,5 @@ object Voice {
     }
 
     private const val ASK_MS = 20_000L
+    private const val SHOW_MS = 15_000L
 }

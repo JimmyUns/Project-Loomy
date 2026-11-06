@@ -348,4 +348,25 @@ object Ellune {
     /** Words the phone's rules don't know -> a Loomy command ("" = not one). Blocking. */
     fun understandNow(priv: PrivateKey, pub: ByteArray, text: String): Answer =
         post(priv, pub, "/understand", "{\"text\":${jsonQuote(text.take(300))}}".toByteArray(), "application/json", "command", 6000)
+
+    // ------------------------------------------------------------------ 2.25: when did a game last update (0.8)
+    /** a whole number at "key" (null if it's null or missing) */
+    fun jsonNumber(body: String, key: String): Long? {
+        val m = Regex("\"" + Regex.escape(key) + "\"\\s*:\\s*(-?\\d{1,16})").find(body) ?: return null
+        return m.groupValues[1].toLongOrNull()
+    }
+
+    /** Ellune's answer about a game, or why not (left). Blocking. */
+    fun gameNow(priv: PrivateKey, pub: ByteArray, q: String): Pair<Games.Info?, String?> {
+        val (st, text) = request(priv, pub, "POST", "/game", "{\"q\":${jsonQuote(q.take(60))}}".toByteArray())
+        if (st != 200) return null to when (st) {
+            0 -> "Couldn't reach Ellune."
+            401 -> "This phone isn't on Ellune's guest list."
+            404 -> "Ellune found no game called \u201C$q\u201D."
+            else -> jsonString(text, "error") ?: "Ellune said $st."
+        }
+        val name = jsonString(text, "name") ?: return null to "Ellune's answer didn't make sense."
+        return Games.Info(name, jsonString(text, "kind") == "riot", jsonNumber(text, "time"),
+                          jsonString(text, "version") ?: "", jsonNumber(text, "since")) to null
+    }
 }

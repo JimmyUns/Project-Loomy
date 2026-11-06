@@ -441,7 +441,7 @@ class MainActivity : Activity() {
             visibility = View.GONE
             addView(askTitle, LinearLayout.LayoutParams(-1, -2))
             addView(askOpts, LinearLayout.LayoutParams(-1, -2))
-            setOnClickListener { Voice.asking = null; render() }     // tap it away
+            setOnClickListener { Voice.asking = null; Voice.shown = null; render() }     // tap it away
         }
         main.addView(FrameLayout(this).apply {
             addView(mic, FrameLayout.LayoutParams(-1, -1))
@@ -806,10 +806,14 @@ class MainActivity : Activity() {
         // a few words at most: the mic shows the rest
         val heardWords = Voice.partial.takeIf { listening && taking && it.isNotEmpty() && !it.endsWith("...") && it != "Yes?" }
         val ask = Voice.askingNow()?.takeIf { store.on }
-        askBox.visibility = if (ask != null) View.VISIBLE else View.GONE
+        val info = if (ask == null) Voice.shownNow() else null          // 2.25: a game update answer
+        askBox.visibility = if (ask != null || info != null) View.VISIBLE else View.GONE
         if (ask != null) {
             askTitle.text = Words.ask(ask.cmd)
             askOpts.text = ask.options.joinToString("  \u00B7  ") { Words.pretty(ask.cmd, it) }
+        } else if (info != null) {
+            askTitle.text = info.big
+            askOpts.text = info.small
         }
         val (liveText, liveColor) = when {
             // pairing by QR while an old pairing is still on this phone: say what to do, right here
