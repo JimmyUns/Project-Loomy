@@ -199,3 +199,19 @@ void ui_screens_on(void) { g_screensOn++; }
 void ui_flush(void) {}
 HBRUSH CreateSolidBrush(COLORREF c) { return (HBRUSH)1; }
 int FillRect(HDC d, const RECT *r, HBRUSH b) { return 1; }
+
+// ---- 2.24 external packages: extwin.c is Windows-only. A pretend install that works at once.
+int g_extInstalls = 0, g_extRemoves = 0, g_extRuns = 0;
+static wchar_t g_extFile[100];
+int ext_busy(int f) { return 0; }
+int ext_pct(int f) { return -1; }
+void ext_install(int f, int quiet) { g_extInstalls++; feature_set(f, 1); outf(OUT_OK, L"[installed %s]", feature_id(f)); }
+void ext_remove(int f) { g_extRemoves++; }
+int ext_installed(int f, wchar_t *tag, int tc, wchar_t *file, int fc) { return 0; }
+void ext_run(int f) { g_extRuns++; out(OUT_TEXT, L"[scrcpy ran]"); }
+const wchar_t *ext_status(int f) { return L""; }
+void ext_choices(int f, wchar_t *b, int cap) { b[0] = 0; }
+int ext_get_file(int f, wchar_t *out, int cap) { if (!g_extFile[0]) return 0; wcsncpy(out, g_extFile, cap); return 1; }
+void ext_set_file(int f, const wchar_t *p) { wcsncpy(g_extFile, p, 99); }
+int ext_arch(void) { return EXT_X64; }
+int ui_clipboard_text(wchar_t *out, int cap) { wcsncpy(out, L"scrcpy-win32-v5.0.1.zip", cap); return 1; }

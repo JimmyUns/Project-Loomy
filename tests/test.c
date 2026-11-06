@@ -388,6 +388,46 @@ int main(void) {
                                "JimmyUns", tag, 32, ver, 32) == REL_OK, "compact json (no spaces) works too");
     }
 
+    wprintf(L"\n== external packages (2.24): reading a release, picking the file ==\n");
+    {
+        static char js[64 * 1024]; static ExtRelease r;
+        FILE *f = fopen("fixtures/release_scrcpy.json", "rb");
+        int n = f ? (int)fread(js, 1, sizeof js - 1, f) : 0; if (f) fclose(f); js[n] = 0;
+        EXPECT(ext_parse_release(js, &r) && !strcmp(r.tag, "v5.0.1") && r.n == 9, "scrcpy's real release: tag + 9 files");
+        int win64 = -1; for (int i = 0; i < r.n; i++) if (!strcmp(r.a[i].name, "scrcpy-win64-v5.0.1.zip")) win64 = i;
+        EXPECT(win64 >= 0 && r.a[win64].size == 11264634ull && r.a[win64].uploaded && !strncmp(r.a[win64].digest, "sha256:b12a2c4ee8be3", 20) &&
+               !strcmp(r.a[win64].url, "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/scrcpy-win64-v5.0.1.zip"), "a file's details");
+        int i = -1;
+        EXPECT(ext_pick(&r, 0, EXT_X64, &i) == PICK_OK && !strcmp(r.a[i].name, "scrcpy-win64-v5.0.1.zip"), "x64 PC: win64 picked by itself");
+        EXPECT(ext_pick(&r, "", EXT_ARM64, &i) == PICK_OK && !strcmp(r.a[i].name, "scrcpy-winarm64-v5.0.1.zip"), "ARM PC: winarm64");
+        EXPECT(ext_pick(&r, 0, EXT_X86, &i) == PICK_OK && !strcmp(r.a[i].name, "scrcpy-win32-v5.0.1.zip"), "32-bit PC: win32");
+        EXPECT(ext_pick(&r, "scrcpy-win32-*.zip", EXT_X64, &i) == PICK_OK && !strcmp(r.a[i].name, "scrcpy-win32-v5.0.1.zip"), "his choice beats automatic");
+        EXPECT(ext_pick(&r, "nothing-*.zip", EXT_X64, &i) == PICK_NOMATCH, "a choice that's not on the release");
+        EXPECT(ext_asset_ok(&r.a[win64], ext_pkg(FEAT_SCRCPY), r.tag), "the win64 zip is trusted");
+        ExtAsset bad = r.a[win64];
+        bad.uploaded = 0;                          EXPECT(!ext_asset_ok(&bad, ext_pkg(FEAT_SCRCPY), r.tag), "half uploaded: no");
+        bad = r.a[win64]; bad.digest[0] = 0;       EXPECT(!ext_asset_ok(&bad, ext_pkg(FEAT_SCRCPY), r.tag), "no checksum: no");
+        bad = r.a[win64]; strcpy(bad.url, "https://github.com/evil/scrcpy/releases/download/v5.0.1/scrcpy-win64-v5.0.1.zip");
+        EXPECT(!ext_asset_ok(&bad, ext_pkg(FEAT_SCRCPY), r.tag), "another repo: no");
+        bad = r.a[win64]; strcpy(bad.url, "https://github.com/Genymobile/scrcpy/releases/download/v5.0.0/scrcpy-win64-v5.0.1.zip");
+        EXPECT(!ext_asset_ok(&bad, ext_pkg(FEAT_SCRCPY), r.tag), "another release: no");
+        bad = r.a[win64]; strcpy(bad.url, "https://github.com/Genymobile/scrcpy/releases/download/v5.0.1/../x.zip");
+        EXPECT(!ext_asset_ok(&bad, ext_pkg(FEAT_SCRCPY), r.tag), "a path trick: no");
+        char pat[100];
+        ext_pattern("scrcpy-win64-v5.0.1.zip", "v5.0.1", pat, 100);  EXPECT(!strcmp(pat, "scrcpy-win64-*.zip"), "the version becomes *");
+        ext_pattern(" tool-1.2-x64.zip ", "1.2", pat, 100);         EXPECT(!strcmp(pat, "tool-*-x64.zip"), "a tag without v");
+        ext_pattern("my-*.zip", "v5.0.1", pat, 100);                EXPECT(!strcmp(pat, "my-*.zip"), "a * he typed is kept");
+        EXPECT(ext_glob("scrcpy-win64-*.zip", "SCRCPY-WIN64-v6.0.zip") && !ext_glob("scrcpy-win64-*.zip", "scrcpy-winarm64-v6.0.zip"), "matching, any case");
+        // a release with two equally good files: it asks instead of guessing
+        static ExtRelease two; two = r; two.n = 0;
+        strcpy(two.a[two.n++].name, "tool-windows.zip"); strcpy(two.a[two.n++].name, "tool-windows-portable.zip");
+        EXPECT(ext_pick(&two, 0, EXT_X64, &i) == PICK_MANY, "two equal files: ask (E)");
+        two.n = 0; strcpy(two.a[two.n++].name, "tool-linux.tar.gz"); strcpy(two.a[two.n++].name, "SHA256SUMS.txt");
+        EXPECT(ext_pick(&two, 0, EXT_X64, &i) == PICK_NONE, "nothing for Windows");
+        EXPECT(!ext_parse_release("<html>wifi login</html>", &two) && !ext_parse_release("{\"tag_name\":\"v1\",\"assets\":[]}", &two) &&
+               !ext_parse_release("{\"tag_name\":\"v1\",\"assets\":[{\"name\":\"a\"", &two), "broken or empty releases");
+    }
+
     wprintf(L"\n== ellune ping reply ==\n");
     {
         wchar_t ev[16];
@@ -523,16 +563,16 @@ int main(void) {
         pkg_key(VK_ESCAPE);         EXPECT(!pkg_active(), "Esc closes it");
 
         run(L"/pkg remove sysinfo"); EXPECT(!feature_on(FEAT_SYSINFO) && saw(L"System Info is off on this PC") && saw(L"/pkg add sysinfo"), "remove sysinfo");
-        run(L"si");                 EXPECT(saw(L"don't know 'si'") && !sysinfo_active(), "si unknown when off");
-        run(L"sysinfo cpu");        EXPECT(saw(L"don't know 'sysinfo'"), "sysinfo unknown when off");
+        run(L"si");                 EXPECT(saw(L"System Info is off on this PC.") && saw(L"/pkg add sysinfo turns it on.") && !sysinfo_active(), "si when off: says how to turn it on");
+        run(L"sysinfo cpu");        EXPECT(saw(L"System Info is off on this PC."), "sysinfo when off");
         run(L"help");               EXPECT(!saw(L"System Info") && saw(L"1 feature is turned off on this PC"), "help hides it, says 1 is off");
         tab(L"sys", L"sys");
         run(L"/pkg remove sysinfo"); EXPECT(saw(L"System Info is already off"), "already off");
         cfg_load();                 EXPECT(!feature_on(FEAT_SYSINFO), "off survives a reload (saved per PC)");
 
         run(L"/pkg remove web");    EXPECT(!feature_on(FEAT_WEB) && saw(L"Your saved sites are kept"), "remove web");
-        run(L"web");                EXPECT(saw(L"don't know 'web'"), "web unknown");
-        run(L"/webc info x");       EXPECT(saw(L"don't know '/webc'"), "its /webconfig goes with it");
+        run(L"web");                EXPECT(saw(L"Websites is off on this PC."), "web when off");
+        run(L"/webc info x");       EXPECT(saw(L"Websites is off on this PC."), "its /webconfig goes with it");
         run(L"help");               EXPECT(saw(L"2 features are turned off"), "help counts 2");
 
         run(L"/pkg add sysinfo");   EXPECT(feature_on(FEAT_SYSINFO) && saw(L"System Info is on"), "add sysinfo back");
@@ -547,15 +587,15 @@ int main(void) {
         run(L"/pkg remove pkg");    EXPECT(saw(L"part of Loomy's core"), "core: pkg itself");
         run(L"/pkg remove update"); EXPECT(saw(L"part of Loomy's core"), "core: update");
         run(L"/pkg remove banana"); EXPECT(saw(L"No feature called 'banana'") && saw(L"Features: web, lp, net, rb, display, sysinfo, github, phone"), "unknown feature");
-        run(L"/pkg remove");        EXPECT(saw(L"Usage: /pkg [add|remove <feature>]"), "remove needs a name");
-        run(L"/pkg toggle web");    EXPECT(saw(L"Usage: /pkg [add|remove <feature>]"), "bad subcommand");
+        run(L"/pkg remove");        EXPECT(saw(L"Usage: /pkg [add|remove|update <feature>]"), "remove needs a name");
+        run(L"/pkg toggle web");    EXPECT(saw(L"Usage: /pkg [add|remove|update <feature>]"), "bad subcommand");
         run(L"/pkg add web now");   EXPECT(saw(L"Usage: /pkg"), "strict args");
         run(L"pkg");                EXPECT(saw(L"/pkg") && !pkg_active(), "pkg needs its slash");
 
         // github lives in core mode: off means gone there too
         run(L"/pkg remove github");
         run(L"/m switch core");
-        run(L"gh");                 EXPECT(saw(L"don't know 'gh'") && g_nopened == 0, "github off in core");
+        run(L"gh");                 EXPECT(saw(L"GitHub is off on this PC.") && g_nopened == 0, "github off in core");
         run(L"/ver");               EXPECT(saw(L"[version ran]"), "core commands unaffected");
         run(L"/pkg add github");
         run(L"gh");                 EXPECT(g_nopened == 1, "github back");
@@ -577,12 +617,36 @@ int main(void) {
         pkg_key(VK_SPACE);          EXPECT(feature_on(FEAT_NET), "Space toggles it back");
         pkg_key(VK_RIGHT);          EXPECT(!feature_on(FEAT_NET), "Right toggles too");
         pkg_key(VK_LEFT);           EXPECT(feature_on(FEAT_NET), "Left toggles too");
-        pkg_key(VK_END); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_GITHUB), "End, Up = github");
+        pkg_key(VK_END); pkg_key(VK_UP); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_GITHUB), "End, Up, Up = github");
         pkg_key(VK_RETURN);
         pkg_key(VK_HOME); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_WEB), "Home/Up stay on web");
         pkg_key(VK_RETURN);
         pkg_char(L'x');             EXPECT(pkg_active(), "typing is swallowed");
         pkg_key(VK_ESCAPE);         EXPECT(!pkg_active() && g_cfg.featuresOff == 0, "all back on, closed");
+        // 2.24: external packages (extwin.c is stubbed: installs at once)
+        {
+            extern int g_extInstalls, g_extRemoves, g_extRuns;
+            pkg_close();
+            EXPECT(!feature_on(FEAT_SCRCPY) && feature_external(FEAT_SCRCPY) && !feature_external(FEAT_WEB), "scrcpy: external, off until added");
+            run(L"scrcpy");              EXPECT(saw(L"Phone Screen is off on this PC.") && saw(L"/pkg add scrcpy turns it on.") && g_extRuns == 0, "scrcpy off: says how");
+            run(L"/packages add scrcpy"); EXPECT(g_extInstalls == 1 && feature_on(FEAT_SCRCPY), "/packages works, add downloads + turns on");
+            run(L"scrcpy");              EXPECT(g_extRuns == 1, "scrcpy runs");
+            run(L"mirror");              EXPECT(g_extRuns == 2, "mirror is its other name");
+            run(L"scrcpy now");          EXPECT(saw(L"Usage: scrcpy") && g_extRuns == 2, "scrcpy takes nothing");
+            run(L"/pkg update scrcpy");  EXPECT(g_extInstalls == 2, "update downloads again");
+            run(L"/pkg update web");     EXPECT(saw(L"built into Loomy"), "built-ins update with /update");
+            run(L"/pkg remove scrcpy");  EXPECT(!feature_on(FEAT_SCRCPY) && g_extRemoves == 1 && saw(L"Its downloaded files are deleted."), "remove deletes its files");
+            run(L"/pkg update scrcpy");  EXPECT(saw(L"is off") && g_extInstalls == 2, "update when off");
+            pkg_open(); pkg_key(VK_END);
+            pkg_char(L'i');              EXPECT(1, "I opens the info view"); pkg_key(VK_ESCAPE); EXPECT(pkg_active(), "Esc leaves info, not the list");
+            pkg_char(L'e'); pkg_char(L'x'); pkg_key(VK_BACK); pkg_char(22); pkg_key(VK_RETURN);
+            { wchar_t f[100]; EXPECT(ext_get_file(FEAT_SCRCPY, f, 100) && !wcscmp(f, L"scrcpy-win32-v5.0.1.zip"), "E: type, backspace, paste, Enter saves"); }
+            pkg_char(L'e'); pkg_key(VK_ESCAPE); EXPECT(pkg_active(), "E then Esc cancels, list stays");
+            pkg_key(VK_HOME); pkg_char(L'e'); pkg_char(L'z'); pkg_key(VK_RETURN);
+            { wchar_t f[100]; EXPECT(ext_get_file(FEAT_SCRCPY, f, 100) && !wcscmp(f, L"scrcpy-win32-v5.0.1.zip"), "E does nothing on a built-in"); }
+            EXPECT(!feature_on(FEAT_WEB), "(that Enter toggled web)"); pkg_key(VK_RETURN); EXPECT(feature_on(FEAT_WEB), "web back on");
+            pkg_key(VK_ESCAPE);
+        }
 
         // config file: hand-edited, saved
         { FILE *f = fopen("/tmp/loomytest\\loomy.cfg", "w"); fprintf(f, "features_off = Net, banana, sysinfo\n"); fclose(f); }
@@ -603,7 +667,7 @@ int main(void) {
         run(L"/m switch home");
         EXPECT(!feature_on(FEAT_PHONE) && g_cfg.featuresOff == 0, "phone is opt-in: off on a fresh config");
         phone_startup();            EXPECT(!g_btListening, "off: nothing listens");
-        run(L"/remote");             EXPECT(saw(L"don't know '/remote'") && !phone_active(), "off: /remote doesn't exist");
+        run(L"/remote");             EXPECT(saw(L"Phone is off on this PC.") && !phone_active(), "off: /remote says how to turn it on");
         run(L"help");               EXPECT(!saw(L"turned off"), "an opt-in feature being off isn't nagged about");
         run(L"/pkg add phone");     EXPECT(feature_on(FEAT_PHONE) && saw(L"Type /remote to pair"), "/pkg add phone");
         EXPECT(!g_btListening, "on, but nothing to listen for yet (no phone, no code)");
@@ -687,7 +751,7 @@ int main(void) {
         a = ask("rb\tx");           EXPECT(strstr(a, "control characters"), "control characters refused");
         { unsigned char bad[] = { 0xC3, 0x28 }; ph_nev = 0; pk_send_cmd(&ph, bad, 2); pump(); EXPECT(ph_saw(PK_EV_REPLY) && strstr((char *)ph.text, "couldn't read"), "invalid UTF-8 refused"); }
         run(L"/pkg remove web");
-        a = ask("web");             EXPECT(strstr(a, "don't know"), "a /pkg-off feature is off for the phone too");
+        a = ask("web");             EXPECT(strstr(a, "Websites is off on this PC. /pkg add web"), "a /pkg-off feature is off for the phone too, and it says how");
         run(L"/pkg add web");
         { ph_nev = 0; pk_send_ping(&ph); pump(); EXPECT(ph_saw(PK_EV_PONG), "ping, pong"); }
         // 2.18: screens, input keys, chains, choices

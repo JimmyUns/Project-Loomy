@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.6", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.7", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -233,6 +233,7 @@ const texts = (ws) => ws.sent.filter((m) => typeof m === "string");
 }
 
 // ---- 0.6: the prompt knows what first / second screen means (the AI itself can't run here: just the parts we own)
+expect(cleanCommand("scrcpy") === "scrcpy" && cleanCommand("scrcpy now") === "", "0.7: scrcpy (a package) passes, alone");
 expect(cleanCommand("display pc") === "display pc" && cleanCommand("si general") === "si general" &&
        cleanCommand("display first") === "", "0.6: layouts and si general pass, made-up layouts don't");
 
@@ -283,6 +284,27 @@ expect(cleanCommand("display pc") === "display pc" && cleanCommand("si general")
   expect(list.res.status === 200 && list.body.devices.length === 2 && list.body.devices.some((d) => d.from === "app" && d.name === "pc-W6VV-D6NH") &&
          list.body.devices.some((d) => d.from === "dashboard"), "devices: dashboard + app ones");
   expect((await call("GET", "/devices", { headers: await sign(other, "GET", "/devices", now), env: envG, now })).res.status === 401, "devices: strangers can't look");
+  // 0.7: shared settings (/prefs), guest list only
+  {
+    async function pref(dev, method, obj) {
+      const body = obj ? enc.encode(JSON.stringify(obj)) : new Uint8Array();
+      const h = await sign(dev, method, "/prefs", now, body);
+      const { res, body: out } = await call(method, "/prefs", { headers: h, env: envG, now, body: method === "GET" ? undefined : body });
+      return { status: res.status, out };
+    }
+    let p = await pref(phone, "GET");
+    expect(p.status === 200 && p.out.ok && Object.keys(p.out.prefs).length === 0, "prefs: empty at first", JSON.stringify(p));
+    p = await pref(pc, "POST", { key: "pkg.scrcpy.file.x64", value: "scrcpy-win64-*.zip" });
+    expect(p.status === 200, "prefs: a guest PC saves one", JSON.stringify(p));
+    p = await pref(phone, "GET");
+    expect(p.out.prefs["pkg.scrcpy.file.x64"] === "scrcpy-win64-*.zip", "prefs: another device of his reads it");
+    expect((await pref(other, "GET")).status === 401 && (await pref(other, "POST", { key: "a", value: "b" })).status === 401, "prefs: strangers can't read or write");
+    expect((await pref(pc, "POST", { key: "x", value: "a\"b" })).status === 400 && (await pref(pc, "POST", { key: "Bad Key", value: "a" })).status === 400 &&
+           (await pref(pc, "POST", { key: "x", value: "a".repeat(200) })).status === 400, "prefs: odd keys / values refused");
+    p = await pref(pc, "POST", { key: "pkg.scrcpy.file.x64", value: "" });
+    expect(p.status === 200 && !("pkg.scrcpy.file.x64" in (await pref(phone, "GET")).out.prefs), "prefs: \"\" removes it");
+    expect((await call("PUT", "/prefs", { env: envG, now })).res.status === 405, "prefs: other methods");
+  }
   async function remove(key, codeV, t = now) {
     const body = enc.encode(JSON.stringify({ key, code: codeV }));
     const { res, body: out } = await call("POST", "/remove", { headers: await sign(phone, "POST", "/remove", t, body), env: envG, now: t, body });

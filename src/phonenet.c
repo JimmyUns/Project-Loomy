@@ -205,6 +205,71 @@ static int signed_headers_for(const char *method, const char *path, const unsign
 
 static int signed_headers(const char *path, wchar_t *out, int cap) { return signed_headers_for("GET", path, (const unsigned char *)"", 0, out, cap); }
 
+// ---------------------------------------------------------------- 2.24: settings kept in Ellune (GET / POST /prefs)
+// Small things all his PCs share, like which file of an external package's release to download. Only when this
+// PC already has its Ellune key (he set up remote): it's never made just for this. Call net_pref_ready() on the UI
+// thread (it loads the key); the get/set calls are blocking and fine on any thread after that.
+int net_pref_ready(void) {
+    if (!g_haveKey && GetFileAttributesW(key_path()) == INVALID_FILE_ATTRIBUTES) return 0;
+    return key_ready();
+}
+
+// one signed request; returns the HTTP status (0 = couldn't reach her), the answer in ans
+static DWORD ellune_call(const wchar_t *method, const char *path, const char *body, char *ans, int cap) {
+    int bn = body ? s_len_a(body) : 0;
+    char m[8];
+    int mi = 0;
+    while (method[mi] && mi < 7) { m[mi] = (char)method[mi]; mi++; }
+    m[mi] = 0;
+    wchar_t hdr[700], wpath[80];
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 80);
+    ans[0] = 0;
+    if (!signed_headers_for(m, path, (const unsigned char *)(body ? body : ""), bn, hdr, 600)) return 0;
+    if (bn) s_cat(hdr, L"Content-Type: application/json\r\n", 700);
+    HINTERNET s = WinHttpOpen(L"Loomy", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, 0, 0, 0);
+    if (!s) s = WinHttpOpen(L"Loomy", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, 0, 0, 0);
+    HINTERNET c = s ? WinHttpConnect(s, ELLUNE_HOST, INTERNET_DEFAULT_HTTPS_PORT, 0) : 0;
+    HINTERNET r = c ? WinHttpOpenRequest(c, method, wpath, 0, 0, 0, WINHTTP_FLAG_SECURE) : 0;
+    DWORD status = 0, got = 0, total = 0;
+    if (r) WinHttpSetTimeouts(r, 8000, 8000, 8000, 8000);
+    if (r && WinHttpSendRequest(r, hdr, (DWORD)-1, (void *)(body ? body : ""), (DWORD)bn, (DWORD)bn, 0) && WinHttpReceiveResponse(r, 0)) {
+        DWORD sz = sizeof status;
+        WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, 0, &status, &sz, 0);
+        while (total < (DWORD)cap - 1 && WinHttpReadData(r, ans + total, (DWORD)cap - 1 - total, &got) && got) total += got;
+        ans[total] = 0;
+    }
+    if (r) WinHttpCloseHandle(r);
+    if (c) WinHttpCloseHandle(c);
+    if (s) WinHttpCloseHandle(s);
+    return status;
+}
+
+// the value of key, or 0. Values are short and plain (Ellune and Loomy both refuse quotes and backslashes).
+int net_pref_get(const char *key, char *val, int cap) {
+    char ans[4096], want[80];
+    val[0] = 0;
+    if (ellune_call(L"GET", "/prefs", 0, ans, sizeof ans) != 200) return 0;
+    wsprintfA(want, "\"%s\":\"", key);
+    int wl = s_len_a(want);
+    for (char *p = ans; *p; p++) {
+        int k = 0;
+        while (k < wl && p[k] == want[k]) k++;
+        if (k < wl) continue;
+        p += wl;
+        int n = 0;
+        while (p[n] && p[n] != '"' && p[n] != '\\' && n < cap - 1) { val[n] = p[n]; n++; }
+        val[n] = 0;
+        return p[n] == '"' && n > 0;
+    }
+    return 0;
+}
+
+int net_pref_set(const char *key, const char *val) {
+    char body[400], ans[300];
+    wsprintfA(body, "{\"key\":\"%s\",\"value\":\"%s\"}", key, val);
+    return ellune_call(L"POST", "/prefs", body, ans, sizeof ans) == 200;
+}
+
 // /remote add <code>: this PC puts itself on Ellune's guest list with the current Authy code (0.5). Blocking,
 // a few seconds at most (like /ellune). The request is signed by this PC's own key, so only it can add itself.
 int net_register(const wchar_t *code, wchar_t *why, int cap) {

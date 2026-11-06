@@ -154,6 +154,7 @@ object Words {
         Phrases.KEYS[said]?.let { return "input $it" }
         // 2.23: what you mean, not the technical word: "show me only the first monitor" -> display pc,
         // "open the general system information" -> si general
+        phoneScreen(w)?.let { return it }
         layout(w)?.let { return it }
         sysinfoView(w)?.let { return it }
         // the screens, however it's put: "turn off the screen", "screen off", "show screen", "turn the display off"
@@ -403,4 +404,19 @@ object Words {
 
     /** the question, the phone's way */
     fun ask(cmd: String) = when (cmd) { "si" -> "Which view?"; "display" -> "Which layout?"; "web" -> "Which site?"; else -> "Which one?" }
+
+    // ------------------------------------------------------------------ 2.24: the Phone Screen package (scrcpy)
+    private val PHONEW = setOf("phone", "phones", "mobile", "android", "cellphone", "cell", "samsung", "pixel", "phone's")
+    private val PHONE_DO = setOf("mirror", "show", "display", "cast", "copy", "share", "see", "view", "plugged", "plug",
+        "screen", "put", "open", "bring", "stream")
+    private val PHONE_FILL = PHONEW + PHONE_DO + setOf("it", "on", "the", "my", "screens", "pc", "computer", "monitor", "please",
+        "i", "in", "just", "up", "of", "to", "a", "now", "can", "you", "me", "let", "lets", "let's", "have", "want", "here",
+        "this", "that", "its", "it's", "over", "onto", "is", "so", "and", "into")
+
+    /** "mirror my phone", "i plugged in my phone please display it", "show my phone screen" -> scrcpy. Needs a phone
+     *  word and something to do with it, and nothing else ("pair my phone" isn't this). */
+    fun phoneScreen(w: List<String>): String? {
+        if (w.none { it in PHONEW } || w.none { it in PHONE_DO }) return null
+        return if (w.all { it in PHONE_FILL }) "scrcpy" else null
+    }
 }

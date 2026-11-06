@@ -61,6 +61,7 @@ static void open_folder(const wchar_t *path) {
 static void c_help(wchar_t *args);
 
 static void c_pkg(wchar_t *args) { cmd_pkg(args); }
+static void c_scrcpy(wchar_t *args) { ext_run(FEAT_SCRCPY); }   // 2.24, an external package (extwin.c)
 
 static void c_config(wchar_t *args) {
     wchar_t *w[2];
@@ -152,8 +153,9 @@ static const Command COMMANDS[] = {
     { L"Exe Location", L"show where loomy.exe lives",         L"exe",      0,                  0, ALL, 0,                                  0,         c_exe },
     { L"Mode",         L"switch modes (home, work, core)",    L"mode",     L"m",               1, ALL, L"[switch|hide|show|main <mode>]",  ARGS_SELF, c_mode },
     { L"Web Config",   L"add, remove and batch saved sites",  L"webconfig", L"webc",           1, ALL, L"<add|remove|batch|info|rename|update> ...", ARGS_SELF, c_webconfig, FEAT_WEB },
-    { L"Packages",     L"turn features on/off on this PC",    L"pkg",      0,                  1, ALL, L"[add|remove <feature>]",          ARGS_SELF, c_pkg },
+    { L"Packages",     L"turn features on/off on this PC",    L"pkg",      L"packages",        1, ALL, L"[add|remove|update <feature>]",   ARGS_SELF, c_pkg },
     { L"Remote",       L"your phone: pairing, Bluetooth, remote", L"remote", 0,                  1, ALL, L"[forget | add <code>]",          ARGS_SELF, c_phone, FEAT_PHONE },
+    { L"Phone Screen", L"your phone's screen on the PC",      L"scrcpy",   L"mirror",          0, ALL, 0,                                  0,         c_scrcpy, FEAT_SCRCPY },
     { L"Config",       L"open settings",                      L"config",   0,                  1, ALL, L"[general|custom]",                1,         c_config },
     { L"Clear",        L"clear the screen",                   L"clear",    0,                  1, ALL, 0,                                  0,         c_clear },
     { L"Hide",         L"hide Loomy (Esc works too)",         L"hide",     0,                  1, ALL, 0,                                  0,         c_hide },
@@ -256,6 +258,25 @@ static const Command *find_command(const wchar_t *word) {
 // Pocket Loomy (2.18, his rule): every plain command may run from the phone, if it exists right now
 // (mode + /pkg). Slash commands never do, so /shutdown, /update, /pkg, /config, /phone, /reload and
 // /webconfig are out by construction. (A later build may open slash commands behind an extra check.)
+// 2.24: the I view in /pkg lists a feature's commands. i-th command of feature f; 0 when there are no more.
+int cmd_of_feature(int f, int i, const wchar_t **type, const wchar_t **alias, const wchar_t **about, int *sys) {
+    for (int k = 0; k < NCOMMANDS; k++) {
+        const Command *c = &COMMANDS[k];
+        if (c->feature != f || i-- > 0) continue;
+        *type = c->type; *alias = c->alias; *about = c->about; *sys = c->sys;
+        return 1;
+    }
+    return 0;
+}
+
+// a command that exists, but its feature is off on this PC (2.24: so "I don't know" can say how to get it)
+int cmd_off_feature(const wchar_t *word) {
+    if (word[0] == SYS_PREFIX) word++;
+    for (int i = 0; i < NCOMMANDS; i++)
+        if (cmd_matches(&COMMANDS[i], word) && !feature_on(COMMANDS[i].feature)) return COMMANDS[i].feature;
+    return 0;
+}
+
 int cmd_phone_ok(const wchar_t *word) {
     if (word[0] == SYS_PREFIX) return find_command(word + 1) ? -1 : 0;
     const Command *c = find_command(word);
@@ -277,6 +298,12 @@ void cmd_run(wchar_t *line) {
 
     const Command *c = find_command(word);
     if (!c) {
+        int off = cmd_off_feature(word);
+        if (off) {
+            outf(OUT_ERR, L"%s is off on this PC.", feature_name(off));
+            outf(OUT_DIM, L"/pkg add %s turns it on.", feature_id(off));
+            return;
+        }
         outf(OUT_ERR, L"Hmm, I don't know '%s'.", line);
         out(OUT_DIM, L"Type help to see what I can do.");
         return;
