@@ -24,8 +24,9 @@
 
 // Fetch host+path over HTTPS. Writes up to cap bytes into buf, sets *got. Follows redirects.
 // If toFile is set, writes the body to that file instead and buf/cap are ignored.
-static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *accept,
-                     char *buf, DWORD cap, DWORD *got, HANDLE toFile) {
+// 2.24: also used by extwin.c's download thread (no globals here); *bytes counts what came in, for progress.
+int net_get(const wchar_t *host, const wchar_t *path, const wchar_t *accept,
+            char *buf, DWORD cap, DWORD *got, HANDLE toFile, volatile LONG *bytes) {
     int ok = 0;
     if (got) *got = 0;
 
@@ -59,6 +60,7 @@ static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *ac
     DWORD total = 0;
     for (;;) {
         DWORD avail = 0;
+        if (ok < 0) { ok = 0; break; }                    // the disk refused a write
         if (!WinHttpQueryDataAvailable(r, &avail) || avail == 0) { ok = 1; break; }
         char chunk[8192];
         while (avail > 0) {
@@ -66,8 +68,10 @@ static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *ac
             DWORD read = 0;
             if (!WinHttpReadData(r, chunk, want, &read) || read == 0) { avail = 0; break; }
             if (toFile) {
-                DWORD w; WriteFile(toFile, chunk, read, &w, 0);
-            } else if (buf) {
+                DWORD w = 0;
+                if (!WriteFile(toFile, chunk, read, &w, 0) || w != read) { avail = 0; ok = -1; break; }
+            }
+            if (bytes) InterlockedExchangeAdd(bytes, (LONG)read); else if (buf) {
                 for (DWORD i = 0; i < read && total < cap - 1; i++) buf[total++] = chunk[i];
             }
             avail -= read;
@@ -78,6 +82,11 @@ static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *ac
 
     WinHttpCloseHandle(r); WinHttpCloseHandle(c); WinHttpCloseHandle(s);
     return ok;
+}
+
+static int https_get(const wchar_t *host, const wchar_t *path, const wchar_t *accept,
+                     char *buf, DWORD cap, DWORD *got, HANDLE toFile) {
+    return net_get(host, path, accept, buf, cap, got, toFile, 0);
 }
 
 // version compare and the release check live in version.c (so they can be tested)

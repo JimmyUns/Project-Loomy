@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.23a", L"2026-11-07", {
+        L"External packages in /pkg (also /packages), from GitHub releases.",
+        L"Phone Screen (scrcpy): type scrcpy, or say \"mirror my phone\".",
+        L"It picks the right file itself; E chooses one, I shows what it does.",
+        L"Only files matching GitHub's checksum are unpacked.",
+        L"An off package's command says how to turn it on.",
+        0 } },
     { L"2.23", L"2026-11-06", {
         L"Say what you mean: \"only the first monitor\" = first screen only.",
         L"\"Open the general system information\" goes straight to General.",

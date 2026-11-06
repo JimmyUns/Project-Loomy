@@ -159,6 +159,7 @@ must be 0 (phone refuses otherwise). Version + flags are bound into the keys bel
 ### 9.7 What the PC does with a command (phone.c)
 `open`/`show` and `hide` (alone) show/hide Loomy. Otherwise the first word must be a plain command marked
 `.phone = 1` in `commands.c` that exists right now (mode + `/pkg`): `web`, `rb`, `display`/`dp`, `sysinfo`/`si`.
+2.24: "mirror my phone" and friends → `scrcpy` (`Words.phoneScreen`), an external package on the PC.
 2.23: when it leaves a list open (si, display, web), the reply ends with `Which one (<cmd>)? a, b, c.` and the phone
 asks which one (Words.question / Voice.Ask). It runs through `cmd_run` (strict args apply), prints "From your phone:" in Loomy, and everything it prints goes
 back as the reply ("Done." if nothing). Refused and unknown commands are printed in Loomy too (2.18), with the

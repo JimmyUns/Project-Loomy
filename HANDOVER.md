@@ -159,6 +159,31 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **Versions (his rule, Nov 7):** every release before a version is done has a letter; the finished one has none.
+  Letters sort AFTER their number (2.23a > 2.23, `ver_gt` + pocket.yml's versionCode), so test builds hang off the
+  last finished version: work toward v2.24 on branch `claude/v2.24`, release **v2.23a, v2.23b...**, finish as **v2.24**.
+- **v2.24 in progress (Nov 7): external packages (his ask).** Built, in v2.23a, not run on Windows yet. Reverses the
+  v2.16 "no downloads" decision *for external tools only* (his call): Loomy's own features stay built in.
+  - `/pkg` = `/packages`; **External** column; **I** = info view (DESC[] + the feature's commands via
+    `cmd_of_feature`); **E** (external only) = type/paste (Ctrl+V) which release file to download, the files on the
+    release listed under it; `/pkg update <id>`. Off-feature commands now say "X is off on this PC. /pkg add id"
+    (`cmd_off_feature`, PC + phone).
+  - `extpkg.c` (portable, tested against scrcpy's real release `tests/fixtures/release_scrcpy.json`): catalog
+    (`FEAT_SCRCPY` = Genymobile/scrcpy, opt-in, `FEATURES_EXTERNAL`), JSON walker, auto-pick (only .zip, not other
+    OSes/checksums/sources, this CPU's build wins via `IsWow64Process2`; a tie asks for E), his pattern with the
+    version as `*`, `ext_asset_ok` (repo's own release URL, uploaded, size, `sha256:` digest).
+  - `extwin.c`: background thread (`WM_PKG` back): GitHub API → pick → download (`net_get` from update.c, progress)
+    → sha256 vs GitHub's digest → Windows' `tar.exe` into `new\` → find the exe → swap into `current\` →
+    `installed.txt`. Where: `%LOCALAPPDATA%\Loomy\Packages\<id>\`. Off deletes the folder (his choice file stays,
+    `%APPDATA%\Loomy\pkg-<id>.txt`). Run: `scrcpy` / `mirror` (`CREATE_NO_WINDOW`, stdout read with PeekNamedPipe
+    so adb inheriting it can't hang us; exits non-zero within 8 s → the ERROR line, "No phone found..." for ADB).
+    Loomy hides after starting it.
+  - Ellune sync of the E choice: key `pkg.<id>.file.<arch>` via `net_pref_get/set` (phonenet.c, signed), only on
+    PCs that already have an Ellune key (`net_pref_ready`; never makes one). Ellune **0.7** `/prefs` (needs deploy).
+  - Phone: `Words.phoneScreen` (a phone word + show/mirror/cast/plugged...), "copy screen" → `scrcpy`. Bare
+    "mirror" stays display duplicate (I asked him; no answer yet, so it's my default).
+  - Ask him: does download/unpack work on his PC and the work laptop (AppLocker may block exes from AppData), does
+    scrcpy start, is the "No phone found" message right, does E + Ellune carry the choice to another PC.
 - **v2.23 in progress (Nov 6): understanding him.** v2.22b is released (he installed it; listening "much better").
   His asks, BUILT, not tried by him yet:
   - **Say what you mean:** "show me only the first monitor" did nothing (Windows calls it "PC screen only").

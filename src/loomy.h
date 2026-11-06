@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <stdarg.h>
 
-#define LOOMY_VERSION L"2.23"
+#define LOOMY_VERSION L"2.23a"
 #define GH_USER L"JimmyUns"          // the repo /update and `github` use
 #define GH_REPO L"Project-Loomy"
 
@@ -127,10 +127,17 @@ void mode_start(int m);                               // a reload told us which 
 
 // ---------- features.c (optional features, toggled per PC with /pkg) ----------
 // Most features come switched on; opt-in ones (phone) stay off until /pkg add turns them on.
-enum { FEAT_CORE, FEAT_WEB, FEAT_LP, FEAT_NET, FEAT_RB, FEAT_DISPLAY, FEAT_SYSINFO, FEAT_GITHUB, FEAT_PHONE, NFEATURES };
-#define FEATURES_OPTIN (1u << FEAT_PHONE)
+enum { FEAT_CORE, FEAT_WEB, FEAT_LP, FEAT_NET, FEAT_RB, FEAT_DISPLAY, FEAT_SYSINFO, FEAT_GITHUB, FEAT_PHONE, FEAT_SCRCPY, NFEATURES };
+#define FEATURES_OPTIN ((1u << FEAT_PHONE) | (1u << FEAT_SCRCPY))
+#define FEATURES_EXTERNAL (1u << FEAT_SCRCPY)   // 2.24: downloaded from someone's GitHub releases (extpkg.c)
 int  feature_on(int f);                 // FEAT_CORE is always on
 int  feature_find(const wchar_t *word); // "web" -> FEAT_WEB, -1 if none
+void feature_set(int f, int on);        // 2.24: extwin.c turns an external package on once it's installed
+const wchar_t *feature_name(int f);     // "Phone Screen"
+int  feature_external(int f);           // downloaded, not built in
+int  cmd_of_feature(int f, int i, const wchar_t **type, const wchar_t **alias, const wchar_t **about, int *sys);
+int  cmd_off_feature(const wchar_t *word);   // its feature, if the command exists but is off here; else 0
+int  ui_clipboard_text(wchar_t *out, int cap);   // 1 if the clipboard had text
 const wchar_t *feature_id(int f);
 int  features_off_count(void);
 void cmd_pkg(wchar_t *args);
@@ -149,6 +156,7 @@ void pkg_wheel(int notches);
 // The protocol itself is pocket.c (shared with the Android app); Bluetooth is phonebt.c.
 #define WM_PHONE    (WM_APP + 3)        // socket events from WSAAsyncSelect
 #define WM_PHONENET (WM_APP + 9)        // phonenet.c's thread -> the UI thread (remote through Ellune)
+#define WM_PKG      (WM_APP + 10)       // extwin.c's threads -> the UI thread (an external package installed / ran)
 #define TIMER_PHONE 6                   // 1 s, only while a code is open or a phone is connected
 void cmd_phone(wchar_t *args);
 void phone_complete(const wchar_t *partial);
@@ -201,6 +209,11 @@ int  el_signed_text_body(const char *method, const char *path, unsigned long lon
 int  net_register(const wchar_t *code, wchar_t *why, int cap);   // /remote add <Authy code>: 1 = this PC is a guest now
 const wchar_t *net_status(int *bad);    // the remote line in /remote ("connected to Ellune", ...)
 int  net_id(char out[10]);              // this PC's Ellune ID (makes its key the first time); 0 = no key
+int  net_pref_ready(void);              // 2.24: this PC has its Ellune key (UI thread); then get/set work anywhere
+int  net_pref_get(const char *key, char *val, int cap);   // a setting all his PCs share; 1 = found
+int  net_pref_set(const char *key, const char *val);      // "" removes it; 1 = saved
+int  net_get(const wchar_t *host, const wchar_t *path, const wchar_t *accept, char *buf, DWORD cap, DWORD *got,
+             HANDLE toFile, volatile LONG *bytes);        // update.c, HTTPS GET (any thread)
 int  net_copy_line(void);               // this PC's guest line -> the clipboard; 1 = done
 void net_event(WPARAM kind, LPARAM data); // WM_PHONENET
 void net_shutdown(void);
@@ -363,6 +376,43 @@ void sysinfo_wheel(int notches);
 typedef struct { int view; const SiSnap *snap; RECT tabs[2 + SI_MAXGPU]; int ntabs; } SiView;
 void sysview_paint(HDC dc, RECT area, SiView *v);
 void sysview_fonts(int on);               // make / free the extra fonts (only while open)
+
+// ---------- extpkg.c (portable) + extwin.c (Windows): external packages, 2.24 ----------
+// A package that isn't built into Loomy: it's downloaded from its maker's GitHub releases when you turn it on
+// in /pkg (first: scrcpy, your phone's screen on the PC). extpkg.c reads a release and picks the right file;
+// extwin.c downloads, checks, unpacks, runs and removes it.
+typedef struct {
+    int            feature;     // its FEAT_ id
+    const char    *owner, *repo; // github.com/<owner>/<repo>
+    const wchar_t *exe;         // what to run, found anywhere in the unpacked files
+    const wchar_t *site;        // shown in the info view
+} ExtPkg;
+const ExtPkg *ext_pkg(int feature);             // 0 if it isn't external
+
+#define EXT_MAXASSETS 40
+typedef struct { char name[100]; char url[300]; char digest[72]; unsigned long long size; int uploaded; } ExtAsset;
+typedef struct { char tag[48]; int n; ExtAsset a[EXT_MAXASSETS]; } ExtRelease;
+enum { EXT_X64, EXT_X86, EXT_ARM64 };
+enum { PICK_OK, PICK_NONE, PICK_MANY, PICK_NOMATCH };
+int  ext_parse_release(const char *json, ExtRelease *r);            // 1 if it has a tag and assets
+int  ext_pick(const ExtRelease *r, const char *pattern, int arch, int *idx);   // PICK_*
+int  ext_glob(const char *pattern, const char *name);                // * wildcards, any case
+void ext_pattern(const char *typed, const char *tag, char *out, int cap);  // the version becomes *
+int  ext_asset_ok(const ExtAsset *a, const ExtPkg *p, const char *tag);    // 0 = don't trust it
+const char *ext_arch_name(int arch);                                 // "x64"...
+
+int  ext_busy(int feature);                     // installing right now
+int  ext_pct(int feature);                      // download progress, -1 if unknown
+void ext_install(int feature, int quiet);       // background: fetch, pick, download, check, unpack; WM_PKG after
+void ext_remove(int feature);                   // deletes its files
+int  ext_installed(int feature, wchar_t *tag, int tcap, wchar_t *file, int fcap);   // 1 if its files are there
+void ext_run(int feature);                      // starts it; WM_PKG if it closes right away with an error
+void ext_event(WPARAM w, LPARAM l);             // the UI thread's end of WM_PKG
+const wchar_t *ext_status(int feature);         // a short line for /pkg ("pick a file: E", "installed v5.0.1")
+void ext_choices(int feature, wchar_t *buf, int cap);  // the files on the latest release, when it couldn't pick
+int  ext_get_file(int feature, wchar_t *out, int cap);  // the chosen file (pattern) for this PC, 0 if automatic
+void ext_set_file(int feature, const wchar_t *pattern); // saves it here and in Ellune (if this PC is on her list)
+int  ext_arch(void);
 
 // ---------- config.c ----------
 typedef struct {

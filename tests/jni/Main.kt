@@ -405,6 +405,16 @@ fun main() {
         cmd("system information graphics card", "si gpu")
         cmd("open the system information", "si")
         cmd("si gpu 2", "si gpu 2")
+        // 2.24: the Phone Screen package
+        cmd("mirror my phone", "scrcpy")
+        cmd("Loomy i plugged in my phone please display it", "scrcpy")
+        cmd("show my phone screen on the pc", "scrcpy")
+        cmd("copy screen", "scrcpy")
+        cmd("can you cast my android please", "scrcpy")
+        cmd("mirror", "display duplicate")
+        cmd("mirror the screens", "display duplicate")
+        check(Words.command("pair my phone") != "scrcpy" && Words.command("call my phone") != "scrcpy", "phone screen: other phone things aren't it")
+        check(Words.knows("scrcpy") && !Words.knows("scrcpy now"), "knows: scrcpy, alone")
         check(Words.command("switch to the second tab") != "display second", "means: a tab isn't a screen")
         check(Words.command("open the second monitor settings") !in setOf("display second", "display pc"), "means: unknown words leave it to the AI")
 

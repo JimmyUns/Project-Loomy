@@ -2,6 +2,16 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.23a
+A test build on the way to v2.24.
+- **External packages.** `/pkg` (now also `/packages`) has an **External** column: packages that aren't built into Loomy but downloaded from their makers' GitHub releases when you turn them on. Turning one off deletes its files. `/pkg update <name>` gets the newest release.
+- **Phone Screen (scrcpy)**, the first one: your Android phone's screen on the PC, controlled with mouse and keyboard. Type `scrcpy` (or `mirror`), or tell Pocket Loomy "mirror my phone", "show my phone", "copy screen", "I plugged in my phone, display it". The phone needs USB debugging on and a USB cable. If it closes right away, Loomy says why ("No phone found...").
+- **Picking the right file** from a release is automatic (Windows zips only, the one for your processor). If it can't tell, press **E** on the package and type or paste the file's name; the version number is ignored so it fits next time. Ellune remembers that choice for your other PCs (on PCs set up for remote).
+- **I** on any package shows what it does and its commands.
+- Only files from the package's own repo, matching GitHub's checksum, are unpacked (with Windows' own tar.exe, into `%LOCALAPPDATA%\Loomy\Packages`).
+- A command whose package is off now says how to turn it on, instead of "I don't know" (on the phone too).
+- Ellune 0.7: shared settings (`/prefs`) for that, and her AI knows the Phone Screen command.
+
 ## v2.23
 - **Say what you mean.** "Show me only the first monitor" switches to the first screen only, "turn off the second screen" too; "use both monitors", "same thing on both screens", "switch to the second" all work. "Open the general system information" goes straight to General (CPU and GPU the same way). The phone knows these itself; Ellune's AI (0.6) knows them too for anything said differently.
 - **"Which view?"** When a command opens a list on the PC (system info, screen layouts, your sites), Pocket Loomy asks which one, in big letters over the mic. Just say it ("general please", "the second one", "graphics"), no "Loomy" needed. "Never mind", "cancel" or "go back" drops the question and leaves the PC alone (you may have picked there). It's gone after 20 seconds or any other command.

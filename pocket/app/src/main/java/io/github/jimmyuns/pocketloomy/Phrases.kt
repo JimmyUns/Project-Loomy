@@ -25,6 +25,10 @@ object Phrases {
         "pc screen only" to "display pc", "main screen only" to "display pc", "only the main screen" to "display pc",
         "just the main screen" to "display pc", "just the pc screen" to "display pc",
         "screen layout" to "display", "screen layouts" to "display", "screens" to "display",
+        // 2.24: the Phone Screen package (scrcpy on the PC). Bare "mirror" stays "duplicate the screens"; anything
+        // with "phone" in it goes here (Words.phoneScreen)
+        "copy screen" to "scrcpy", "copy my screen" to "scrcpy", "screen copy" to "scrcpy", "scrcpy" to "scrcpy",
+        "screen cpy" to "scrcpy", "scr copy" to "scrcpy", "phone screen" to "scrcpy",
         // the rest
         "recycle bin" to "rb", "recycling bin" to "rb", "trash" to "rb", "the trash" to "rb", "bin" to "rb",
         "help" to "help", "what can you do" to "help", "what can i say" to "help", "commands" to "help",
@@ -43,7 +47,7 @@ object Phrases {
     ).map { (said, cmd) -> said.split(' ') to cmd }
 
     /** Loomy's own command words: "open <one of these>" runs it; "open <anything else>" means a saved site */
-    val KNOWN = setOf("help", "lp", "web", "net", "rb", "display", "dp", "sysinfo", "si", "gh", "github", "exe", "hide", "open")
+    val KNOWN = setOf("help", "lp", "web", "net", "rb", "display", "dp", "sysinfo", "si", "gh", "github", "exe", "hide", "open", "scrcpy")
 
     /** keys for Loomy's open screen: phrase -> the key ("input <key>" on the PC) */
     val KEYS: Map<String, String> = mapOf(

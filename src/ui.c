@@ -365,6 +365,16 @@ void ui_screens_on(void) {
 }
 void ui_show_if_panel(void) { if (screen_active() && !IsWindowVisible(g_wnd)) show(); }
 HWND ui_hwnd(void) { return g_wnd; }
+// 2.24: /pkg's file prompt pastes (Ctrl+V)
+int ui_clipboard_text(wchar_t *out, int cap) {
+    out[0] = 0;
+    if (!OpenClipboard(g_wnd)) return 0;
+    HANDLE h = GetClipboardData(CF_UNICODETEXT);
+    const wchar_t *t = h ? (const wchar_t *)GlobalLock(h) : 0;
+    if (t) { s_cpy(out, t, cap); GlobalUnlock(h); }
+    CloseClipboard();
+    return out[0] != 0;
+}
 void ui_set_timer(int id, int ms) {
     if (!g_wnd) return;
     if (ms > 0) SetTimer(g_wnd, id, ms, 0);
@@ -846,6 +856,7 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     case WM_LOOMY_SHOW: show(); return 0;
     case WM_PHONE: bt_event(wp, lp); return 0;
     case WM_PHONENET: net_event(wp, lp); return 0;
+    case WM_PKG: ext_event(wp, lp); return 0;
     case WM_TIMER:
         if (wp == TIMER_SCREENS) {
             KillTimer(w, TIMER_SCREENS);

@@ -13,6 +13,8 @@
 //                   Authy code a device puts itself on the guest list (0.5, his idea: no copy-pasting)
 // GET  /devices     (guest list) -> {"devices":[{"name","key","from":"app"|"dashboard"}]}
 // POST /remove      {"key":"...","code":"123456"} (guest list): throw a device out (one added from the app)
+// GET  /prefs       (guest list) -> {"ok":true,"prefs":{"pkg.scrcpy.file.x64":"scrcpy-win64-*.zip"}}       \ 0.7: small
+// POST /prefs       {"key":"...","value":"..."} (guest list), "" removes it                               / shared settings
 // anything else on a known path -> 405, any other path -> 404.
 // No storage, no logging of who asked or what was said. Audio and text only go to Cloudflare's Workers AI
 // (it doesn't train on them) and are gone after the answer. Needs a Workers AI binding named AI
@@ -28,7 +30,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.6";
+const VERSION = "0.7";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -92,6 +94,19 @@ export class Guests {
     if (what === "/list") return reply(200, { ok: true, devices });
     let b = {};
     try { b = await request.json(); } catch {}
+    // 0.7: small settings all his devices share (which file of a package to download...). No code needed: only
+    // guest-list devices get here, like every other guest call.
+    if (what === "/prefs-get") return reply(200, { ok: true, prefs: (await st.get("prefs")) || {} });
+    if (what === "/prefs-set") {
+      const prefs = (await st.get("prefs")) || {};
+      if (b.value === "") delete prefs[b.key];
+      else {
+        if (!(b.key in prefs) && Object.keys(prefs).length >= 50) return reply(413, { ok: false, error: "50 settings at most" });
+        prefs[b.key] = b.value;
+      }
+      await st.put("prefs", prefs);
+      return reply(200, { ok: true });
+    }
     const now = Number(b.now) || Date.now();
     if (!this.env || !this.env.TOTP_SECRET) return reply(503, { ok: false, error: "registration isn't set up (no TOTP_SECRET)" });
     const lock = (await st.get("lock")) || { fails: 0, until: 0 };
@@ -249,6 +264,7 @@ net - what's using the internet
 rb - open the recycle bin
 si | si general | si cpu | si gpu - system info: si alone opens the list, or name the view (si gpu 2 for a second GPU)
 github - open Loomy's GitHub page
+scrcpy - show the user's phone screen on the PC (mirror the phone, a package)
 input <key> - press a key on Loomy's open panel. Keys: up, down, left, right, next, previous, next tab, previous tab, back, enter, select, ok, confirm, cancel, yes, close, home, end, page up, page down. A count can follow: input down 3
 Several commands: join with " and " (si and input next tab).
 Examples:
@@ -263,6 +279,8 @@ turn off the second monitor -> display pc
 switch to the second -> display second
 only the other screen -> display second
 open the general system information -> si general
+mirror my phone -> scrcpy
+i plugged my phone in, put it on the screen -> scrcpy
 show me the processor stats -> si cpu
 scroll down a few -> input down 3
 go one tab over -> input next tab
@@ -270,7 +288,7 @@ what's the weather -> NONE
 call my mom -> NONE`;
 
 const KEYS = "up|down|left|right|next|previous|next tab|previous tab|back|enter|select|ok|confirm|cancel|yes|close|home|end|page up|page down";
-const ONE = new RegExp("^(?:open|hide|help|net|rb|github|lp(?: [a-z0-9 ._'-]{1,40})?|web(?: [a-z0-9._-]{1,40})?|" +
+const ONE = new RegExp("^(?:open|hide|help|net|rb|github|scrcpy|lp(?: [a-z0-9 ._'-]{1,40})?|web(?: [a-z0-9._-]{1,40})?|" +
   "display(?: (?:extend|second|pc|duplicate|off|on))?|si(?: (?:general|cpu|gpu(?: [1-9])?))?|" +
   `input (?:${KEYS})(?: [1-9])?)$`);
 
@@ -449,6 +467,25 @@ async function devices(request, env, path, now) {
   return r;
 }
 
+const PREF_KEY = /^[a-z0-9][a-z0-9._-]{0,59}$/;
+const PREF_VAL = /^[A-Za-z0-9._*+() -]{0,95}$/;
+
+async function prefs(request, env, path, now) {
+  const get = request.method === "GET";
+  if (!get && request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" });
+  const body = await readCapped(request, 1024);
+  if (!body) return reply(413, { ok: false, error: "too big" });
+  const g = await guest(request, env, path, now, body);
+  if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
+  if (!env || !env.GUESTS) return reply(503, { ok: false, error: "no guests binding" });
+  if (get) return guestsStub(env).fetch(new Request("https://guests/prefs-get", { method: "POST", body: "{}" }));
+  let b = {};
+  try { b = JSON.parse(new TextDecoder().decode(body)); } catch {}
+  const key = String(b.key || ""), value = String(b.value ?? "");
+  if (!PREF_KEY.test(key) || !PREF_VAL.test(value)) return reply(400, { ok: false, error: "bad key or value" });
+  return guestsStub(env).fetch(new Request("https://guests/prefs-set", { method: "POST", body: JSON.stringify({ key, value }) }));
+}
+
 // ---------------------------------------------------------------- routes
 export default {
   async fetch(request, env, ctx, now = Date.now()) {
@@ -472,6 +509,7 @@ export default {
     if (path === "/pc" || path === "/phone" || path === "/status") return relay(request, env, new URL(request.url), path, now);
     if (path === "/register") return register(request, env, path, now);
     if (path === "/devices" || path === "/remove") return devices(request, env, path, now);
+    if (path === "/prefs") return prefs(request, env, path, now);
 
     if (path === "/hear" || path === "/understand") {
       if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" }, { allow: "POST" });

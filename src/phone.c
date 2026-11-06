@@ -484,6 +484,10 @@ static void run_one(wchar_t *t) {
     if (ok != 1) {
         heard(t);
         if (first[0] == L'/' && ok) s_cpy(msg, L"Slash commands only work on the PC.", 160);
+        else if (ok == 0 && cmd_off_feature(first)) {          // 2.24: it exists, just off here
+            int f = cmd_off_feature(first);
+            wsprintfW(msg, L"%s is off on this PC. /pkg add %s on the PC turns it on.", feature_name(f), feature_id(f));
+        }
         else if (ok == 0) wsprintfW(msg, L"I don't know '%s'.", first);
         else wsprintfW(msg, L"'%s' only works on the PC.", first);
         refuse(t, msg);
