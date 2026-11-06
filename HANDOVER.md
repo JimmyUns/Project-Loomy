@@ -162,7 +162,11 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
 - **Versions (his rule, Nov 7):** every release before a version is done has a letter; the finished one has none.
   Letters sort AFTER their number (2.23a > 2.23, `ver_gt` + pocket.yml's versionCode), so test builds hang off the
   last finished version: work toward v2.24 on branch `claude/v2.24`, release **v2.23a, v2.23b...**, finish as **v2.24**.
-- **v2.24 in progress (Nov 7): external packages (his ask).** Built, in v2.23a, not run on Windows yet. Reverses the
+- **v2.23b (Nov 7, his feedback on v2.23a's /pkg):** "External" ran into the about text → the list is names only,
+  External in that column (ABOUT[] gone; DESC[] in the info view). **Enter = info, Left/Right (and Space) = on/off**,
+  also inside the info view. Bare "mirror" stays display duplicate (his answer); "share my phone to my screen" →
+  scrcpy (already did).
+- **v2.24 in progress (Nov 7): external packages (his ask).** v2.23a released (he ran it: the list shows). Reverses the
   v2.16 "no downloads" decision *for external tools only* (his call): Loomy's own features stay built in.
   - `/pkg` = `/packages`; **External** column; **I** = info view (DESC[] + the feature's commands via
     `cmd_of_feature`); **E** (external only) = type/paste (Ctrl+V) which release file to download, the files on the

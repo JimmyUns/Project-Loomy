@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.23b
+A test build on the way to v2.24.
+- `/pkg`: **Enter** opens a package's info (what it does + its commands), **Left / Right** turn it on and off (in the info view too). The list is just names now, with **External** in its own column (it used to run into the text).
+- Pocket Loomy: "share my phone to my screen" opens Phone Screen too. "Mirror" on its own still duplicates your PC screens.
+
 ## v2.23a
 A test build on the way to v2.24.
 - **External packages.** `/pkg` (now also `/packages`) has an **External** column: packages that aren't built into Loomy but downloaded from their makers' GitHub releases when you turn them on. Turning one off deletes its files. `/pkg update <name>` gets the newest release.
