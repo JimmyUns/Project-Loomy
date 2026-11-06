@@ -159,6 +159,13 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.24c (Nov 8), his bug: game questions answered "Websites is off on this PC... /pkg add web"**, i.e. something
+  sent `web <game>` (the phone's "open X" → `web X` rule, or the AI guessing when `gameQuestion` missed the first
+  recognizer guess). Fix: `gameQuestion` checked over every guess, "up date" joined, AI prompt (Ellune 0.8.1, needs
+  deploy): web never for games, update questions → NONE. **Real cause (his exact phrases, no "Loomy" in them):
+  Solo mode.** 2.24a skipped game questions when Solo had overheard them, so they went to the AI. Now they're taken
+  in Solo too (an overheard question only shows an answer). His phrases tested: "did league drop any updates
+  today?" → TODAY league; "did league of legends have any updates recently?" → LAST league of legends.
 - **v2.24b (Nov 8), his bug: after a game question listening said "Stopped." and questions went unanswered**
   (commands still fine). Cause: `gameAsk`/`understand` called `ear.cancel()` after the recognizer had already
   finished → ERROR_CLIENT → `missed` restarted listening mid-question → collided with the restart after her answer →

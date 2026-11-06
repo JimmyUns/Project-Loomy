@@ -35,7 +35,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.8";
+const VERSION = "0.8.1";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -270,7 +270,7 @@ Commands:
 open | hide - show or hide Loomy's window
 help - list what Loomy can do
 lp [folder] - Loomy's path: the user's folders of shortcuts (lp games)
-web [alias] - open a saved website by its alias (web youtube); web alone lists them
+web [alias] - open a saved website by its alias (web youtube); web alone lists them. Only for websites: never for games or apps
 display extend - use both screens (extend across them)
 display pc - ONLY the first / main / PC / laptop screen (the second one goes dark)
 display second - ONLY the second / other / external screen (the first one goes dark)
@@ -288,6 +288,9 @@ make the screens go dark -> display off
 wake the monitors up -> display on
 how hot is my graphics card -> si gpu
 open youtube -> web youtube
+did league drop an update today -> NONE
+when was the last valorant patch -> NONE
+open league -> NONE
 put it on both screens -> display extend
 show me only the first monitor -> display pc
 just my main screen -> display pc

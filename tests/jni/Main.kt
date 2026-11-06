@@ -475,6 +475,9 @@ fun main() {
         q("how long ago did rust update", Games.Kind.WHEN, "rust")
         q("did counter strike 2 update this morning", Games.Kind.TODAY, "counter strike 2")
         q("has tft been patched", Games.Kind.LAST, "tft")
+        q("did league drop an up date today", Games.Kind.TODAY, "league")
+        q("did league drop any updates today?", Games.Kind.TODAY, "league")                       // his words
+        q("did league of legends have any updates recently?", Games.Kind.LAST, "league of legends")
         q("update", null, null); q("check for updates", null, null); q("/update", null, null); q("update my games", null, null)
         q("turn off the screens", null, null)
         val z = java.time.ZoneId.of("Europe/Helsinki")

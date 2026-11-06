@@ -432,7 +432,7 @@ object Words {
     /** an update question about one game, or null. "did league drop an update today" -> TODAY league,
      *  "when was the last valorant update" -> WHEN valorant, "is there a rust update" -> LAST rust */
     fun gameQuestion(text: String): Games.Question? {
-        val w = unname(words(text))
+        val w = unname(words(text.replace(Regex("(?i)\\bup (dat(e|es|ed))\\b"), "up$1")))   // "up date" (2.24c)
         if (w.none { it in UPD }) return null
         // the game's name: from its first word to its last, so "league of legends" keeps its "of"
         val first = w.indexOfFirst { it !in UPD && it !in GQ_FILL }

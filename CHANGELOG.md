@@ -2,6 +2,10 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24c
+A test build on the way to v2.25.
+- Fixed: in **Solo mode**, game questions weren't recognized at all (2.24a only took them when said to Loomy), so they went to Ellune's AI, which made `web <game>` → "Websites is off on this PC". Solo works now. Also, every one of the phone's guesses at what you said is now checked for a game question (not just the first), "up date" counts as "update", and Ellune's AI (0.8.1) never uses `web` for games.
+
 ## v2.24b
 A test build on the way to v2.25.
 - Fixed: after asking about a game update (or anything Ellune's AI works out), listening could keep restarting, say "Stopped." and give up, and questions went unanswered. The mic now stays paused while Ellune answers and picks up cleanly after.

@@ -13,6 +13,9 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.24c", L"2026-11-08", {
+        L"Fixed: game questions sometimes turned into \"web <game>\".",
+        0 } },
     { L"2.24b", L"2026-11-08", {
         L"Fixed: listening stopping after a game question.",
         L"An old Ellune says she needs updating.",
