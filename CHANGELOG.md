@@ -2,6 +2,12 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24a
+A test build on the way to v2.25.
+- **"Did League drop an update today?"** Ask Pocket Loomy about any game's updates and the answer shows big above the mic, in your phone's time zone: "Yes, at 6:12 PM", "No, last update 3 days ago", "When was the last Valorant update?" → "Yesterday at 11:50 PM", "Is there a Rust update?" → the last update's date. Nothing is ever pushed to you: it only answers when you ask.
+- Steam games are looked up when you ask (by name, any game on Steam). League/TFT and Valorant: Riot doesn't publish *when*, so Ellune quietly notes their version every 15 minutes and those times are "around" (to 15 minutes); she only knows patches from the day she started watching.
+- Ellune 0.8 (needs `npx wrangler deploy`, which also starts the 15-minute check).
+
 ## v2.24
 External packages, finished (everything from v2.23a and v2.23b, plus):
 - In `/pkg`, **Phone** is now called **Remote** (it's `/remote`), and **Phone Screen** is **Android Screen Mirroring**.

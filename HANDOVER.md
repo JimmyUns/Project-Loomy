@@ -159,6 +159,23 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.25 in progress (Nov 8): "when did my game update" (his ask).** Built, in v2.24a, not tried by him yet.
+  His rules: **only when he asks, never notifications / live alerts.** Answer big above the mic (reuses the
+  "Which view?" box: `Voice.Shown`, 15 s, tap away), times in the phone's zone (`ZoneId.systemDefault()`, he's EET/EEST).
+  - Phone: `Words.gameQuestion` (an update word + a game name; "today/this morning" → TODAY "Yes, at 6:12 PM" / "No, last
+    update 3 days ago"; "when/last/ago" → WHEN "Yesterday at 11:50 PM"; else LAST "Last update: Wed 4/11/2026, 6:12 PM",
+    d/M/yyyy). Not from Solo's overhearing. `Games.kt` words the answer; `Ellune.gameNow`. Bluetooth mode: says it
+    needs Ellune (his old rule that BT mode never uses her).
+  - Ellune **0.8**: `POST /game {q}` (guest list). Steam: store search (exact name wins) → api.steamcmd.net public
+    branch `timeupdated` + buildid, on the spot. Riot: no public "when" → **cron every 15 min** (`[triggers]` in
+    wrangler.toml, `riotTick`) reads `clientconfig.rpg.riotgames.com/api/v1/config/public?namespace=keystone.products.
+    <league_of_legends|valorant>.patchlines` (live win `patch_url` changes every patch) into a logbook in the Guests
+    object; `changed` = first time a new URL was seen (so "around", ±15 min), `since` = logbook start. TFT = League.
+    He asked if Riot could flag it: no account/token is sent, public address, polite User-Agent; worst case Riot
+    changes/blocks it and only the Riot part says "couldn't check". Unofficial endpoints: recheck if it breaks.
+  - Not built (his call): no notifications, no update sizes, no auto-updating (the earlier Steam-files / launch idea
+    is parked).
+- **v2.24 released (Nov 7)**, he tested it: "its good".
 - **Versions (his rule, Nov 7):** every release before a version is done has a letter; the finished one has none.
   Letters sort AFTER their number (2.23a > 2.23, `ver_gt` + pocket.yml's versionCode), so test builds hang off the
   last finished version: work toward v2.24 on branch `claude/v2.24`, release **v2.23a, v2.23b...**, finish as **v2.24**.

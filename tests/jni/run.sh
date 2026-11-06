@@ -13,6 +13,7 @@ ${KOTLINC:-kotlinc} -nowarn Main.kt $APP/java/io/github/jimmyuns/pocketloomy/Nat
     $APP/java/io/github/jimmyuns/pocketloomy/Ellune.kt \
     $APP/java/io/github/jimmyuns/pocketloomy/Sound.kt \
     $APP/java/io/github/jimmyuns/pocketloomy/Update.kt \
+    $APP/java/io/github/jimmyuns/pocketloomy/Games.kt \
     $APP/java/io/github/jimmyuns/pocketloomy/Ws.kt \
     -include-runtime -d /tmp/jnitest.jar 2>&1 | grep -v "^warning" && exit 1 || true
 java -Djava.library.path=/tmp -cp /tmp/jnitest.jar MainKt

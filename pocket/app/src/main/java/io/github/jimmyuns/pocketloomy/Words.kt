@@ -419,4 +419,33 @@ object Words {
         if (w.none { it in PHONEW } || w.none { it in PHONE_DO }) return null
         return if (w.all { it in PHONE_FILL }) "scrcpy" else null
     }
+
+    // ------------------------------------------------------------------ 2.25: "did League update today?" (Games.kt)
+    private val UPD = setOf("update", "updates", "updated", "patch", "patches", "patched", "hotfix", "hotfixed", "hotfixes")
+    private val GQ_FILL = setOf("did", "does", "do", "has", "have", "had", "is", "was", "were", "there", "there's", "theres",
+        "any", "a", "an", "the", "new", "drop", "dropped", "drops", "get", "got", "gets", "today", "tonight", "this", "morning",
+        "afternoon", "evening", "when", "last", "latest", "recent", "recently", "of", "for", "to", "it", "its", "game", "games",
+        "on", "just", "yet", "been", "out", "come", "came", "release", "released", "what", "what's", "whats", "time", "date",
+        "since", "how", "long", "ago", "know", "you", "can", "could", "tell", "me", "check", "if", "whether", "i", "please",
+        "received", "push", "pushed", "in", "at", "by", "and", "version", "my", "all", "see", "big", "small", "little", "day")
+
+    /** an update question about one game, or null. "did league drop an update today" -> TODAY league,
+     *  "when was the last valorant update" -> WHEN valorant, "is there a rust update" -> LAST rust */
+    fun gameQuestion(text: String): Games.Question? {
+        val w = unname(words(text))
+        if (w.none { it in UPD }) return null
+        // the game's name: from its first word to its last, so "league of legends" keeps its "of"
+        val first = w.indexOfFirst { it !in UPD && it !in GQ_FILL }
+        val last = w.indexOfLast { it !in UPD && it !in GQ_FILL }
+        if (first < 0) return null
+        val name = w.subList(first, last + 1).filter { it !in UPD }
+        if (name.size > 5 || name.any { it.startsWith("/") }) return null
+        val kind = when {
+            "today" in w || "tonight" in w || ("this" in w && w.any { it == "morning" || it == "afternoon" || it == "evening" })
+                -> Games.Kind.TODAY
+            w.any { it == "when" || it == "last" || it == "latest" || it == "ago" || it == "long" } -> Games.Kind.WHEN
+            else -> Games.Kind.LAST
+        }
+        return Games.Question(kind, name.joinToString(" "))
+    }
 }

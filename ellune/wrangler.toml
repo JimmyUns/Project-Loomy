@@ -26,3 +26,7 @@ class_name = "Guests"
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Guests"]
+
+# 0.8: the Riot logbook (when League / Valorant last patched): Riot is asked every 15 minutes, quietly
+[triggers]
+crons = ["*/15 * * * *"]

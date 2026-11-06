@@ -5,6 +5,7 @@ import io.github.jimmyuns.pocketloomy.Sound
 import io.github.jimmyuns.pocketloomy.Vad
 import io.github.jimmyuns.pocketloomy.Update
 import io.github.jimmyuns.pocketloomy.Json
+import io.github.jimmyuns.pocketloomy.Games
 import io.github.jimmyuns.pocketloomy.Ws
 import io.github.jimmyuns.pocketloomy.Native
 import io.github.jimmyuns.pocketloomy.Words
@@ -458,6 +459,45 @@ fun main() {
         for (c in listOf("general", "cancel the display", "go back to the cpu", "back up"))
             check(!Words.isCancel(c), "not cancel: \"$c\"")
         check(Words.pretty("si", "gpu 1") == "GPU 1" && Words.pretty("display", "pc") == "First screen only" && Words.ask("si") == "Which view?", "pretty")
+    }
+
+    // ---- 2.25: "did League update today?"
+    run {
+        fun q(said: String, kind: Games.Kind?, game: String?) {
+            val r = Words.gameQuestion(said)
+            check((kind == null && r == null) || (r != null && r.kind == kind && r.game == game), "game q: \"$said\" -> $kind $game (got ${r?.kind} ${r?.game})")
+        }
+        q("did league drop an update today", Games.Kind.TODAY, "league")
+        q("Loomy did league of legends get a patch today", Games.Kind.TODAY, "league of legends")
+        q("is there a league update", Games.Kind.LAST, "league")
+        q("is there a new valorant patch", Games.Kind.LAST, "valorant")
+        q("when was the last valorant update", Games.Kind.WHEN, "valorant")
+        q("how long ago did rust update", Games.Kind.WHEN, "rust")
+        q("did counter strike 2 update this morning", Games.Kind.TODAY, "counter strike 2")
+        q("has tft been patched", Games.Kind.LAST, "tft")
+        q("update", null, null); q("check for updates", null, null); q("/update", null, null); q("update my games", null, null)
+        q("turn off the screens", null, null)
+        val z = java.time.ZoneId.of("Europe/Helsinki")
+        val now = java.time.ZonedDateTime.of(2026, 11, 7, 20, 0, 0, 0, z).toInstant().toEpochMilli()
+        val today = java.time.ZonedDateTime.of(2026, 11, 7, 18, 12, 0, 0, z).toInstant().toEpochMilli()
+        val three = java.time.ZonedDateTime.of(2026, 11, 4, 18, 12, 0, 0, z).toInstant().toEpochMilli()
+        val late = java.time.ZonedDateTime.of(2026, 11, 6, 23, 50, 0, 0, z).toInstant().toEpochMilli()
+        val lol = { t: Long? -> Games.Info("League of Legends", true, t, "15.22.725", now - 86400000L * 5) }
+        val rust = { t: Long? -> Games.Info("Rust", false, t, "20711850", null) }
+        fun a(k: Games.Kind, i: Games.Info, big: String, small: String) {
+            val (b, s2) = Games.answer(k, i, now, z)
+            check(b == big && s2 == small, "game a: $k -> \"$b\" / \"$s2\"")
+        }
+        a(Games.Kind.TODAY, rust(today), "Yes, at 6:12 PM", "Rust \u00B7 Build 20711850")
+        a(Games.Kind.TODAY, lol(today), "Yes, at around 6:12 PM", "League of Legends \u00B7 Version 15.22.725")
+        a(Games.Kind.TODAY, rust(three), "No", "Rust \u00B7 Build 20711850\nLast update: 3 days ago (Wed 4/11/2026, 6:12 PM)")
+        a(Games.Kind.WHEN, rust(three), "3 days ago", "Rust \u00B7 Build 20711850\nWed 4/11/2026, 6:12 PM")
+        a(Games.Kind.WHEN, rust(late), "Yesterday at 11:50 PM", "Rust \u00B7 Build 20711850\nFri 6/11/2026, 11:50 PM")
+        a(Games.Kind.LAST, rust(three), "Last update: Wed 4/11/2026, 6:12 PM", "Rust \u00B7 Build 20711850")
+        a(Games.Kind.TODAY, lol(null), "Not that Ellune saw", "League of Legends: No new patch since Ellune started watching (Mon 2/11/2026).\nVersion 15.22.725")
+        // a UTC time in summer shows as EEST (+3)
+        val summer = java.time.ZonedDateTime.of(2026, 7, 1, 15, 0, 0, 0, java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        check(Games.clock(summer, z) == "6:00 PM" && Games.clock(today, z) == "6:12 PM", "game: EEST in summer, EET in winter")
     }
 
     // ---- 2.23: the update button's checks (Update.kt), against GitHub's real answer for v2.22

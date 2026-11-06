@@ -1,6 +1,6 @@
 // Runs the Worker's fetch handler locally: node test.mjs (Node 18+)
 // Optional: node test.mjs cross.json  also checks a request signed by the phone's real code (tests/jni writes it).
-import worker, { guestList, wavOk, cleanCommand, Room, Guests, totp, codeStep, resetGuestCache } from "./src/index.js";
+import worker, { guestList, wavOk, cleanCommand, Room, Guests, totp, codeStep, resetGuestCache, riotLive, riotTick, steamPick, steamBuild } from "./src/index.js";
 import { readFileSync } from "node:fs";
 
 let fails = 0, n = 0;
@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.7", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.8", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -304,6 +304,57 @@ expect(cleanCommand("display pc") === "display pc" && cleanCommand("si general")
     p = await pref(pc, "POST", { key: "pkg.scrcpy.file.x64", value: "" });
     expect(p.status === 200 && !("pkg.scrcpy.file.x64" in (await pref(phone, "GET")).out.prefs), "prefs: \"\" removes it");
     expect((await call("PUT", "/prefs", { env: envG, now })).res.status === 405, "prefs: other methods");
+  }
+  // 0.8: when did a game last update (asked, never pushed)
+  {
+    let riotUrl = "https://lol.secure.dyn.riotcdn.net/channels/public/releases/AAAA.manifest";
+    const calls = [];
+    const fake = async (url) => {
+      calls.push(url);
+      const j = (o, st = 200) => new Response(JSON.stringify(o), { status: st, headers: { "content-type": "application/json" } });
+      if (url.includes("clientconfig.rpg.riotgames.com")) {
+        const product = url.includes("valorant") ? "valorant" : "league_of_legends";
+        return j({ [`keystone.products.${product}.patchlines.live`]: { platforms: { win: { configurations: [{ patch_url: product === "valorant" ? "https://valorant.example/V1.manifest" : riotUrl, version: product === "valorant" ? "" : "15.22.725.6503" }] } } } });
+      }
+      if (url.includes("storesearch")) {
+        if (url.includes("zzzz")) return j({ total: 0, items: [] });
+        return j({ total: 2, items: [{ type: "app", id: 999, name: "Rust Console" }, { type: "app", id: 252490, name: "Rust" }] });
+      }
+      if (url.includes("api.steamcmd.net/v1/info/252490"))
+        return j({ data: { "252490": { depots: { branches: { public: { buildid: "20711850", timeupdated: "1793900000" } } } } }, status: "success" });
+      return j({}, 404);
+    };
+    async function ask(dev, q, t = now) {
+      const body = enc.encode(JSON.stringify({ q }));
+      const h = await sign(dev, "POST", "/game", t, body);
+      const res = await worker.fetch(new Request(URL0 + "/game", { method: "POST", headers: h, body }), envG, { fetch: fake }, t);
+      return { status: res.status, out: await res.json() };
+    }
+    expect(riotLive({ "keystone.products.valorant.patchlines.live": { platforms: { win: { configurations: [{ patch_url: "http://x" }] } } } }, "valorant") === null &&
+           riotLive({}, "valorant") === null, "riot: odd configs are ignored");
+    let r = await ask(phone, "league");
+    expect(r.status === 200 && r.out.name === "League of Legends" && r.out.time === null && r.out.since === null, "game: League before the logbook started", JSON.stringify(r.out));
+    expect(await riotTick(envG, now, fake) === 2, "cron: both Riot games logged");
+    r = await ask(phone, "League of Legends");
+    expect(r.out.time === null && r.out.since === now && r.out.version === "15.22.725.6503", "game: first look = no change seen yet, since now");
+    await riotTick(envG, now + 900000, fake);
+    r = await ask(phone, "lol");
+    expect(r.out.time === null, "game: same build 15 min later = no update");
+    riotUrl = "https://lol.secure.dyn.riotcdn.net/channels/public/releases/BBBB.manifest";
+    await riotTick(envG, now + 1800000, fake);
+    r = await ask(pc, "tft");
+    expect(r.out.time === now + 1800000 && r.out.since === now, "game: a new build = the time it was first seen (TFT is League)", JSON.stringify(r.out));
+    r = await ask(phone, "Valorant");
+    expect(r.out.name === "VALORANT" && r.out.time === null, "game: Valorant has its own log");
+    calls.length = 0;
+    r = await ask(phone, "rust");
+    expect(r.status === 200 && r.out.kind === "steam" && r.out.name === "Rust" && r.out.time === 1793900000000 && r.out.version === "20711850",
+           "game: Steam, the exact name wins over the first result", JSON.stringify(r.out));
+    expect(calls.every((u) => u.startsWith("https://store.steampowered.com/") || u.startsWith("https://api.steamcmd.net/")), "game: Steam asks only Steam + steamcmd.net");
+    expect((await ask(phone, "zzzz")).status === 404, "game: unknown name");
+    expect((await ask(other, "league")).status === 401, "game: strangers can't ask");
+    expect((await ask(phone, "!!!")).status === 400, "game: no name");
+    expect(steamPick({ items: [{ id: 1, name: "A" }] }, "zz").id === 1 && steamPick({}, "a") === null && steamBuild({ data: {} }, 5) === null, "steam helpers");
   }
   async function remove(key, codeV, t = now) {
     const body = enc.encode(JSON.stringify({ key, code: codeV }));

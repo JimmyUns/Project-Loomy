@@ -13,6 +13,11 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.24a", L"2026-11-08", {
+        L"Pocket Loomy: ask \"did League update today?\" and it says when.",
+        L"Any Steam game by name; League, TFT and Valorant from Ellune's log.",
+        L"Only when you ask: nothing is pushed to you.",
+        0 } },
     { L"2.24", L"2026-11-07", {
         L"External packages: Android Screen Mirroring (scrcpy) from GitHub.",
         L"/pkg: Enter = info, Left/Right = on/off, E = which file.",
