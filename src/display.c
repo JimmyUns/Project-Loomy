@@ -86,7 +86,8 @@ void display_complete(const wchar_t *partial) {
 }
 
 void display_choices(wchar_t *b, int cap) {
-    s_cpy(b, L"Layouts: extend, second, pc, duplicate, off (say \u201Cdisplay extend\u201D, or \u201Cinput down\u201D then \u201Cinput enter\u201D).", cap);
+    // 2.23: a question Pocket Loomy asks out loud ("Which one (display)? ..." is what it looks for)
+    s_cpy(b, L"Which one (display)? extend, second, pc, duplicate, off.", cap);
 }
 
 // ---------------------------------------------------------------- the picker panel

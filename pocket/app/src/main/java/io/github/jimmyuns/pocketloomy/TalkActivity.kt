@@ -126,6 +126,10 @@ class TalkActivity : Activity() {
         val last = if (Voice.history.size > startedAt) Voice.history.last() else null
         when {
             Voice.sending && last != null -> show("Talking to Loomy...", "\u203A ${last.cmd}", accent)
+            Voice.askingNow() != null -> Voice.askingNow()!!.let { q ->          // 2.23: a list opened on the PC
+                main.removeCallbacksAndMessages(null)
+                show(Words.ask(q.cmd), q.options.joinToString(" \u00B7 ") { Words.pretty(q.cmd, it) } + "\nSay one, or \u201Cnever mind\u201D", accent)
+            }
             listening && Voice.partial.isNotEmpty() -> show(head(), Voice.partial, accent)
             last != null -> {
                 show("\u203A ${last.cmd}", last.answer, if (last.bad) err else ok)

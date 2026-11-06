@@ -119,6 +119,7 @@ object Notes {
         }
         val text = when {
             Voice.sending && last != null -> "\u203A ${last.cmd}"
+            Voice.askingNow() != null -> Voice.askingNow()!!.let { q -> Words.ask(q.cmd) + " " + q.options.joinToString(", ") { Words.pretty(q.cmd, it) } }
             listening && Voice.partial.isNotEmpty() -> Voice.partial
             recent && last != null -> "\u203A ${last.cmd}: ${last.answer.lineSequence().first()}"
             meter && listening && Voice.inputMode -> "Input mode: next, back, ok, up, down..."

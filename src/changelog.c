@@ -13,6 +13,12 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.23", L"2026-11-06", {
+        L"Say what you mean: \"only the first monitor\" = first screen only.",
+        L"\"Open the general system information\" goes straight to General.",
+        L"A list opened from the phone: it asks \"Which view?\" and you say one.",
+        L"\"Never mind\" drops the question and leaves the PC alone.",
+        0 } },
     { L"2.22b", L"2026-11-05", {
         L"Pocket Loomy updates itself: Settings, Updates, Check for updates.",
         L"Only your release, built by GitHub, checked, signed with your key.",

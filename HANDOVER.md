@@ -159,6 +159,21 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.23 in progress (Nov 6): understanding him.** v2.22b is released (he installed it; listening "much better").
+  His asks, BUILT, not tried by him yet:
+  - **Say what you mean:** "show me only the first monitor" did nothing (Windows calls it "PC screen only").
+    `Words.layout` (first/main/pc/laptop vs second/other/external, "turn off the second" = first only, "turn on the
+    second" = both, both/all = extend, same/mirror = duplicate; needs a screen word, or "switch to the first/second")
+    and `Words.sysinfoView` ("open the general system information" → `si general`). Both only fire when every word
+    is one they know; anything else still goes to the AI. Ellune **0.6** prompt says the same (needs his deploy).
+  - **"Which view?"** (his design): a command that opens a list on the PC (si, display, web) → the PC's reply line
+    is `Which one (si)? general, cpu, gpu 1.` (`*_choices` in sysinfo.c/display.c/web.c; an expanded sysinfo view
+    still says "Showing ..."). The phone (`Words.question`, `Voice.Ask`, 20 s) shows "Which view?" big over the mic
+    with the choices, and takes the next sentence without the name: `Words.pick` (the option itself, other words
+    for it, "the second one"/"last"/"number 2"). "Never mind"/"cancel"/"go back" (`Words.isCancel`) drops it on the
+    phone only: the PC is left alone (he said he may have picked there; **ask him** if cancel should also close the
+    list on the PC). Not asked after keys (`input ...`). A single Talk listens once more for the answer. Tap the
+    question to dismiss it. Talk card + notification show it too. lp has no choices text, so it doesn't ask.
 - **v2.22b (Nov 5): a test release, his call.** He can't open Actions artifacts on his phone, so the update
   button + faster listening below ship as **v2.22b** (branch `claude/v2.22b`, its own PR) for him to install from the
   release page. **Letters now also mean "a release mid-version so he can test on the phone"** (not only fix builds).

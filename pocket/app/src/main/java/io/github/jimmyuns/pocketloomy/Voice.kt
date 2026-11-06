@@ -40,6 +40,12 @@ object Voice {
     @Volatile var lastAt = 0L              // when the last answer came (the notification shows it for a while)
     @Volatile var viaEllune = false        // this listen is going to Ellune
     @Volatile var thinking = false         // the mic is paused while Ellune works out what was said / meant
+    /** 2.23 (his ask): a list opened on the PC ("si", "display", "web"): the phone asks which one, and the next
+     *  thing said (no name needed) picks it: "general please" -> "si general". "Never mind" drops the question
+     *  (the PC is left alone: he may have picked there). Gone after 20 s or any other command. */
+    class Ask(val cmd: String, val options: List<String>, val until: Long)
+    @Volatile var asking: Ask? = null
+    fun askingNow(): Ask? = asking?.takeIf { SystemClock.elapsedRealtime() < it.until }
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
     /** PocketService hears about start/stop here, to add or drop the microphone */
@@ -75,7 +81,8 @@ object Voice {
 
     /** listening for the command itself right now (after her name, a mic tap, or in Solo), not for her name */
     fun takingCommand(c: Context): Boolean =
-        state == State.LISTENING && (inputMode || !keep || (armed && SystemClock.elapsedRealtime() < armedUntil) || Store(c).solo)
+        state == State.LISTENING && (inputMode || !keep || (armed && SystemClock.elapsedRealtime() < armedUntil) || Store(c).solo ||
+                                     askingNow() != null)
 
     /** main thread */
     fun start(c: Context, keepListening: Boolean) {
@@ -96,6 +103,7 @@ object Voice {
         followUp = false
         armed = false
         inputMode = false
+        asking = null
         main.removeCallbacksAndMessages(null)
         ear?.cancel()
         ear?.destroy()
@@ -208,8 +216,15 @@ object Voice {
 
         // was it said to Loomy? her name; or, without it: right after her name alone (or a mic tap), solo mode,
         // or a single Talk. Mute / stop connection need that too, except in input mode.
+        // 2.23: the PC asked "Which one?": the answer needs no name
+        val ask = askingNow()
+        if (ask != null) {
+            if (all.any { Words.isCancel(it) }) { asking = null; armed = false; add("never mind", "Okay, not picking anything.", false); next(100); return }
+            val pick = all.firstNotNullOfOrNull { Words.pick(it, ask.cmd, ask.options) }
+            if (pick != null) { asking = null; armed = false; send(pick); next(150); return }
+        }
         var said: String? = all.firstNotNullOfOrNull { Words.addressed(it) }
-        val following = armed && now < armedUntil
+        val following = (armed && now < armedUntil) || ask != null
         if (said == null && (following || solo || !keep)) said = first
         if (said == null) {
             // not for Loomy... unless it's bare keys (or mute / stop connection) in input mode
@@ -349,15 +364,17 @@ object Voice {
     }
 
     /** send one command (also used for typing in the app) */
-    fun send(c: Context, cmd: String) { ctx = c; send(cmd) }
+    fun send(c: Context, cmd: String) { ctx = c; send(cmd, voice = false) }
 
-    private fun send(cmd: String, shown: String = cmd) {
+    private fun send(cmd: String, shown: String = cmd, voice: Boolean = true) {
         val why = Pocket.ready(ctx)
         if (why != null) { add(shown, why, true); return }
         Pocket.syncPipe(ctx)                                        // Ellune mode: through her relay; Bluetooth mode: Bluetooth
         val device = Pocket.device(ctx)
         if (device == null && Store(ctx).btMode) { add(shown, "Choose your PC (Bluetooth) in the app first.", true); return }
         val trust = Store(ctx).trust() ?: return
+        asking = null                                               // a new command: the old question is over
+        val keys = cmd.split(" and ").all { it.trim().startsWith("input ") }
         val e = Entry(shown, "...", false)
         history += e
         if (history.size > 60) history.removeAt(0)
@@ -367,11 +384,26 @@ object Voice {
             Pocket.mark(r.isSuccess)
             main.post {
                 sending = false
-                r.onSuccess { e.answer = it.ifEmpty { "Done." }; e.bad = false }
+                r.onSuccess {
+                    e.answer = it.ifEmpty { "Done." }; e.bad = false
+                    // a list opened on the PC: ask which one (not after keys: you're steering it yourself then)
+                    val q = if (keys) null else Words.question(it)
+                    if (q != null) {
+                        val (c, opts) = q
+                        val rest = Words.withoutQuestion(it)
+                        e.answer = (if (rest.isEmpty()) "" else "$rest\n") + Words.ask(c) + " " + opts.joinToString(", ") { o -> Words.pretty(c, o) }
+                        asking = Ask(c, opts, SystemClock.elapsedRealtime() + ASK_MS)
+                        main.postDelayed({ if (asking != null && askingNow() == null) { asking = null; changed() } }, ASK_MS + 100)
+                        // a single Talk has stopped listening by now: listen once more for the answer
+                        if (voice && state == State.OFF && Store(ctx).on) Pocket.talk(ctx, false)
+                    }
+                }
                  .onFailure { e.answer = it.message ?: "Failed."; e.bad = true }
                 lastAt = SystemClock.elapsedRealtime()
                 changed()
             }
         }
     }
+
+    private const val ASK_MS = 20_000L
 }

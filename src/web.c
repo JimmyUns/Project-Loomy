@@ -474,13 +474,14 @@ int web_active(void) { return g_active; }
 
 // for Pocket Loomy: the saved sites, so the phone can show them
 void web_choices(wchar_t *b, int cap) {
-    s_cpy(b, g_n ? L"Sites: " : L"No saved sites yet (/webconfig on the PC).", cap);
+    // 2.23: a question Pocket Loomy asks out loud ("Which one (web)? ..." is what it looks for)
+    s_cpy(b, g_n ? L"Which one (web)? " : L"No saved sites yet (/webconfig on the PC).", cap);
     for (int i = 0; i < g_n; i++) {
-        if (s_len(b) + s_len(g_s[i].alias) + 40 >= cap) { s_cat(b, L", ...", cap); break; }
+        if (s_len(b) + s_len(g_s[g_order[i]].alias) + 12 >= cap) { s_cat(b, L", ...", cap); break; }
         if (i) s_cat(b, L", ", cap);
-        s_cat(b, g_s[i].alias, cap);
+        s_cat(b, g_s[g_order[i]].alias, cap);
     }
-    if (g_n) s_cat(b, L". Say \u201Cweb <name>\u201D.", cap);
+    if (g_n) s_cat(b, L".", cap);
 }
 
 void web_open(int many) {

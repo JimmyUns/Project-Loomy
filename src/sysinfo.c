@@ -207,11 +207,16 @@ void sysinfo_choices(wchar_t *b, int cap) {
         if (g_view == SIV_GENERAL) s_cpy(b, L"Showing General. ", cap);
         else if (g_view == SIV_CPU) s_cpy(b, L"Showing CPU. ", cap);
         else { wsprintfW(t, L"Showing GPU %d. ", g_view - SIV_GPU + 1); s_cpy(b, t, cap); }
-    } else s_cpy(b, L"", cap);
+    } else {
+        // 2.23: the list is open: a question Pocket Loomy asks out loud ("Which one (si)? ..." is what it looks for)
+        s_cpy(b, L"Which one (si)? general, cpu", cap);
+        for (int i = 1; i <= g_snap.ngpu; i++) { wsprintfW(t, L", gpu %d", i); s_cat(b, t, cap); }
+        s_cat(b, L".", cap);
+        return;
+    }
     s_cat(b, L"Views: general, cpu", cap);
     for (int i = 1; i <= g_snap.ngpu; i++) { wsprintfW(t, L", gpu %d", i); s_cat(b, t, cap); }
-    s_cat(b, g_expanded ? L". Say \u201Cinput next tab\u201D, or \u201Csystem info cpu\u201D."
-                        : L". Say \u201Cinput down\u201D then \u201Cinput enter\u201D, or \u201Csystem info cpu\u201D.", cap);
+    s_cat(b, L". Say \u201Cinput next tab\u201D, or \u201Csystem info cpu\u201D.", cap);
 }
 
 int sysinfo_key(WPARAM vk) {

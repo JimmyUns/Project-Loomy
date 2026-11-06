@@ -152,6 +152,10 @@ object Words {
         // the library first: "go back one tab", "mirror the screens", "how's my pc doing"...
         Phrases.COMMANDS[said]?.let { return it }
         Phrases.KEYS[said]?.let { return "input $it" }
+        // 2.23: what you mean, not the technical word: "show me only the first monitor" -> display pc,
+        // "open the general system information" -> si general
+        layout(w)?.let { return it }
+        sysinfoView(w)?.let { return it }
         // the screens, however it's put: "turn off the screen", "screen off", "show screen", "turn the display off"
         val screenish = w.any { it in SCREEN } || (w[0] != "display" && "display" in w)
         if (screenish && w.all { it in SCREEN_FILL }) {
@@ -257,4 +261,146 @@ object Words {
         while (w.size > 1 && w.last() in setOf("please", "now")) w = w.dropLast(1)
         return w.joinToString(" ")
     }
+
+    // ------------------------------------------------------------------ 2.23: saying what you mean
+    // (his ask: "show me only the first monitor" should just work, without "PC screen only"). Each rule only fires
+    // when every word is one it understands; anything else goes to Ellune's AI as before.
+    private val SCREENW = setOf("screen", "screens", "monitor", "monitors", "display", "displays")
+    private val ORD1 = setOf("first", "1st", "main", "primary", "pc", "laptop", "left", "computer", "computer's", "pc's")
+    private val ORD2 = setOf("second", "2nd", "two", "2", "other", "external", "right", "tv")
+    private val EXTENDW = setOf("both", "all", "extend", "extended", "across", "every")
+    private val DUPW = setOf("same", "mirror", "mirrored", "duplicate", "duplicated", "copy")
+    private val LAYOUT_FILL = setOf("show", "me", "only", "just", "the", "my", "switch", "to", "use", "put", "it", "on", "set",
+        "go", "change", "make", "a", "i", "want", "need", "keep", "everything", "stuff", "one", "of", "over", "onto", "with",
+        "turn", "off", "get", "rid", "be", "thing", "that", "this", "is", "back", "screen", "screens", "monitor",
+        "monitors", "display", "displays", "and", "in", "mode", "can", "you")
+
+    /** a screen layout said in plain words, or null */
+    fun layout(w: List<String>): String? {
+        val named = w.any { it in SCREENW }
+        val second = w.any { it in ORD2 }
+        val first = w.any { it in ORD1 } || (!second && w.any { it == "one" || it == "1" })
+        if (!named && !(w.firstOrNull() == "switch" && (first || second))) return null      // "switch to the second"
+        if (!w.all { it in LAYOUT_FILL || it in ORD1 || it in ORD2 || it in EXTENDW || it in DUPW || it == "1" }) return null
+        val off = "off" in w || "rid" in w
+        val turnOn = "turn" in w && "on" in w && !off
+        return when {
+            w.any { it in DUPW } -> "display duplicate"
+            first && second -> if (off) null else "display extend"                 // "the first and second screen"
+            (first || second) && turnOn -> "display extend"                        // "turn on the second screen" = both
+            first -> if (off) "display second" else "display pc"                   // "turn off the first screen" = only the 2nd
+            second -> if (off) "display pc" else "display second"
+            w.any { it in EXTENDW } && !off -> "display extend"
+            else -> null
+        }
+    }
+
+    private val SI_NAME = setOf("info", "information", "stats", "statistics", "details", "specs")
+    private val SI_FILL = setOf("open", "show", "me", "the", "my", "view", "page", "tab", "of", "for", "about", "go", "to",
+        "switch", "bring", "up", "pull", "a", "system", "sys", "pc", "computer", "on", "part", "section", "card", "video",
+        "can", "you", "i", "want", "see", "check", "in", "and", "number", "whats", "what's", "how", "is", "doing", "usage")
+    private val SI_VIEW = mapOf("general" to "general", "overview" to "general", "summary" to "general", "basic" to "general",
+        "basics" to "general", "cpu" to "cpu", "processor" to "cpu", "gpu" to "gpu", "graphics" to "gpu")
+
+    /** a system info view said in plain words ("open the general system information"), or null */
+    fun sysinfoView(w: List<String>): String? {
+        val named = w.any { it in SI_NAME } && w.any { it == "system" || it == "sys" || it == "pc" || it == "computer" } ||
+                    w.firstOrNull() == "si" || w.firstOrNull() == "sysinfo"
+        if (!named) return null
+        val views = w.mapNotNull { SI_VIEW[it] }.distinct()
+        if (views.size != 1) return null
+        val n = w.firstNotNullOfOrNull { NUM[it] ?: it.takeIf { x -> x.length == 1 && x[0] in '1'..'9' } }
+            ?: if ("second" in w) "2" else null
+        if (!w.all { it in SI_FILL || it in SI_NAME || it in SI_VIEW || it in NUM || it == "si" || it == "sysinfo" ||
+                     it == "second" || it == "first" || (it.length == 1 && it[0] in '1'..'9') }) return null
+        return if (views[0] == "gpu" && n != null) "si gpu $n" else "si ${views[0]}"
+    }
+
+    // ------------------------------------------------------------------ 2.23: "Which one?" (a list opened on the PC)
+    /** the PC's question in a reply: "Which one (si)? general, cpu, gpu 1." -> ("si", [general, cpu, gpu 1]) */
+    fun question(reply: String): Pair<String, List<String>>? {
+        for (line in reply.lines()) {
+            val m = QUESTION.matchEntire(line.trim()) ?: continue
+            val opts = m.groupValues[2].trimEnd('.').split(", ").map { it.trim().lowercase() }.filter { it.isNotEmpty() && it != "..." }
+            if (opts.isNotEmpty()) return m.groupValues[1] to opts
+        }
+        return null
+    }
+    private val QUESTION = Regex("^Which one \\(([a-z]{1,12})\\)\\? (.{1,390})$")
+
+    /** the reply to show, with the question line put the phone's way and a lone "Done." dropped */
+    fun withoutQuestion(reply: String): String =
+        reply.lines().filter { QUESTION.matchEntire(it.trim()) == null && it.trim() != "Done." }.joinToString("\n").trim()
+
+    private val CANCEL = setOf("cancel", "never mind", "nevermind", "forget it", "forget about it", "go back", "back", "no",
+        "nope", "nah", "none", "nothing", "stop", "exit", "close", "close it", "leave it", "skip", "skip it", "no thanks",
+        "not now", "none of them", "neither", "cancel that", "cancel it", "dont", "don't", "i'm good", "im good", "all good")
+    private val CANCEL_FILL = setOf("ok", "okay", "oh", "uh", "um", "actually", "please", "just", "alright", "wait", "then", "thanks", "thank", "you")
+
+    /** "ok cancel", "never mind", "go back": drop the question (the PC isn't touched: you may have picked there) */
+    fun isCancel(heard: String): Boolean {
+        var w = unname(words(heard))
+        while (w.size > 1 && w[0] in CANCEL_FILL) w = w.drop(1)
+        while (w.size > 1 && w.last() in CANCEL_FILL) w = w.dropLast(1)
+        return w.joinToString(" ") in CANCEL
+    }
+
+    private val PICK_FILL = setOf("the", "a", "an", "please", "i", "want", "show", "me", "open", "go", "to", "with", "let's", "lets",
+        "um", "uh", "ok", "okay", "number", "option", "just", "pick", "choose", "select", "can", "you", "that", "this", "for",
+        "thanks", "thank", "it", "view", "page", "tab", "use", "one", "take", "give", "do", "yeah", "yes", "hmm", "how", "about", "on")
+    private val ORDINAL = mapOf("first" to 0, "1st" to 0, "second" to 1, "2nd" to 1, "third" to 2, "3rd" to 2, "fourth" to 3,
+        "4th" to 3, "fifth" to 4, "5th" to 4)
+    private val DISPLAY_SAY = mapOf("both" to "extend", "all" to "extend", "extend" to "extend", "extended" to "extend",
+        "across" to "extend", "mirror" to "duplicate", "same" to "duplicate", "copy" to "duplicate", "duplicate" to "duplicate",
+        "first" to "pc", "1st" to "pc", "main" to "pc", "primary" to "pc", "pc" to "pc", "laptop" to "pc", "one" to "pc",
+        "second" to "second", "2nd" to "second", "other" to "second", "external" to "second", "two" to "second",
+        "off" to "off", "dark" to "off", "sleep" to "off")
+
+    /**
+     * The answer to "Which one?": "general please" -> "si general", "the cpu one" -> "si cpu", "graphics" -> "si gpu 1",
+     * "the second one" -> the 2nd choice, "first screen" (layouts) -> "display pc". Null when it isn't one of them.
+     */
+    fun pick(heard: String, cmd: String, options: List<String>): String? {
+        val raw = unname(words(heard))
+        val w = raw.mapIndexed { i, x -> if (i > 0 && raw[i - 1] == "gpu") NUM[x] ?: x else x }   // "gpu one" -> "gpu 1"
+        if (w.isEmpty()) return null
+        // 0. layouts in plain words first: "turn off the second screen" means the first one only
+        if (cmd == "display") layout(w)?.removePrefix("display ")?.takeIf { it in options }?.let { return "display $it" }
+        // 1. an option said as is ("general", "gpu 2", "youtube"), longest first
+        for (o in options.sortedByDescending { it.length }) {
+            val ow = o.split(' ')
+            if (w.windowed(ow.size).any { it == ow }) return "$cmd $o"
+        }
+        // 2. other words for them
+        val rest = w.filter { it !in PICK_FILL && it !in SCREENW }
+        if (rest.isEmpty() || rest.size > 3) return null
+        if (cmd == "display") rest.firstNotNullOfOrNull { DISPLAY_SAY[it] }?.takeIf { it in options }?.let { return "display $it" }
+        if (cmd == "si") {
+            val v = rest.firstNotNullOfOrNull { SI_VIEW[it] }
+            if (v == "gpu") {
+                val gpus = options.filter { it.startsWith("gpu") }
+                val n = rest.firstOrNull { it.length == 1 && it[0] in '1'..'9' } ?: if ("second" in rest) "2" else null
+                if (n != null && "gpu $n" in options) return "si gpu $n"
+                if (n == null && gpus.size == 1) return "si ${gpus[0]}"
+            } else if (v != null && v in options) return "si $v"
+        }
+        // 3. by place: "the first one", "the second", "number 2", "the last one"
+        if (rest.size == 1) {
+            val r = rest[0]
+            val i = ORDINAL[r] ?: (if (r == "last") options.size - 1 else null) ?: r.toIntOrNull()?.minus(1)
+            if (i != null && i in options.indices) return "$cmd ${options[i]}"
+        }
+        return null
+    }
+
+    /** how a choice is shown: "cpu" -> "CPU", "gpu 1" -> "GPU 1", layouts in words */
+    fun pretty(cmd: String, o: String): String = when {
+        cmd == "display" -> mapOf("extend" to "Extend (both)", "second" to "Second screen only", "pc" to "First screen only",
+                                  "duplicate" to "Duplicate", "off" to "Screens off")[o] ?: o
+        o == "cpu" || o.startsWith("gpu") || o == "pc" -> o.uppercase()
+        else -> o.replaceFirstChar { it.uppercase() }
+    }
+
+    /** the question, the phone's way */
+    fun ask(cmd: String) = when (cmd) { "si" -> "Which view?"; "display" -> "Which layout?"; "web" -> "Which site?"; else -> "Which one?" }
 }

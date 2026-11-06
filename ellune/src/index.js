@@ -28,7 +28,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.5";
+const VERSION = "0.6";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -240,11 +240,14 @@ open | hide - show or hide Loomy's window
 help - list what Loomy can do
 lp [folder] - Loomy's path: the user's folders of shortcuts (lp games)
 web [alias] - open a saved website by its alias (web youtube); web alone lists them
-display extend | display second | display pc | display duplicate - screen layouts
+display extend - use both screens (extend across them)
+display pc - ONLY the first / main / PC / laptop screen (the second one goes dark)
+display second - ONLY the second / other / external screen (the first one goes dark)
+display duplicate - the same picture on both screens (mirror)
 display off | display on - turn the screens off or on
 net - what's using the internet
 rb - open the recycle bin
-si | si cpu | si gpu - system info (si gpu 2 for a second GPU)
+si | si general | si cpu | si gpu - system info: si alone opens the list, or name the view (si gpu 2 for a second GPU)
 github - open Loomy's GitHub page
 input <key> - press a key on Loomy's open panel. Keys: up, down, left, right, next, previous, next tab, previous tab, back, enter, select, ok, confirm, cancel, yes, close, home, end, page up, page down. A count can follow: input down 3
 Several commands: join with " and " (si and input next tab).
@@ -254,6 +257,13 @@ wake the monitors up -> display on
 how hot is my graphics card -> si gpu
 open youtube -> web youtube
 put it on both screens -> display extend
+show me only the first monitor -> display pc
+just my main screen -> display pc
+turn off the second monitor -> display pc
+switch to the second -> display second
+only the other screen -> display second
+open the general system information -> si general
+show me the processor stats -> si cpu
 scroll down a few -> input down 3
 go one tab over -> input next tab
 what's the weather -> NONE
