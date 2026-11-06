@@ -50,6 +50,10 @@ class Store(ctx: Context) {
     var solo: Boolean
         get() = prefs.getBoolean("solo", false)
         set(v) { prefs.edit().putBoolean("solo", v).apply() }
+    /** 2.24d: she speaks her answers out loud (quiet anyway on silent / vibrate) */
+    var talkBack: Boolean
+        get() = prefs.getBoolean("talk_back", true)
+        set(v) { prefs.edit().putBoolean("talk_back", v).apply() }
     /** 2.22: how Pocket Loomy reaches the PC. false (default) = through Ellune (online first, his call): no
      *  Bluetooth checks at all. true = Bluetooth mode (the blue theme): Bluetooth only, Ellune ignored entirely.
      *  Only he switches it (the Bluetooth button over the mic); nothing switches it by itself. */

@@ -13,6 +13,11 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.24d", L"2026-11-09", {
+        L"Pocket Loomy talks back with the phone's voice.",
+        L"Not sure what you mean? She asks, and you just answer.",
+        L"She remembers the last minute, so \"yes\" works.",
+        0 } },
     { L"2.24c", L"2026-11-08", {
         L"Fixed: game questions sometimes turned into \"web <game>\".",
         0 } },

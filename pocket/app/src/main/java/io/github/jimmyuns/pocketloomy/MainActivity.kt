@@ -529,7 +529,9 @@ class MainActivity : Activity() {
                     row(modeBtn2), gap(6),
                     text("Say \u201CLoomy\u201D: everything you say after her name is the command (tapping the mic counts as saying it). Solo: everything you say is a command. A pause or \u201Cthank you\u201D ends the sentence.", dim, 12f),
                     gap(12), cbPhone,
-                    text("Off (normal): the phone hears you, fast. When it hears something its set phrases don't know, Ellune's AI works out the command.\nOn: Ellune records the command and hears it herself (Whisper). Can be better with accents, but slower: a second or two more for each command. Listening for \u201CLoomy\u201D always stays on the phone. Bluetooth mode and no internet: the phone only.", dim, 12f)))
+                    text("Off (normal): the phone hears you, fast. When it hears something its set phrases don't know, Ellune's AI works out the command.\nOn: Ellune records the command and hears it herself (Whisper). Can be better with accents, but slower: a second or two more for each command. Listening for \u201CLoomy\u201D always stays on the phone. Bluetooth mode and no internet: the phone only.", dim, 12f),
+                    gap(12), check("Talk back") { store.talkBack = it; if (!it) Speaker.stop() }.apply { isChecked = store.talkBack },
+                    text("She says her questions and answers out loud with the phone's voice (Settings, Text-to-speech picks which). Quiet when the phone is on silent or vibrate.", dim, 12f)))
 
         // Ellune
         elluneLine = text("", dim, 13f).apply { setPadding(0, dp(6), 0, 0); visibility = View.GONE }
