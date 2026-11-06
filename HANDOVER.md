@@ -159,6 +159,14 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.24b (Nov 8), his bug: after a game question listening said "Stopped." and questions went unanswered**
+  (commands still fine). Cause: `gameAsk`/`understand` called `ear.cancel()` after the recognizer had already
+  finished → ERROR_CLIENT → `missed` restarted listening mid-question → collided with the restart after her answer →
+  repeat until 5 errors → stop. Fix: no cancel there, `missed` ignores errors and `startEar` won't start while
+  `thinking`. Not verified on his phone yet.
+- **Nov 8: "Ellune found no game called League of legends"** = the live Ellune was still **0.5** (`/ping`):
+  0.6, 0.7 and 0.8 were never deployed, so `/game` 404'd. The phone now says "Ellune is out of date" for a 404
+  that isn't her "no game called" (next build). He has to run `npx wrangler deploy` in `ellune/`.
 - **v2.25 in progress (Nov 8): "when did my game update" (his ask).** Built, in v2.24a, not tried by him yet.
   His rules: **only when he asks, never notifications / live alerts.** Answer big above the mic (reuses the
   "Which view?" box: `Voice.Shown`, 15 s, tap away), times in the phone's zone (`ZoneId.systemDefault()`, he's EET/EEST).

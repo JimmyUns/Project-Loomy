@@ -142,6 +142,7 @@ object Voice {
     }
 
     private fun startEar() {
+        if (thinking) return                                   // Ellune is still working: her answer restarts it
         if (wantEllune()) {
             ear?.cancel()
             viaEllune = true
@@ -288,8 +289,8 @@ object Voice {
     // Ellune's AI picks the command; it's sent as is ("said -> sent" in the history). If she can't answer,
     // it says so and nothing is sent (no falling back to the rules' guess: his call, 2.22).
     private fun understand(k: ElluneKey.Key, said: String, quiet: Boolean = false) {
-        // the mic is off meanwhile (his ask: a loading sign, then back to how it was)
-        ear?.cancel(); eEar?.cancel()
+        // the mic is off meanwhile (his ask: a loading sign, then back to how it was). No cancel(): the recognizer
+        // already finished (that's how we got here), and cancelling it now made it report an error (2.24b fix)
         thinking = true
         partial = "Ellune is understanding..."
         changed()
@@ -315,8 +316,7 @@ object Voice {
             next(150)
             return
         }
-        ear?.cancel(); eEar?.cancel()
-        thinking = true
+        thinking = true                                        // (no cancel: see understand())
         partial = "Ellune is checking ${q.game}..."
         changed()
         Thread({
@@ -368,6 +368,10 @@ object Voice {
     }
 
     private fun missed(error: Int) {
+        // 2.24b (his bug: "listening stopped", questions never answered): while Ellune works the mic is meant to be
+        // off, so a late error from the recognizer is ignored instead of restarting it (which collided with the
+        // restart after her answer, again and again, until 5 errors stopped listening)
+        if (thinking) return
         if (Ear.isMiss(error)) {
             if (!keep && followUp) { followUp = false; armed = false; add("Loomy", "Heard her name, then nothing.", true); next(100); return }
             if (!keep) { add("(nothing)", Ear.message(error), true); Pocket.reportMiss(ctx, "") }

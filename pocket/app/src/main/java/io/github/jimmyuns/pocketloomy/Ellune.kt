@@ -362,7 +362,9 @@ object Ellune {
         if (st != 200) return null to when (st) {
             0 -> "Couldn't reach Ellune."
             401 -> "This phone isn't on Ellune's guest list."
-            404 -> "Ellune found no game called \u201C$q\u201D."
+            // a 404 without her "no game called" means she doesn't have /game at all: an older Ellune
+            404 -> if (jsonString(text, "error")?.startsWith("no game") == true) "Ellune found no game called \u201C$q\u201D."
+                   else "Ellune is out of date: she needs the 0.8 update (npx wrangler deploy in ellune/)."
             else -> jsonString(text, "error") ?: "Ellune said $st."
         }
         val name = jsonString(text, "name") ?: return null to "Ellune's answer didn't make sense."

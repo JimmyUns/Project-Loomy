@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24b
+A test build on the way to v2.25.
+- Fixed: after asking about a game update (or anything Ellune's AI works out), listening could keep restarting, say "Stopped." and give up, and questions went unanswered. The mic now stays paused while Ellune answers and picks up cleanly after.
+- If Ellune is too old to answer game questions, the app says she needs updating, instead of "no game called...".
+
 ## v2.24a
 A test build on the way to v2.25.
 - **"Did League drop an update today?"** Ask Pocket Loomy about any game's updates and the answer shows big above the mic, in your phone's time zone: "Yes, at 6:12 PM", "No, last update 3 days ago", "When was the last Valorant update?" → "Yesterday at 11:50 PM", "Is there a Rust update?" → the last update's date. Nothing is ever pushed to you: it only answers when you ask.
