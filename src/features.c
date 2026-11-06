@@ -10,18 +10,14 @@
 // The core (help, modes, /config, /update..., /pkg, hide...) can't be turned off.
 // 2.24 (his ask): External packages (FEATURES_EXTERNAL) aren't in the exe: turning one on downloads it from its
 // maker's GitHub releases (extpkg.c / extwin.c), turning it off deletes those files. In the list: an "External"
-// column, I = what it does + its commands, E = which file of the release to download (external only).
+// column, Enter (or I) = what it does + its commands, Left / Right = on/off, E = which file of the release to
+// download (external only).
 // /packages works too.
 #include "loomy.h"
 
 static const wchar_t *ID[NFEATURES]    = { 0, L"web", L"lp", L"net", L"rb", L"display", L"sysinfo", L"github", L"phone", L"scrcpy" };
 static const wchar_t *NAME[NFEATURES]  = { 0, L"Websites", L"Loomy's Path", L"Network", L"Recycle Bin",
                                            L"Display", L"System Info", L"GitHub", L"Phone", L"Phone Screen" };
-static const wchar_t *ABOUT[NFEATURES] = { 0, L"web + /webconfig, saved sites", L"lp, browse your folders",
-                                           L"net, what's using the internet", L"rb, open the recycle bin",
-                                           L"display / dp, screen layouts", L"sysinfo / si, live CPU and GPU",
-                                           L"github / gh (core mode)", L"/remote, Pocket Loomy",
-                                           L"scrcpy, your phone's screen on the PC" };
 // the I view: what it does, in a sentence or three (\n = new line)
 static const wchar_t *DESC[NFEATURES] = { 0,
     L"Your favourite websites, opened by a short name. /webconfig adds and removes them; each mode has its own list.",
@@ -212,8 +208,9 @@ int pkg_key(WPARAM vk) {
         else if (vk == VK_BACK) { int n = s_len(g_text); if (n) g_text[n - 1] = 0; ui_redraw(); }
         return 1;
     }
-    if (g_info) {                       // any key but I / E closes the info view (Esc doesn't close the list too)
-        if (vk == VK_ESCAPE || vk == VK_RETURN || vk == VK_BACK || vk == VK_LEFT) { g_info = 0; ui_redraw(); }
+    if (g_info) {                       // Esc / Enter go back to the list (Esc doesn't close the list too)
+        if (vk == VK_ESCAPE || vk == VK_RETURN || vk == VK_BACK) { g_info = 0; ui_redraw(); }
+        else if (vk == VK_LEFT || vk == VK_RIGHT) toggle();
         else if (vk == VK_UP) { g_info = 0; move(-1); }
         else if (vk == VK_DOWN) { g_info = 0; move(+1); }
         return 1;
@@ -223,7 +220,9 @@ int pkg_key(WPARAM vk) {
     case VK_DOWN:   move(+1); break;
     case VK_HOME:   move(-NROWS); break;
     case VK_END:    move(+NROWS); break;
-    case VK_RETURN: case VK_SPACE: case VK_LEFT: case VK_RIGHT: toggle(); break;
+    // 2.23b (his call): Enter opens the info view, Left / Right turn it on and off
+    case VK_RETURN: g_info = 1; ui_redraw(); break;
+    case VK_SPACE: case VK_LEFT: case VK_RIGHT: toggle(); break;
     case VK_ESCAPE: pkg_close(); break;
     }
     return 1;
@@ -302,7 +301,9 @@ static int para(HDC dc, int x, int y, int right, const wchar_t *t, COLORREF c) {
 
 static void paint_info(HDC dc, RECT a, int y) {
     int f = g_sel + 1;
-    int tw = ui_text(dc, a.left, y, NAME[f], C_BRIGHT);
+    int tw = ui_text(dc, a.left, y, NAME[f], C_BRIGHT), col;
+    const wchar_t *st = state_of(f, &col);
+    tw += S(12) + ui_text(dc, a.left + tw + S(12), y, st, col);
     if (feature_external(f)) ui_text(dc, a.left + tw + S(12), y, L"External", g_accent);
     y += g_lineH + S(8);
     y = para(dc, a.left, y, a.right, DESC[f], C_TEXT) + S(10);
@@ -372,14 +373,10 @@ void pkg_paint(HDC dc, RECT a) {
             int ty = y + (rowH - g_lineH) / 2;
             if (sel) ui_text(dc, a.left + S(10), ty, L"\x203A", g_accent);
             ui_text(dc, a.left + S(28), ty, NAME[f], sel ? C_BRIGHT : on ? C_TEXT : C_DIM);
-            ui_text(dc, a.left + S(200), ty, ABOUT[f], C_DIM);
+            if (feature_external(f)) ui_text(dc, a.left + S(200), ty, L"External", g_accent);   // 2.23b: its own column
             const wchar_t *st = state_of(f, &col);
             SIZE sz; GetTextExtentPoint32W(dc, st, s_len(st), &sz);
             ui_text(dc, a.right - S(12) - sz.cx, ty, st, col);
-            if (feature_external(f)) {           // the External column
-                SIZE ez; GetTextExtentPoint32W(dc, L"External", 8, &ez);
-                ui_text(dc, a.right - S(150) - ez.cx, ty, L"External", g_accent);
-            }
             y += g_rowStep;
         }
         // a line about the selected external package (picking failed, an error...)
@@ -390,9 +387,9 @@ void pkg_paint(HDC dc, RECT a) {
 
     SelectObject(dc, g_fontSmall);
     const wchar_t *keys = g_edit ? L"Enter save    Esc cancel    Ctrl+V paste"
-                        : g_info ? L"Esc back    \x2191\x2193 next feature"
-                        : feature_external(g_sel + 1) ? L"\x2191\x2193 choose    Enter toggle    I info    E file    Esc close"
-                        : L"\x2191\x2193 choose    Enter toggle    I info    Esc close";
+                        : g_info ? L"\x2190\x2192 on/off    Esc back    \x2191\x2193 next feature"
+                        : feature_external(g_sel + 1) ? L"\x2191\x2193 choose    \x2190\x2192 on/off    Enter info    E file    Esc close"
+                        : L"\x2191\x2193 choose    \x2190\x2192 on/off    Enter info    Esc close";
     ui_text(dc, a.left, a.bottom - S(16), keys, C_DIM);
     const wchar_t *hint = L"core commands are always on";
     SIZE sz; GetTextExtentPoint32W(dc, hint, s_len(hint), &sz);

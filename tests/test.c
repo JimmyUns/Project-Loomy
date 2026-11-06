@@ -613,14 +613,18 @@ int main(void) {
         // the toggle list
         pkg_open();
         pkg_key(VK_DOWN); pkg_key(VK_DOWN);                    // web, lp, net
-        pkg_key(VK_RETURN);         EXPECT(!feature_on(FEAT_NET), "Enter toggles net off");
+        pkg_key(VK_RIGHT);          EXPECT(!feature_on(FEAT_NET), "Right toggles net off");
         pkg_key(VK_SPACE);          EXPECT(feature_on(FEAT_NET), "Space toggles it back");
+        pkg_key(VK_RETURN);         EXPECT(feature_on(FEAT_NET) && pkg_active(), "2.23b: Enter opens info, doesn't toggle");
+        pkg_key(VK_RIGHT);          EXPECT(!feature_on(FEAT_NET), "Right in the info view toggles");
+        pkg_key(VK_RETURN);         EXPECT(pkg_active(), "Enter goes back to the list");
+        pkg_key(VK_RIGHT);          EXPECT(feature_on(FEAT_NET), "Right toggles back");
         pkg_key(VK_RIGHT);          EXPECT(!feature_on(FEAT_NET), "Right toggles too");
         pkg_key(VK_LEFT);           EXPECT(feature_on(FEAT_NET), "Left toggles too");
-        pkg_key(VK_END); pkg_key(VK_UP); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_GITHUB), "End, Up, Up = github");
-        pkg_key(VK_RETURN);
-        pkg_key(VK_HOME); pkg_key(VK_UP); pkg_key(VK_RETURN); EXPECT(!feature_on(FEAT_WEB), "Home/Up stay on web");
-        pkg_key(VK_RETURN);
+        pkg_key(VK_END); pkg_key(VK_UP); pkg_key(VK_UP); pkg_key(VK_RIGHT); EXPECT(!feature_on(FEAT_GITHUB), "End, Up, Up = github");
+        pkg_key(VK_RIGHT);
+        pkg_key(VK_HOME); pkg_key(VK_UP); pkg_key(VK_LEFT); EXPECT(!feature_on(FEAT_WEB), "Home/Up stay on web");
+        pkg_key(VK_LEFT);
         pkg_char(L'x');             EXPECT(pkg_active(), "typing is swallowed");
         pkg_key(VK_ESCAPE);         EXPECT(!pkg_active() && g_cfg.featuresOff == 0, "all back on, closed");
         // 2.24: external packages (extwin.c is stubbed: installs at once)
@@ -642,9 +646,9 @@ int main(void) {
             pkg_char(L'e'); pkg_char(L'x'); pkg_key(VK_BACK); pkg_char(22); pkg_key(VK_RETURN);
             { wchar_t f[100]; EXPECT(ext_get_file(FEAT_SCRCPY, f, 100) && !wcscmp(f, L"scrcpy-win32-v5.0.1.zip"), "E: type, backspace, paste, Enter saves"); }
             pkg_char(L'e'); pkg_key(VK_ESCAPE); EXPECT(pkg_active(), "E then Esc cancels, list stays");
-            pkg_key(VK_HOME); pkg_char(L'e'); pkg_char(L'z'); pkg_key(VK_RETURN);
+            pkg_key(VK_HOME); pkg_char(L'e'); pkg_char(L'z'); pkg_key(VK_SPACE);
             { wchar_t f[100]; EXPECT(ext_get_file(FEAT_SCRCPY, f, 100) && !wcscmp(f, L"scrcpy-win32-v5.0.1.zip"), "E does nothing on a built-in"); }
-            EXPECT(!feature_on(FEAT_WEB), "(that Enter toggled web)"); pkg_key(VK_RETURN); EXPECT(feature_on(FEAT_WEB), "web back on");
+            EXPECT(!feature_on(FEAT_WEB), "(that Space toggled web)"); pkg_key(VK_SPACE); EXPECT(feature_on(FEAT_WEB), "web back on");
             pkg_key(VK_ESCAPE);
         }
 

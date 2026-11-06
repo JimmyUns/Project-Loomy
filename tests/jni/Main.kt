@@ -411,6 +411,8 @@ fun main() {
         cmd("show my phone screen on the pc", "scrcpy")
         cmd("copy screen", "scrcpy")
         cmd("can you cast my android please", "scrcpy")
+        cmd("share my phone to my screen", "scrcpy")
+        cmd("can you share my phone on the pc please", "scrcpy")
         cmd("mirror", "display duplicate")
         cmd("mirror the screens", "display duplicate")
         check(Words.command("pair my phone") != "scrcpy" && Words.command("call my phone") != "scrcpy", "phone screen: other phone things aren't it")
