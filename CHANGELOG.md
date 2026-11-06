@@ -2,6 +2,14 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24d
+A test build on the way to v2.25. Step 1 of the helper plan.
+- **She talks back** with the phone's own voice (the Samsung one, or whatever Settings → Text-to-speech uses). She says her questions and answers out loud and shows them above the mic. Quiet when the phone is on silent or vibrate; **Talk back** in Settings → Listening turns it off. The mic pauses while she speaks, so she doesn't hear herself.
+- **She asks instead of guessing.** When something isn't clear ("switch my monitors"), Ellune asks ("Which screen should stay on?") and your next sentence is the answer, no "Loomy" needed ("the second one", "yes"). A clear command still just runs. Things Loomy can't do get a short answer instead of nothing.
+- **She remembers the last minute** of the conversation, so "yes" and "the second one" make sense.
+- Game update answers are spoken too.
+- Ellune 0.9 (needs `npx wrangler deploy`): the talking mode. Older phones get exactly what they got before.
+
 ## v2.24c
 A test build on the way to v2.25.
 - Fixed: in **Solo mode**, game questions weren't recognized at all (2.24a only took them when said to Loomy), so they went to Ellune's AI, which made `web <game>` → "Websites is off on this PC". Solo works now. Also, every one of the phone's guesses at what you said is now checked for a game question (not just the first), "up date" counts as "update", and Ellune's AI (0.8.1) never uses `web` for games.

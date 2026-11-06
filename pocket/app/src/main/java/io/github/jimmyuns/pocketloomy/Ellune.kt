@@ -349,6 +349,25 @@ object Ellune {
     fun understandNow(priv: PrivateKey, pub: ByteArray, text: String): Answer =
         post(priv, pub, "/understand", "{\"text\":${jsonQuote(text.take(300))}}".toByteArray(), "application/json", "command", 6000)
 
+    // ------------------------------------------------------------------ 2.24d: talking back (Ellune 0.9 talk mode)
+    /** what she wants to do: "do" a command, "ask" a question, "say" something, or "none" */
+    class Talk(val kind: String, val command: String, val text: String)
+
+    /** the conversation so far: (what he said, her line "DO: x" / "ASK: ..." / "SAY: ...") */
+    fun talkNow(priv: PrivateKey, pub: ByteArray, text: String, history: List<Pair<String, String>>): Pair<Talk?, String?> {
+        val h = history.takeLast(6).joinToString(",") { "{\"u\":${jsonQuote(it.first.take(300))},\"a\":${jsonQuote(it.second.take(200))}}" }
+        val body = "{\"text\":${jsonQuote(text.take(300))},\"talk\":true,\"history\":[$h]}"
+        val (st, out) = request(priv, pub, "POST", "/understand", body.toByteArray())
+        if (st != 200) return null to when (st) {
+            0 -> "couldn't reach her"
+            401 -> "this phone isn't on her guest list"
+            503 -> jsonString(out, "error") ?: "busy"
+            else -> jsonString(out, "error") ?: "error $st"
+        }
+        val kind = jsonString(out, "kind") ?: return Talk("do", jsonString(out, "command") ?: "", "") to null   // an older Ellune
+        return Talk(kind, jsonString(out, "command") ?: "", jsonString(out, "text") ?: "") to null
+    }
+
     // ------------------------------------------------------------------ 2.25: when did a game last update (0.8)
     /** a whole number at "key" (null if it's null or missing) */
     fun jsonNumber(body: String, key: String): Long? {

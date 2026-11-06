@@ -1,6 +1,6 @@
 // Runs the Worker's fetch handler locally: node test.mjs (Node 18+)
 // Optional: node test.mjs cross.json  also checks a request signed by the phone's real code (tests/jni writes it).
-import worker, { guestList, wavOk, cleanCommand, Room, Guests, totp, codeStep, resetGuestCache, riotLive, riotTick, steamPick, steamBuild } from "./src/index.js";
+import worker, { talkLine, guestList, wavOk, cleanCommand, Room, Guests, totp, codeStep, resetGuestCache, riotLive, riotTick, steamPick, steamBuild } from "./src/index.js";
 import { readFileSync } from "node:fs";
 
 let fails = 0, n = 0;
@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.8.1", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.9", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -135,6 +135,24 @@ const envAI = (answer) => ({ ...env, AI: AI(answer) });
   expect(u.status === 200 && u.out.command === "display off", "understand: command back", JSON.stringify(u));
   expect(calls[0].input.messages[1].content === "make the screens go dark" && calls[0].input.temperature === 0, "understand: text goes to the AI");
   expect((await post("/understand", phone, say("what's the weather"), envAI({ response: "NONE" }))).out.command === "", "understand: none = empty");
+  // 0.9: talk mode
+  {
+    const talk = (t, history) => enc.encode(JSON.stringify({ text: t, talk: true, history }));
+    calls.length = 0;
+    let r = await post("/understand", phone, talk("switch my monitors"), envAI({ response: "ASK: Which screen should stay on?" }));
+    expect(r.status === 200 && r.out.kind === "ask" && r.out.text === "Which screen should stay on?" && r.out.command === "", "talk: she asks", JSON.stringify(r.out));
+    expect(calls[0].input.messages[0].content.startsWith("You are Loomy") && calls[0].input.messages.length === 2, "talk: her prompt, no history yet");
+    calls.length = 0;
+    r = await post("/understand", phone, talk("the second one", [{ u: "switch my monitors", a: "ASK: Which screen should stay on?" }, { u: "", a: "x" }]),
+                   envAI({ response: "DO: display second" }));
+    const m = calls[0].input.messages;
+    expect(r.out.kind === "do" && r.out.command === "display second", "talk: the answer to her question runs");
+    expect(m.length === 4 && m[1].content === "switch my monitors" && m[2].role === "assistant" && m[3].content === "the second one", "talk: history goes first, empty turns dropped");
+    r = await post("/understand", phone, talk("thanks"), envAI({ response: "SAY: Anytime!" }));
+    expect(r.out.kind === "say" && r.out.text === "Anytime!", "talk: she says");
+    r = await post("/understand", phone, say("thanks"), envAI({ response: "SAY: Anytime!" }));
+    expect(r.out.command === "" && r.out.kind === undefined, "talk: old phones (no talk) get 0.8 answers");
+  }
   expect((await post("/understand", phone, say("x"), envAI({ response: "/shutdown" }))).out.command === "", "understand: AI says something odd = empty");
   expect((await post("/understand", phone, enc.encode("not json"), envAI({ response: "x" }))).status === 400, "understand: junk = 400");
   expect((await post("/understand", phone, say(""), envAI({ response: "x" }))).status === 400, "understand: empty = 400");
@@ -230,6 +248,20 @@ const texts = (ws) => ws.sent.filter((m) => typeof m === "string");
   expect(await door(`/phone?room=${roomName}&x=1`, `/phone?room=${roomName}&x=1`, { Upgrade: "websocket" }) === 400, "door: nothing else in the query");
   expect(await door(`/phone?room=${roomName}`, `/phone?room=${roomName}`) === 426, "door: phone needs a websocket");
   expect(await door(`/pc?room=${roomName}`, `/pc?room=${roomName}`, { Upgrade: "websocket" }, phone, env) === 503, "door: no rooms binding = 503");
+}
+
+// ---- 0.9: talk mode's one line
+{
+  const t = (raw, kind, command, text) => { const r = talkLine(raw); expect(r.kind === kind && r.command === command && r.text === text, `talk: ${JSON.stringify(raw)} -> ${kind}`, JSON.stringify(r)); };
+  t("DO: display pc", "do", "display pc", "");
+  t("do:   Display Second.", "do", "display second", "");
+  t("ASK: Which screen should stay on?", "ask", "", "Which screen should stay on?");
+  t("SAY: You're welcome!\nDO: rb", "say", "", "You're welcome!");
+  t("DO: format c:", "none", "", "");
+  t("display extend", "do", "display extend", "");
+  t("ASK: \"hi\"\u0007 there", "ask", "", "hi there");
+  t("", "none", "", "");
+  t("SAY: " + "x".repeat(400), "say", "", "x".repeat(160));
 }
 
 // ---- 0.6: the prompt knows what first / second screen means (the AI itself can't run here: just the parts we own)

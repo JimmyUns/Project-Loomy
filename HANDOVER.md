@@ -159,6 +159,19 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **The helper plan (his, Nov 8-9):** Pocket Loomy as an *action* helper, not a chatbot ("not Jarvis"). Steps agreed:
+  1 talk back + ask when unsure + remember a minute (**v2.24d, built**), 2 reminders/notes with notifications (his
+  choice per note), 3 game alerts opt-in per game with "update it?" (phone polls Ellune ~30 min; no Firebase), 4 the
+  PC reports its state (display mode, downloads, apps) and starts updates / closes *approved* apps, always asking
+  first, 5 a custom-voice package (Piper via sherpa-onnx; Kokoro too slow on phones). Voice: he listened, **Samsung's
+  TTS is fine** for now. He reversed "no notifications" for reminders and game alerts: opt-in only.
+- **v2.24d (Nov 9): step 1.** `Speaker.kt` (Android TTS, system engine, quiet on silent/vibrate, `Store.talkBack`
+  default on, mic paused while speaking: `thinking` stays true until TTS onDone, 15 s cap). Ellune **0.9**:
+  `/understand` with `"talk":true` + `history` (≤6 turns) → `{kind: do|ask|say|none, command, text}` (`TALK` prompt
+  = DO/ASK/SAY rules + examples + the COMMANDS list; `talkLine` parses; old phones unchanged). Phone: `Ellune.talkNow`,
+  `Voice.convo` (forgotten after 60 s quiet), after her ASK the next sentence goes back to her (`herAskAt`, 20 s, no
+  name needed, key words skipped so "yes" isn't Enter; a known command still runs). Not tried on his phone yet;
+  needs the 0.9 deploy. "Which view?" questions from the PC aren't spoken yet.
 - **v2.24c (Nov 8), his bug: game questions answered "Websites is off on this PC... /pkg add web"**, i.e. something
   sent `web <game>` (the phone's "open X" → `web X` rule, or the AI guessing when `gameQuestion` missed the first
   recognizer guess). Fix: `gameQuestion` checked over every guess, "up date" joined, AI prompt (Ellune 0.8.1, needs

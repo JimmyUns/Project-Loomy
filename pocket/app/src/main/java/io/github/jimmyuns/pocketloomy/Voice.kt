@@ -49,6 +49,10 @@ object Voice {
     /** 2.25: an answer shown big above the mic for a while ("Yes, at 6:12 PM"); tap it away */
     class Shown(val big: String, val small: String, val until: Long)
     @Volatile var shown: Shown? = null
+    // 2.24d: the conversation with Ellune's AI, for "yes" / "the second one" (forgotten after a minute quiet)
+    private val convo = ArrayList<Pair<String, String>>()
+    private var convoAt = 0L
+    private var herAskAt = 0L                  // she asked a question: the next sentence is the answer (20 s)
     fun shownNow(): Shown? = shown?.takeIf { SystemClock.elapsedRealtime() < it.until }
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
@@ -95,6 +99,7 @@ object Voice {
         errors = 0
         val st = Store(c)
         whisper = st.elluneHears && !st.btMode
+        Speaker.warm(c)
         elluneKey = if (!st.btMode) ElluneKey.peek() else null    // Bluetooth mode: Ellune isn't used at all
         if (state == State.LISTENING) { changed(); return }
         if (keep && !st.solo) { armed = true; armedUntil = SystemClock.elapsedRealtime() + 8000 }   // the tap = her name
@@ -110,6 +115,7 @@ object Voice {
         asking = null
         main.removeCallbacksAndMessages(null)
         if (shown != null && shownNow() == null) shown = null
+        Speaker.stop()
         ear?.cancel()
         ear?.destroy()
         ear = null
@@ -250,6 +256,16 @@ object Voice {
         armed = false
         if (control(said)) return
 
+        // 2.24d: she just asked something: the answer goes back to her (a clear command still just runs). Not the
+        // key words: "yes" here means yes to her, not Enter on the PC.
+        val k0 = elluneKey
+        if (now - herAskAt < ASK_MS && k0 != null && elluneUp()) {
+            herAskAt = 0
+            val c = Words.command(said)
+            if (Words.knows(c)) { send(c); next(150) } else understand(k0, said)
+            return
+        }
+
         // a key word ("down", "ok", "next tab") goes to the PC's open screen
         val key = all.firstNotNullOfOrNull { h -> (Words.addressed(h) ?: if (following || solo || inputMode || !keep) h else null)?.let { Words.key(it) } }
         if (key != null) { send(key); next(150); return }
@@ -297,18 +313,48 @@ object Voice {
         thinking = true
         partial = "Ellune is understanding..."
         changed()
+        val nowT = SystemClock.elapsedRealtime()
+        if (nowT - convoAt > CONVO_MS) convo.clear()
+        val history = ArrayList(convo)
         Thread({
-            val a = Ellune.understandNow(k.priv, k.pub, said)
+            val (t, why) = Ellune.talkNow(k.priv, k.pub, said, history)
             main.post {
-                thinking = false
                 partial = ""
-                if (state == State.LISTENING) next(150) else changed()
-                when (a) {
-                    is Ellune.Answer.Ok -> if (a.text.isNotEmpty()) send(a.text, "$said \u2192 ${a.text}") else if (!quiet) miss(said)
-                    is Ellune.Answer.Down -> add(said, "Ellune couldn't answer (${a.why}). Nothing was sent.", true)
+                var speak = ""
+                when {
+                    t == null -> add(said, "Ellune couldn't answer ($why). Nothing was sent.", true)
+                    t.kind == "do" && t.command.isNotEmpty() -> { remember(said, "DO: ${t.command}"); send(t.command, "$said \u2192 ${t.command}") }
+                    t.kind == "ask" -> {
+                        remember(said, "ASK: ${t.text}")
+                        shown = Shown(t.text, "Just say it, no \u201CLoomy\u201D needed", SystemClock.elapsedRealtime() + ASK_MS)
+                        main.postDelayed({ if (shown != null && shownNow() == null) { shown = null; changed() } }, ASK_MS + 100)
+                        add(said, t.text, false)
+                        herAskAt = SystemClock.elapsedRealtime()
+                        speak = t.text
+                    }
+                    t.kind == "say" -> {
+                        remember(said, "SAY: ${t.text}")
+                        shown = Shown(t.text, "", SystemClock.elapsedRealtime() + SHOW_MS)
+                        main.postDelayed({ if (shown != null && shownNow() == null) { shown = null; changed() } }, SHOW_MS + 100)
+                        add(said, t.text, false)
+                        speak = t.text
+                    }
+                    !quiet -> miss(said)
+                }
+                // she speaks with the mic still paused, then listening carries on (herAskAt counts from the end)
+                Speaker.say(ctx, speak) {
+                    thinking = false
+                    if (herAskAt != 0L) herAskAt = SystemClock.elapsedRealtime()
+                    if (state == State.LISTENING) next(150) else changed()
                 }
             }
         }, "ellune-understand").start()
+    }
+
+    private fun remember(said: String, line: String) {
+        convo += said to line
+        while (convo.size > 6) convo.removeAt(0)
+        convoAt = SystemClock.elapsedRealtime()
     }
 
     private fun gameAsk(q: Games.Question, said: String) {
@@ -332,6 +378,10 @@ object Voice {
                     shown = Shown(big, small, SystemClock.elapsedRealtime() + SHOW_MS)
                     main.postDelayed({ if (shown != null && shownNow() == null) { shown = null; changed() } }, SHOW_MS + 100)
                     add(said, "$big \u00B7 ${small.replace("\n", " \u00B7 ")}", false)
+                    remember(said, "SAY: ${info.name}: $big")
+                    thinking = true                                   // paused while she says it
+                    Speaker.say(ctx, "${info.name}. $big") { thinking = false; if (state == State.LISTENING) next(150) else changed() }
+                    return@post
                 } else add(said, why ?: "Ellune couldn't answer.", true)
                 if (state == State.LISTENING) next(150) else changed()
             }
@@ -451,4 +501,5 @@ object Voice {
 
     private const val ASK_MS = 20_000L
     private const val SHOW_MS = 15_000L
+    private const val CONVO_MS = 60_000L
 }

@@ -35,7 +35,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.8.1";
+const VERSION = "0.9";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -332,11 +332,62 @@ async function hear(body, ai) {
   }
 }
 
+// 0.9 (his ask: an action helper that talks back, not a chatbot): with "talk":true she may also ASK a short
+// question or SAY a short answer, and gets the last few lines of the conversation ("history") so "yes" or
+// "the second one" make sense. Old phones (no "talk") get exactly the 0.8 behaviour.
+const TALK = `You are Loomy, a voice helper on someone's phone that controls their Windows PC. You don't chat: you get things done.
+Reply with exactly ONE line, one of these:
+DO: <one Loomy command>   when it's clear what to run
+ASK: <a short question>   when you need one thing first (which screen? which game?)
+SAY: <a short answer>     when there's nothing to run (thanks, hello, something Loomy can't do yet)
+ASK and SAY: under 15 words, friendly, plain English. Never invent commands or facts. If no command does what
+they want, SAY that you can't do that yet. Earlier lines of this conversation may come first: use them for
+"yes", "do it", "the second one". Below, "phrase -> command" means DO: command, and "-> NONE" means it's not a
+command (ASK or SAY instead).
+Examples of the talking:
+switch my monitors -> ASK: Which screen should stay on, first, second, or both?
+(after that) the second one -> DO: display second
+(after "ASK: ...?") yes -> DO: the command you asked about
+thanks -> SAY: Anytime!
+what's the meaning of life -> SAY: I can only help with your PC, sorry.
+` + COMMANDS.split("\n").slice(1).join("\n");
+
+export function talkLine(raw) {
+  const line = String(raw || "").split("\n").map((l) => l.trim()).find((l) => l) || "";
+  const m = /^(DO|ASK|SAY)\s*:\s*(.*)$/i.exec(line);
+  const short = (t) => t.replace(/[\u0000-\u001f"]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+  if (!m) { const c = cleanCommand(line); return c ? { kind: "do", command: c, text: "" } : { kind: "none", command: "", text: "" }; }
+  const what = m[1].toUpperCase();
+  if (what === "DO") { const c = cleanCommand(m[2]); return c ? { kind: "do", command: c, text: "" } : { kind: "none", command: "", text: "" }; }
+  const t = short(m[2]);
+  return t ? { kind: what.toLowerCase(), command: "", text: t } : { kind: "none", command: "", text: "" };
+}
+
 async function understand(body, ai) {
-  let text = "";
-  try { text = String(JSON.parse(new TextDecoder().decode(body)).text || ""); } catch { /* not json */ }
+  let text = "", talk = false, history = [];
+  try {
+    const b = JSON.parse(new TextDecoder().decode(body));
+    text = String(b.text || "");
+    talk = b.talk === true;
+    if (Array.isArray(b.history)) history = b.history.slice(-6);
+  } catch { /* not json */ }
   text = text.replace(/[\u0000-\u001f]+/g, " ").trim();
   if (!text || text.length > 300) return reply(400, { ok: false, error: "text missing or over 300 characters" });
+  if (talk) {
+    const msgs = [{ role: "system", content: TALK }];
+    for (const h of history) {
+      const u = String((h && h.u) || "").slice(0, 300), a = String((h && h.a) || "").slice(0, 200);
+      if (u && a) msgs.push({ role: "user", content: u }, { role: "assistant", content: a });
+    }
+    msgs.push({ role: "user", content: text });
+    try {
+      const r = await ai.run(LLM, { messages: msgs, max_tokens: 48, temperature: 0 });
+      const t = talkLine(r && r.response);
+      return reply(200, { ok: true, ...t });
+    } catch {
+      return reply(503, { ok: false, error: "ai busy or out of free use" });
+    }
+  }
   try {
     const r = await ai.run(LLM, { messages: [{ role: "system", content: COMMANDS }, { role: "user", content: text }],
                                   max_tokens: 24, temperature: 0 });
@@ -623,7 +674,7 @@ export default {
 
     if (path === "/hear" || path === "/understand") {
       if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" }, { allow: "POST" });
-      const body = await readCapped(request, path === "/hear" ? MAX_WAV : 2048);
+      const body = await readCapped(request, path === "/hear" ? MAX_WAV : 8192);   // 0.9: history fits
       if (!body) return reply(413, { ok: false, error: "too big" });
       const g = await guest(request, env, path, now, body);
       if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
