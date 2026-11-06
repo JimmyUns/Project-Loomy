@@ -257,13 +257,11 @@ object Voice {
         // the phone's recognizer gives a few guesses ("display extent", "display extend"): the first one the rules
         // know wins, so a slip of the accent costs nothing when one of the guesses got it right
         // 2.25: "did League drop an update today?" is a question for Ellune, not a command for the PC
-        // (not from Solo's overhearing: only when it was said to Loomy)
-        // (2.24c: any of the recognizer's guesses counts, not just the first: "did league drop an up date today")
-        if (!(solo && !following)) {
-            val g = (listOf(said) + all.mapNotNull { Words.addressed(it) ?: if (following || !keep) it else null })
-                .firstNotNullOfOrNull { Words.gameQuestion(it) }
-            if (g != null) { gameAsk(g, said); return }
-        }
+        // (2.24c: any of the recognizer's guesses counts, not just the first: "did league drop an up date today";
+        //  and Solo mode too: 2.24a skipped it there, so in Solo his questions went to the AI, which made "web league")
+        val g = (listOf(said) + all.mapNotNull { Words.addressed(it) ?: if (following || solo || !keep) it else null })
+            .firstNotNullOfOrNull { Words.gameQuestion(it) }
+        if (g != null) { gameAsk(g, said); return }
         var text: String = said
         var cmd = Words.command(text)
         if (!Words.knows(cmd)) {
