@@ -15,6 +15,9 @@ questions and wanted a security talk as its own conversation: **done Nov 2 2026,
 doesn't cover is still his call: don't bake it in without him.
 
 ## 2. Status
+- **0.6 (Nov 6, not deployed yet):** only the AI prompt: what display pc/second/extend/duplicate mean in plain words
+  ("show me only the first monitor -> display pc"), and `si general`. He deploys with `npx wrangler deploy` from
+  `ellune/`. The phone handles the common phrasings itself, so nothing breaks before he deploys.
 - **Decided Nov 1:** the code lives in **`ellune/`** in this repo (same bot + PR flow); the ping command is
   **`/ellune`** in **core** mode; **no domain** for now (the free `workers.dev` address).
 - **Live (Nov 1):** `https://ellune.loomybot.workers.dev/ping` (Worker `ellune`, account subdomain `loomybot`, free

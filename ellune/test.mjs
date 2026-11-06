@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.5", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.6", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -231,6 +231,10 @@ const texts = (ws) => ws.sent.filter((m) => typeof m === "string");
   expect(await door(`/phone?room=${roomName}`, `/phone?room=${roomName}`) === 426, "door: phone needs a websocket");
   expect(await door(`/pc?room=${roomName}`, `/pc?room=${roomName}`, { Upgrade: "websocket" }, phone, env) === 503, "door: no rooms binding = 503");
 }
+
+// ---- 0.6: the prompt knows what first / second screen means (the AI itself can't run here: just the parts we own)
+expect(cleanCommand("display pc") === "display pc" && cleanCommand("si general") === "si general" &&
+       cleanCommand("display first") === "", "0.6: layouts and si general pass, made-up layouts don't");
 
 // ---- 0.5: registering with an Authy code
 {

@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.23
+- **Say what you mean.** "Show me only the first monitor" switches to the first screen only, "turn off the second screen" too; "use both monitors", "same thing on both screens", "switch to the second" all work. "Open the general system information" goes straight to General (CPU and GPU the same way). The phone knows these itself; Ellune's AI (0.6) knows them too for anything said differently.
+- **"Which view?"** When a command opens a list on the PC (system info, screen layouts, your sites), Pocket Loomy asks which one, in big letters over the mic. Just say it ("general please", "the second one", "graphics"), no "Loomy" needed. "Never mind", "cancel" or "go back" drops the question and leaves the PC alone (you may have picked there). It's gone after 20 seconds or any other command.
+- Loomy's answer to the phone for an open list is now that question ("Which one (si)? general, cpu, gpu 1.").
+
 ## v2.22b
 - **Pocket Loomy updates itself**: Settings → Updates → **Check for updates**. It asks GitHub for the newest release, only trusts it if you published it and GitHub's build made the app, checks the file against GitHub's checksum, and hands it to Android, which only installs it if it's signed with your key. The first time, Android asks you to allow Pocket Loomy to install apps. In the dev app, the same button installs or updates the release app.
 - **Listening is fast again**: the phone hears you by default (like Bluetooth mode), and when it hears something its set phrases don't know, Ellune's AI works out the command. If one of the phone's guesses is a real command ("display extend" next to "display extent"), that one wins without asking her.

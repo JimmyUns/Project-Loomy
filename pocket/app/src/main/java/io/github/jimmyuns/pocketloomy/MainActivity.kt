@@ -87,6 +87,9 @@ class MainActivity : Activity() {
         override fun run() { Net.refresh(this@MainActivity); ticker.postDelayed(this, if (store.btMode) 60_000 else 30_000) }
     }
     private lateinit var live: TextView
+    private lateinit var askBox: LinearLayout     // 2.23: "Which view?" over the mic when a list opened on the PC
+    private lateinit var askTitle: TextView
+    private lateinit var askOpts: TextView
     private lateinit var modeBtn: TextView
     private lateinit var typing: LinearLayout
     private lateinit var input: EditText
@@ -430,8 +433,20 @@ class MainActivity : Activity() {
             isFillViewport = true
         }
         bt = BtIconView(this, accent).apply { active = store.btMode; setOnClickListener { toggleBt() } }
+        askTitle = text("", accent, 26f, true).apply { gravity = Gravity.CENTER_HORIZONTAL }
+        askOpts = text("", textC, 16f).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(0, dp(6), 0, 0) }
+        askBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+            addView(askTitle, LinearLayout.LayoutParams(-1, -2))
+            addView(askOpts, LinearLayout.LayoutParams(-1, -2))
+            setOnClickListener { Voice.asking = null; render() }     // tap it away
+        }
         main.addView(FrameLayout(this).apply {
             addView(mic, FrameLayout.LayoutParams(-1, -1))
+            addView(askBox, FrameLayout.LayoutParams(-1, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                topMargin = dp(12); leftMargin = dp(52); rightMargin = dp(52) })
             addView(powerBig, FrameLayout.LayoutParams(-1, -1))
             addView(bt, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { topMargin = dp(8) })
             addView(setup, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
@@ -790,6 +805,12 @@ class MainActivity : Activity() {
 
         // a few words at most: the mic shows the rest
         val heardWords = Voice.partial.takeIf { listening && taking && it.isNotEmpty() && !it.endsWith("...") && it != "Yes?" }
+        val ask = Voice.askingNow()?.takeIf { store.on }
+        askBox.visibility = if (ask != null) View.VISIBLE else View.GONE
+        if (ask != null) {
+            askTitle.text = Words.ask(ask.cmd)
+            askOpts.text = ask.options.joinToString("  \u00B7  ") { Words.pretty(ask.cmd, it) }
+        }
         val (liveText, liveColor) = when {
             // pairing by QR while an old pairing is still on this phone: say what to do, right here
             phase == Phase.PAIRING && confirmId != null -> "Look at the PC: press Enter there if it shows $confirmId" to accent
@@ -797,6 +818,8 @@ class MainActivity : Activity() {
             Voice.thinking -> "Ellune is understanding\u2026" to accent
             Voice.sending -> "Sending to your PC\u2026" to accent
             heardWords != null -> "\u201C$heardWords\u201D" to textC
+            ask != null && listening -> "Say one (no \u201CLoomy\u201D needed), or \u201Cnever mind\u201D" to accent
+            ask != null -> "Tap the mic and say one" to accent
             listening && Voice.inputMode -> "Input mode" to accent
             listening && taking && !store.btMode -> "Loomy is listening \u00B7 tap: send \u00B7 hold: mute" to accent
             listening && taking -> "Loomy is listening" to accent

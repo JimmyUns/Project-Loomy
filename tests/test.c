@@ -693,22 +693,25 @@ int main(void) {
         // 2.18: screens, input keys, chains, choices
         extern int g_screensOn;
         a = ask("display on");      EXPECT(g_screensOn == 1 && strstr(a, "Screens on"), "display on wakes the screens");
-        a = ask("display");         EXPECT(display_active() && strstr(a, "Layouts: extend, second"), "a picker lists its choices for the phone");
-        a = ask("input down");      EXPECT(display_active() && strstr(a, "Layouts"), "input down moves in the open picker");
+        a = ask("display");         EXPECT(display_active() && strstr(a, "Which one (display)? extend, second, pc, duplicate, off."), "a picker lists its choices for the phone");
+        a = ask("input down");      EXPECT(display_active() && strstr(a, "Which one (display)?"), "input down moves in the open picker");
         a = ask("input back");      EXPECT(!display_active() && strstr(a, "Closed."), "input back closes it");
         a = ask("input back");      EXPECT(strstr(a, "Nothing is open"), "input with nothing open");
         a = ask("display");         a = ask("input banana"); EXPECT(strstr(a, "No key called 'banana'"), "unknown key");
         a = ask("rb");              EXPECT(!display_active(), "a new command closes the open screen first");
-        a = ask("web");             EXPECT(web_active() && strstr(a, "Sites:") , "web panel: lists the sites");
+        a = ask("si");              EXPECT(sysinfo_active() && strstr(a, "Which one (si)? general, cpu, gpu 1"), "2.23: the si list asks which one");
+        a = ask("si general");      EXPECT(sysinfo_active() && !strstr(a, "Which one") && strstr(a, "Showing General"), "2.23: a view that's already open doesn't ask");
+        ask("input back"); ask("input back");
+        a = ask("web");             EXPECT(web_active() && strstr(a, "Which one (web)? ") , "web panel: lists the sites");
         a = ask("display and input down 2 and input back");
-        EXPECT(!display_active() && strstr(a, "Closed.") && !strstr(a, "Layouts"), "chain: display, down twice, back (described once, at the end)");
+        EXPECT(!display_active() && strstr(a, "Closed.") && !strstr(a, "Which one"), "chain: display, down twice, back (described once, at the end)");
         a = ask("rb and banana");   EXPECT(strstr(a, "Usage: rb"), "\"and\" only splits before a command (rb gets \"and banana\")");
         a = ask("rb and help");     EXPECT(strstr(a, "recycle bin") && strstr(a, "si"), "two commands, two answers");
         a = ask("display and input tab"); EXPECT(display_active(), "a key the picker ignores is fine");
         a = ask("input down and input down and input up and input down 2 and input back");
-        EXPECT(!display_active() && strstr(a, "Closed.") && !strstr(a, "Layouts"), "a key chain: runs in order, describes the screen once, at the end");
+        EXPECT(!display_active() && strstr(a, "Closed.") && !strstr(a, "Which one"), "a key chain: runs in order, describes the screen once, at the end");
         a = ask("display and input down and input down");
-        { int n = 0; for (const char *q = a; (q = strstr(q, "Layouts")); q++) n++;
+        { int n = 0; for (const char *q = a; (q = strstr(q, "Which one")); q++) n++;
           EXPECT(display_active() && n == 1, "chain ending on an open screen lists it once"); }
         ask("input back");
         ask("input back");
