@@ -166,6 +166,9 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   External in that column (ABOUT[] gone; DESC[] in the info view). **Enter = info, Left/Right (and Space) = on/off**,
   also inside the info view. Bare "mirror" stays display duplicate (his answer); "share my phone to my screen" →
   scrcpy (already did).
+- **Nov 7, after v2.23b ("ok works"):** renamed in /pkg: "Phone" → **Remote** (it's /remote), "Phone Screen" →
+  **Android Screen Mirroring** (help: "Android Mirroring"); External column moved to +300 so the long name fits.
+  Feature ids stay `phone` / `scrcpy` (his saved settings). Not released yet: goes into the next build.
 - **v2.24 in progress (Nov 7): external packages (his ask).** v2.23a released (he ran it: the list shows). Reverses the
   v2.16 "no downloads" decision *for external tools only* (his call): Loomy's own features stay built in.
   - `/pkg` = `/packages`; **External** column; **I** = info view (DESC[] + the feature's commands via
