@@ -2,6 +2,12 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24f
+A test build on the way to v2.25.
+- Fixed: tapping the mic could make listening stop by itself ("(listening) Stopped." in the history).
+- Ellune doesn't need the PC: with the pairing run out (7 days), Pocket Loomy still talks to her (questions, weather, reminders, notes); only PC commands ask you to pair again.
+- She's told when your PC is offline, and "test" / "hello" get a short answer instead of being turned into a PC command (Ellune 1.0.1).
+
 ## v2.24e
 A test build on the way to v2.25.
 - **Pocket Loomy's main screen, redone.** One labelled **On/Off** card at the top (it left Settings). The mic only ever means "talk": tap it and say the command. **Mute**, **Type** and **History** are buttons at the bottom; **Say "Loomy" / Solo** are two visible choices. No more holding.

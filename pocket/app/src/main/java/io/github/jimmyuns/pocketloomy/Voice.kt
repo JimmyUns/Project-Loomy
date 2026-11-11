@@ -107,11 +107,12 @@ object Voice {
         val e = eEar
         if (viaEllune && e != null) { e.finishNow(); return }
         ctx = c.applicationContext
+        // 2.24f (his "(listening) Stopped." lines): no cancel + restart here any more. Cancelling the recognizer
+        // makes it report an error, which restarted listening, which collided with this restart... until 5 errors
+        // and "Stopped.". The recognizer that's already listening just takes the next sentence as the command.
         armed = true
         armedUntil = SystemClock.elapsedRealtime() + 8000
-        ear?.cancel()
-        partial = ""
-        startEar()
+        partial = "Yes?"
         changed()
     }
 
@@ -348,12 +349,14 @@ object Voice {
         val st = Store(ctx)
         Thread({
             val tz = java.util.TimeZone.getDefault().id
-            var (t, why) = Ellune.talkNow(k.priv, k.pub, said, history, st.mood, tz)
+            // 2.24f: she's told when the PC is offline, so "test" doesn't become a PC command that can't run
+            val off = Net.state == Net.State.PC_OFFLINE || st.trust()?.valid() != true
+            var (t, why) = Ellune.talkNow(k.priv, k.pub, said, history, st.mood, tz, pcOffline = off)
             // she needs a location (the weather): a rough one, only if he allowed it, and only for this question
             var noWhere = false
             if (t != null && t.kind == "need" && t.need == "location") {
                 val w = Where.rough(ctx)
-                if (w != null) { val r = Ellune.talkNow(k.priv, k.pub, said, history, st.mood, tz, w); t = r.first; why = r.second }
+                if (w != null) { val r = Ellune.talkNow(k.priv, k.pub, said, history, st.mood, tz, w, off); t = r.first; why = r.second }
                 else noWhere = true
             }
             main.post {

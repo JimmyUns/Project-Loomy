@@ -159,6 +159,13 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.24f (Nov 11), his screenshot: "Test → open" → "Your PC isn't connected to Ellune", plus "(listening)
+  Stopped." lines.** Causes: (1) Ellune was still **0.8** (he hadn't deployed 0.9/1.0), so the phone's agent request
+  got the old one-command answer and "Test" became `open`; (2) `Voice.tap` cancelled + restarted the recognizer
+  (and the new mic tap called it right after starting) → error loop → "Stopped.". Fixes: tap only arms; the mic tap
+  just starts (start() already arms); Ellune 1.0.1 prompt: greetings/"test" → SAY, `pc:"offline"` from the phone;
+  `Pocket.ready` + the main screen allow a run-out pairing in Ellune mode (only PC commands need pairing).
+  Also v2.24e's first tag was `V2.24e` (capital): the workflows only run on `v*`.
 - **v2.24e (Nov 10), "do everything" (his words, no floating bubble):** built, not tried by him yet.
   - Main screen (`MainActivity.buildUi`): power card with the one `onSwitch` (gone from Settings), mic tap = talk
     (starts listening if muted, then `Voice.tap`), no hold gesture, mode as two segments, bottom bar Mute / Type /

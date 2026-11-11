@@ -356,11 +356,12 @@ object Ellune {
 
     /** the conversation so far: (what he said, her line "DO: x" / "ASK: ..." / "SAY: ...") */
     fun talkNow(priv: PrivateKey, pub: ByteArray, text: String, history: List<Pair<String, String>>,
-                mood: String = "chill", tz: String = "UTC", where: Pair<Double, Double>? = null): Pair<Talk?, String?> {
+                mood: String = "chill", tz: String = "UTC", where: Pair<Double, Double>? = null,
+                pcOffline: Boolean = false): Pair<Talk?, String?> {
         val h = history.takeLast(6).joinToString(",") { "{\"u\":${jsonQuote(it.first.take(300))},\"a\":${jsonQuote(it.second.take(200))}}" }
         // 2.24e: the agent (Ellune 1.0). A location goes only when she asked for one, rounded to ~1 km.
         val w = where?.let { (la, lo) -> ",\"where\":{\"lat\":${Math.round(la * 100) / 100.0},\"lon\":${Math.round(lo * 100) / 100.0}}" } ?: ""
-        val body = "{\"text\":${jsonQuote(text.take(300))},\"talk\":true,\"agent\":true,\"mood\":${jsonQuote(mood)},\"tz\":${jsonQuote(tz)}$w,\"history\":[$h]}"
+        val body = "{\"text\":${jsonQuote(text.take(300))},\"talk\":true,\"agent\":true,\"mood\":${jsonQuote(mood)},\"tz\":${jsonQuote(tz)}$w${if (pcOffline) ",\"pc\":\"offline\"" else ""},\"history\":[$h]}"
         val (st, out) = request(priv, pub, "POST", "/understand", body.toByteArray())
         if (st != 200) return null to when (st) {
             0 -> "couldn't reach her"
