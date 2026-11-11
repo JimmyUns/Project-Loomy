@@ -1,6 +1,6 @@
 // Runs the Worker's fetch handler locally: node test.mjs (Node 18+)
 // Optional: node test.mjs cross.json  also checks a request signed by the phone's real code (tests/jni writes it).
-import worker, { talkLine, guestList, wavOk, cleanCommand, Room, Guests, totp, codeStep, resetGuestCache, riotLive, riotTick, steamPick, steamBuild } from "./src/index.js";
+import worker, { agentLine, agentPrompt, talkLine, guestList, wavOk, cleanCommand, Room, Guests, totp, codeStep, resetGuestCache, riotLive, riotTick, steamPick, steamBuild } from "./src/index.js";
 import { readFileSync } from "node:fs";
 
 let fails = 0, n = 0;
@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "0.9", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "1.0", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -386,7 +386,55 @@ expect(cleanCommand("display pc") === "display pc" && cleanCommand("si general")
     expect((await ask(phone, "zzzz")).status === 404, "game: unknown name");
     expect((await ask(other, "league")).status === 401, "game: strangers can't ask");
     expect((await ask(phone, "!!!")).status === 400, "game: no name");
-    expect(steamPick({ items: [{ id: 1, name: "A" }] }, "zz").id === 1 && steamPick({}, "a") === null && steamBuild({ data: {} }, 5) === null, "steam helpers");
+    // 1.0: the agent (a fake AI that answers in turn, fake weather)
+    {
+      const said = [], fetched = [];
+      const seq = (...answers) => ({ ...envG, AI: { run: async (m, input) => { said.push(input); return { response: answers.shift() || "" }; } } });
+      const fk = async (url) => {
+        fetched.push(url);
+        if (url.startsWith("https://api.open-meteo.com/")) return new Response(JSON.stringify({
+          current: { temperature_2m: 12.4, weather_code: 2, wind_speed_10m: 9 },
+          daily: { temperature_2m_max: [14.2, 9.9], temperature_2m_min: [6.1, 3.2], precipitation_probability_max: [20, 80], weather_code: [3, 63] } }));
+        return fake(url);
+      };
+      async function talk(env, obj) {
+        const body = enc.encode(JSON.stringify({ agent: true, talk: true, tz: "Europe/Helsinki", mood: "goofy", ...obj }));
+        const h = await sign(phone, "POST", "/understand", now, body);
+        const res = await worker.fetch(new Request(URL0 + "/understand", { method: "POST", headers: h, body }), env, { fetch: fk }, now);
+        return res.json();
+      }
+      let r = await talk(seq("TOOL: weather today"), { text: "what's the temperature today" });
+      expect(r.kind === "need" && r.need === "location" && fetched.length === 0, "agent: weather without a location asks the phone for one", JSON.stringify(r));
+      said.length = 0;
+      r = await talk(seq("TOOL: weather tomorrow", "SAY: Rain tomorrow, bring a hood lol"), { text: "will it rain tomorrow", where: { lat: 60.16987, lon: 24.93837 } });
+      expect(r.kind === "say" && r.text === "Rain tomorrow, bring a hood lol" && r.tool === "weather", "agent: weather -> one sentence", JSON.stringify(r));
+      expect(fetched.some((u) => u.includes("latitude=60.17&longitude=24.94")), "agent: the location is rounded (~1 km) before it leaves Ellune");
+      expect(/Tomorrow: rainy, 3 to 10 C, 80% chance of rain/.test(said[1].messages.at(-1).content), "agent: she gets tomorrow's facts", said[1].messages.at(-1).content);
+      expect(said[0].messages[0].content.includes("goofy") && said[0].messages[0].content.includes("Europe/Helsinki") === false &&
+             /\d{2}:\d{2}/.test(said[0].messages[0].content), "agent: her mood and the local time are in the prompt");
+      r = await talk(seq("TOOL: game rust", "SAY: Rust patched on the 7th."), { text: "any rust patch lately" });
+      expect(r.kind === "say" && /Rust last updated/.test(said.at(-1).messages.at(-1).content), "agent: the game tool");
+      r = await talk(seq("TOOL: weather today", "nonsense"), { text: "weather", where: { lat: 1, lon: 2 } });
+      expect(r.kind === "say" && r.text.startsWith("Right now 12 C"), "agent: if she fumbles the second line, the facts are said as is");
+      r = await talk(seq("REMIND: 2026-11-10T18:00 | buy toilet paper"), { text: "remind me tomorrow at 6 to buy toilet paper" });
+      expect(r.kind === "remind" && r.when === "2026-11-10T18:00" && r.text === "buy toilet paper", "agent: a reminder goes back to the phone");
+      r = await talk(seq("NOTE: wifi password is on the router"), { text: "note that" });
+      expect(r.kind === "note" && r.text === "wifi password is on the router", "agent: a note");
+      r = await talk(seq("TOOL: notes"), { text: "what are my notes" });
+      expect(r.kind === "notes", "agent: notes are listed by the phone");
+      r = await talk(seq("ASK: Did you mean Hytale?"), { text: "is there a high tail update" });
+      expect(r.kind === "ask" && r.text === "Did you mean Hytale?", "agent: she can ask what you meant");
+      r = await talk(seq("DO: display second"), { text: "only the second screen" });
+      expect(r.kind === "do" && r.command === "display second", "agent: commands as before");
+      expect(agentLine("TOOL: game ; rm -rf").arg === "rm -rf" && agentLine("REMIND: tomorrow | x").kind === "none" &&
+             agentPrompt("nope", "x").includes("relaxed"), "agent: odd lines");
+    }
+    expect(steamPick({ items: [{ id: 1, name: "A" }] }, "zz") === null && steamPick({}, "a") === null && steamBuild({ data: {} }, 5) === null, "steam helpers: no close match = nothing");
+    // 0.9.1: his log's wrong answers
+    expect(steamPick({ items: [{ id: 2, name: "PAYDAY 2: High Octane Tailor Pack" }] }, "high tail") === null, "steam: 'high tail' isn't a PAYDAY 2 pack");
+    expect(steamPick({ items: [{ id: 3, name: "Construction Simulator 3 - Pocket Edition" }] }, "pocket edition") === null, "steam: 'pocket edition' isn't Construction Simulator");
+    expect(steamPick({ items: [{ id: 4, name: "Counter-Strike 2" }, { id: 5, name: "Counter-Strike 2 Soundtrack" }] }, "counter strike 2").id === 4, "steam: close names still match, soundtracks don't");
+    expect(steamPick({ items: [{ id: 6, name: "Baldur's Gate 3 - Digital Deluxe Edition Upgrade" }, { id: 7, name: "Baldur's Gate 3" }] }, "baldurs gate 3").id === 7, "steam: apostrophes, shortest wins");
   }
   async function remove(key, codeV, t = now) {
     const body = enc.encode(JSON.stringify({ key, code: codeV }));

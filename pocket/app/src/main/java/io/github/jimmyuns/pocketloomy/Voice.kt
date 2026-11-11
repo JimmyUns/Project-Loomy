@@ -53,6 +53,34 @@ object Voice {
     private val convo = ArrayList<Pair<String, String>>()
     private var convoAt = 0L
     private var herAskAt = 0L                  // she asked a question: the next sentence is the answer (20 s)
+    private var typedTurn = false              // 2.24e: this turn was typed: she answers in text only, no voice
+
+    /** 2.24e: something typed in the app's chat bar (or the notification's Type): the same brain as speech,
+     *  answered in text only (if you typed, you probably can't have sound on) */
+    fun typed(c: Context, raw: String) {
+        ctx = c.applicationContext
+        val t = raw.trim().take(300)
+        if (t.isEmpty()) return
+        typedTurn = true
+        val st = Store(ctx)
+        val k = if (!st.btMode) (elluneKey ?: ElluneKey.peek()) else null
+        val up = k != null && ElluneEar.online(ctx)
+        askingNow()?.let { q ->                                   // "Which view?" from the PC
+            if (Words.isCancel(t)) { asking = null; add(t, "Okay, not picking anything.", false); return }
+            Words.pick(t, q.cmd, q.options)?.let { asking = null; send(it, voice = false); return }
+        }
+        if (SystemClock.elapsedRealtime() - herAskAt < ASK_MS && k != null && up) {   // the answer to her question
+            herAskAt = 0
+            val c2 = Words.command(t)
+            if (Words.knows(c2)) send(c2, voice = false) else understand(k, t)
+            return
+        }
+        Words.gameQuestion(t)?.let { if (k != null && up) { gameAsk(it, t, k); return } }
+        val cmd = Words.command(t)
+        if (Words.knows(cmd)) { send(cmd, voice = false); return }
+        if (k != null && up) { understand(k, t); return }
+        if (cmd.isNotEmpty()) send(cmd, voice = false)          // offline / Bluetooth: as typed, the PC decides
+    }
     fun shownNow(): Shown? = shown?.takeIf { SystemClock.elapsedRealtime() < it.until }
     val history = mutableListOf<Entry>()  // touched on the main thread only
 
@@ -209,6 +237,7 @@ object Voice {
 
     private fun heard(raw: List<String>) {
         errors = 0
+        typedTurn = false
         val now = SystemClock.elapsedRealtime()
         val solo = Store(ctx).solo
         // Whisper on a noise writes things like "[typing]", "you", "Thanks for watching!": not speech
@@ -316,8 +345,17 @@ object Voice {
         val nowT = SystemClock.elapsedRealtime()
         if (nowT - convoAt > CONVO_MS) convo.clear()
         val history = ArrayList(convo)
+        val st = Store(ctx)
         Thread({
-            val (t, why) = Ellune.talkNow(k.priv, k.pub, said, history)
+            val tz = java.util.TimeZone.getDefault().id
+            var (t, why) = Ellune.talkNow(k.priv, k.pub, said, history, st.mood, tz)
+            // she needs a location (the weather): a rough one, only if he allowed it, and only for this question
+            var noWhere = false
+            if (t != null && t.kind == "need" && t.need == "location") {
+                val w = Where.rough(ctx)
+                if (w != null) { val r = Ellune.talkNow(k.priv, k.pub, said, history, st.mood, tz, w); t = r.first; why = r.second }
+                else noWhere = true
+            }
             main.post {
                 partial = ""
                 var speak = ""
@@ -332,6 +370,27 @@ object Voice {
                         herAskAt = SystemClock.elapsedRealtime()
                         speak = t.text
                     }
+                    noWhere -> {
+                        val m = if (Store(ctx).useLocation) "I couldn't get your location right now. Is Location on?"
+                                else "For the weather I need your rough location: turn it on in Settings, Location."
+                        shown = Shown(m, "", SystemClock.elapsedRealtime() + SHOW_MS)
+                        add(said, m, true); speak = m
+                    }
+                    t.kind == "remind" || t.kind == "note" || t.kind == "notes" -> {
+                        val m = when (t.kind) {
+                            "remind" -> Reminders.remind(ctx, t.text, t.whenAt)?.let { r ->
+                                val z = java.time.ZoneId.systemDefault()
+                                "Okay, I'll remind you ${Games.ahead(r.at, System.currentTimeMillis(), z)} at ${Games.clock(r.at, z)}: ${r.text}"
+                            } ?: "That time's already gone, when should I remind you?"
+                            "note" -> { Reminders.note(ctx, t.text); "Noted: ${t.text}" }
+                            else -> Reminders.summary(ctx)
+                        }
+                        remember(said, "SAY: $m")
+                        shown = Shown(m, "", SystemClock.elapsedRealtime() + SHOW_MS)
+                        main.postDelayed({ if (shown != null && shownNow() == null) { shown = null; changed() } }, SHOW_MS + 100)
+                        add(said, m, false)
+                        speak = m
+                    }
                     t.kind == "say" -> {
                         remember(said, "SAY: ${t.text}")
                         shown = Shown(t.text, "", SystemClock.elapsedRealtime() + SHOW_MS)
@@ -342,7 +401,7 @@ object Voice {
                     !quiet -> miss(said)
                 }
                 // she speaks with the mic still paused, then listening carries on (herAskAt counts from the end)
-                Speaker.say(ctx, speak) {
+                Speaker.say(ctx, if (typedTurn) "" else speak) {
                     thinking = false
                     if (herAskAt != 0L) herAskAt = SystemClock.elapsedRealtime()
                     if (state == State.LISTENING) next(150) else changed()
@@ -357,8 +416,8 @@ object Voice {
         convoAt = SystemClock.elapsedRealtime()
     }
 
-    private fun gameAsk(q: Games.Question, said: String) {
-        val k = elluneKey
+    private fun gameAsk(q: Games.Question, said: String, key: ElluneKey.Key? = null) {
+        val k = key ?: elluneKey
         if (k == null || !ElluneEar.online(ctx)) {
             add(said, if (Store(ctx).btMode) "Game updates come from Ellune, and Bluetooth mode doesn't use her."
                       else "Game updates come from Ellune: this needs internet (and the phone on her guest list).", true)
@@ -380,7 +439,7 @@ object Voice {
                     add(said, "$big \u00B7 ${small.replace("\n", " \u00B7 ")}", false)
                     remember(said, "SAY: ${info.name}: $big")
                     thinking = true                                   // paused while she says it
-                    Speaker.say(ctx, "${info.name}. $big") { thinking = false; if (state == State.LISTENING) next(150) else changed() }
+                    Speaker.say(ctx, if (typedTurn) "" else "${info.name}. $big") { thinking = false; if (state == State.LISTENING) next(150) else changed() }
                     return@post
                 } else add(said, why ?: "Ellune couldn't answer.", true)
                 if (state == State.LISTENING) next(150) else changed()

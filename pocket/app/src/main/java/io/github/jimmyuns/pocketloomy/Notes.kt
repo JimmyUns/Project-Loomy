@@ -67,7 +67,9 @@ object Notes {
             bps < 1024L * 1024 -> bps / 1024.0 to "KB/s"
             else -> bps / (1024.0 * 1024.0) to "MB/s"
         }
-        val num = if (v == 0.0) "0" else if (v < 10) String.format("%.1f", v) else minOf(v.toLong(), 999).toString()
+        // 2.24e (his ask): KB/s are whole numbers ("6", never "5.6", which looks like MB); only MB/s keep one decimal
+        val num = if (v == 0.0) "0" else if (unit == "MB/s" && v < 10) String.format(java.util.Locale.US, "%.1f", v)
+                  else minOf(Math.round(v), 999L).toString()
         return num to unit
     }
 
@@ -136,6 +138,15 @@ object Notes {
         if (listening) b.addAction(action(ctx, "Stop listening", broadcast(ctx, Actions.STOP_LISTEN, 4)))
         else if (s.on) b.addAction(action(ctx, "Talk", talk(ctx)))
         if (s.on) b.addAction(action(ctx, "Turn off", broadcast(ctx, Actions.OFF, 1)))
+        // 2.24e: type to Loomy right in the notification (Android's reply box, like answering a message); her
+        // answer shows here. No extra permission, works on top of any app.
+        if (s.on) {
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (android.os.Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+            val pi = PendingIntent.getBroadcast(ctx, 5, Intent(ctx, Actions::class.java).setAction(Actions.TYPE), flags)
+            val box = android.app.RemoteInput.Builder(Actions.TYPED).setLabel("Type to Loomy").build()
+            b.addAction(Notification.Action.Builder(Icon.createWithResource(ctx, R.drawable.ic_stat), "Type", pi)
+                .addRemoteInput(box).setAllowGeneratedReplies(false).build())
+        }
         else if (s.showNotif) b.addAction(action(ctx, "Turn Loomy on", broadcast(ctx, Actions.ON, 2)))
         return b.build()
     }

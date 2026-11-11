@@ -50,6 +50,18 @@ class Store(ctx: Context) {
     var solo: Boolean
         get() = prefs.getBoolean("solo", false)
         set(v) { prefs.edit().putBoolean("solo", v).apply() }
+    /** 2.24e: how she answers: serious / chill / goofy */
+    var mood: String
+        get() = prefs.getString("mood", "chill") ?: "chill"
+        set(v) { prefs.edit().putString("mood", v).apply() }
+    /** 2.24e: send a rough location (about 1 km) to Ellune, only when a question needs it (the weather) */
+    var useLocation: Boolean
+        get() = prefs.getBoolean("use_location", false)
+        set(v) { prefs.edit().putBoolean("use_location", v).apply() }
+    /** 2.24e: her notes and reminders, one JSON object per line ({"t":"...","at":ms or 0,"id":n}) */
+    var notesRaw: String
+        get() = prefs.getString("notes", "") ?: ""
+        set(v) { prefs.edit().putString("notes", v).apply() }
     /** 2.24d: she speaks her answers out loud (quiet anyway on silent / vibrate) */
     var talkBack: Boolean
         get() = prefs.getBoolean("talk_back", true)

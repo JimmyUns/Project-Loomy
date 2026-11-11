@@ -501,6 +501,9 @@ fun main() {
         // a UTC time in summer shows as EEST (+3)
         val summer = java.time.ZonedDateTime.of(2026, 7, 1, 15, 0, 0, 0, java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
         check(Games.clock(summer, z) == "6:00 PM" && Games.clock(today, z) == "6:12 PM", "game: EEST in summer, EET in winter")
+        val tmr = java.time.ZonedDateTime.of(2026, 11, 8, 18, 0, 0, 0, z).toInstant().toEpochMilli()
+        val wk = java.time.ZonedDateTime.of(2026, 11, 12, 9, 0, 0, 0, z).toInstant().toEpochMilli()
+        check(Games.ahead(today + 3_600_000, now, z) == "today" && Games.ahead(tmr, now, z) == "tomorrow" && Games.ahead(wk, now, z) == "on Thu 12/11/2026", "reminder: today / tomorrow / a date")
     }
 
     // ---- 2.23: the update button's checks (Update.kt), against GitHub's real answer for v2.22

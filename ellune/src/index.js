@@ -35,7 +35,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "0.9";
+const VERSION = "1.0";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -335,6 +335,72 @@ async function hear(body, ai) {
 // 0.9 (his ask: an action helper that talks back, not a chatbot): with "talk":true she may also ASK a short
 // question or SAY a short answer, and gets the last few lines of the conversation ("history") so "yes" or
 // "the second one" make sense. Old phones (no "talk") get exactly the 0.8 behaviour.
+// 1.0 (his ask: a small Jarvis, short answers): she also has tools (weather, games), reminders and notes (the
+// phone keeps those), a mood, and judgment rules. TALK below is the 0.9 prompt, kept for phones that don't send
+// "agent":true; AGENT is the 1.0 one.
+const MOODS = {
+  serious: "serious and to the point",
+  chill: "relaxed and friendly, like a mate",
+  goofy: "goofy and jokey, casual slang, but still actually helpful",
+};
+export function agentPrompt(mood, nowText) {
+  return `You are Loomy, a voice helper on someone's phone. You control their Windows PC and answer quick questions.
+It is now ${nowText} where they are.
+Reply with exactly ONE line, one of:
+DO: <one Loomy command>              run it on the PC (only commands from the list below)
+ASK: <short question>                two really different things could be meant, or something is missing
+SAY: <short answer>                  a one-sentence answer: something you know, a reply, or that you can't do it
+TOOL: weather today|tomorrow         weather, temperature, rain, "do I need a jacket"
+TOOL: game <name>                    whether / when a game last updated or patched
+REMIND: <YYYY-MM-DDTHH:MM> | <what>  a reminder at that local time ("tomorrow at 6pm" -> the date + 18:00)
+NOTE: <what>                         something to keep in their notes, no time
+TOOL: notes                          they ask what's in their notes or reminders
+How to judge: if you're pretty sure what they mean, just do it. If two meanings are really different, ASK one short
+question. If it doesn't make sense or sounds misheard, ASK what they meant ("Did you mean Hytale?"). If nothing above
+can do it, SAY you can't do that yet. Never make facts up: if you don't know, SAY so.
+Style: ${MOODS[mood] || MOODS.chill}. ONE sentence, under 20 words, no lists.
+Earlier lines of this conversation may come first: use them for "yes", "do it", "the second one".
+Below, "phrase -> command" means DO: command, and "-> NONE" means it's not a PC command.
+` + COMMANDS.split("\n").slice(1).join("\n");
+}
+
+const WMO = [[0, "clear"], [3, "cloudy"], [48, "foggy"], [57, "drizzly"], [67, "rainy"], [77, "snowy"], [82, "showery"], [86, "snow showers"], [99, "stormy"]];
+const sky = (c) => (WMO.find(([max]) => c <= max) || [0, "unclear"])[1];
+
+// Open-Meteo (free, no key) -> plain facts for her to say in one sentence
+export async function weatherFacts(where, day, fetchFn = fetch) {
+  const lat = Math.round(Number(where.lat) * 100) / 100, lon = Math.round(Number(where.lon) * 100) / 100;
+  const r = await fetchFn(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m` +
+    `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto&forecast_days=2`, { headers: { "user-agent": UA } });
+  if (!r.ok) return null;
+  const w = await r.json();
+  const d = w.daily || {}, i = day === "tomorrow" ? 1 : 0;
+  const f = (v) => Math.round(Number(v));
+  const daily = `${day === "tomorrow" ? "Tomorrow" : "Today"}: ${sky(d.weather_code?.[i])}, ${f(d.temperature_2m_min?.[i])} to ${f(d.temperature_2m_max?.[i])} C, ` +
+                `${f(d.precipitation_probability_max?.[i])}% chance of rain`;
+  const now = w.current && day !== "tomorrow" ? `Right now ${f(w.current.temperature_2m)} C and ${sky(w.current.weather_code)}, wind ${f(w.current.wind_speed_10m)} km/h. ` : "";
+  return now + daily + ".";
+}
+
+function localText(tz, ms) {
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(ms));
+  } catch { return new Date(ms).toISOString(); }
+}
+
+// her line -> what to do. Adds TOOL / REMIND / NOTE to talkLine's DO / ASK / SAY.
+export function agentLine(raw) {
+  const line = String(raw || "").split("\n").map((l) => l.trim()).find((l) => l) || "";
+  let m = /^TOOL\s*:\s*(weather|game|notes)\b\s*(.*)$/i.exec(line);
+  if (m) return { kind: "tool", tool: m[1].toLowerCase(), arg: m[2].replace(/[^\w '.:-]/g, "").trim().slice(0, 60) };
+  m = /^REMIND\s*:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})\s*\|\s*(.+)$/i.exec(line);
+  if (m) return { kind: "remind", when: m[1], text: m[2].replace(/[\u0000-\u001f"]+/g, " ").trim().slice(0, 160) };
+  m = /^NOTE\s*:\s*(.+)$/i.exec(line);
+  if (m) return { kind: "note", text: m[1].replace(/[\u0000-\u001f"]+/g, " ").trim().slice(0, 160) };
+  return talkLine(line);
+}
+
 const TALK = `You are Loomy, a voice helper on someone's phone that controls their Windows PC. You don't chat: you get things done.
 Reply with exactly ONE line, one of these:
 DO: <one Loomy command>   when it's clear what to run
@@ -363,16 +429,56 @@ export function talkLine(raw) {
   return t ? { kind: what.toLowerCase(), command: "", text: t } : { kind: "none", command: "", text: "" };
 }
 
-async function understand(body, ai) {
-  let text = "", talk = false, history = [];
+// 1.0: the agent. One model call; if she picks a tool, Ellune runs it and asks her once more to say the result.
+async function agent(text, history, b, ai, env, fetchFn, now) {
+  const tz = typeof b.tz === "string" && /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(b.tz) ? b.tz : "UTC";
+  const mood = MOODS[b.mood] ? b.mood : "chill";
+  const msgs = [{ role: "system", content: agentPrompt(mood, localText(tz, now)) }];
+  for (const h of history) {
+    const u = String((h && h.u) || "").slice(0, 300), a = String((h && h.a) || "").slice(0, 200);
+    if (u && a) msgs.push({ role: "user", content: u }, { role: "assistant", content: a });
+  }
+  msgs.push({ role: "user", content: text });
+  let first;
+  try { first = agentLine((await ai.run(LLM, { messages: msgs, max_tokens: 64, temperature: 0 })).response); }
+  catch { return reply(503, { ok: false, error: "ai busy or out of free use" }); }
+  if (first.kind !== "tool") return reply(200, { ok: true, ...first });
+  if (first.tool === "notes") return reply(200, { ok: true, kind: "notes", command: "", text: "" });   // the phone has them
+
+  // run the tool, then she says it in one sentence (in her mood)
+  let facts = null;
+  if (first.tool === "weather") {
+    const w = b.where;
+    if (!w || !Number.isFinite(Number(w.lat)) || !Number.isFinite(Number(w.lon)) || Math.abs(w.lat) > 90 || Math.abs(w.lon) > 180)
+      return reply(200, { ok: true, kind: "need", need: "location", command: "", text: "" });
+    facts = await weatherFacts(w, /tomorrow/i.test(first.arg) ? "tomorrow" : "today", fetchFn).catch(() => null);
+    if (!facts) facts = "The weather service didn't answer.";
+  } else {
+    const r = await gameInfo(first.arg, env, fetchFn);
+    const g = r.body;
+    if (!g.ok) facts = g.error || "No answer about that game.";
+    else if (!g.time) facts = `${g.name}: no new patch seen since Ellune started watching${g.since ? " on " + localText(tz, g.since) : ""}.`;
+    else facts = `${g.name} last updated ${localText(tz, g.time)}${g.kind === "riot" ? " (give or take 15 minutes)" : ""}. It is now ${localText(tz, now)}.`;
+  }
+  msgs.push({ role: "assistant", content: `TOOL: ${first.tool} ${first.arg}`.trim() },
+            { role: "user", content: `Tool result: ${facts}\nNow answer my question with SAY: one sentence, in your style.` });
+  let said = null;
+  try { said = agentLine((await ai.run(LLM, { messages: msgs, max_tokens: 64, temperature: 0 })).response); } catch {}
+  if (!said || said.kind !== "say") said = { kind: "say", command: "", text: facts.slice(0, 160) };
+  return reply(200, { ok: true, ...said, tool: first.tool });
+}
+
+async function understand(body, ai, env, fetchFn = fetch, now = Date.now()) {
+  let text = "", talk = false, history = [], b = {};
   try {
-    const b = JSON.parse(new TextDecoder().decode(body));
+    b = JSON.parse(new TextDecoder().decode(body));
     text = String(b.text || "");
     talk = b.talk === true;
     if (Array.isArray(b.history)) history = b.history.slice(-6);
   } catch { /* not json */ }
   text = text.replace(/[\u0000-\u001f]+/g, " ").trim();
   if (!text || text.length > 300) return reply(400, { ok: false, error: "text missing or over 300 characters" });
+  if (b.agent === true) return agent(text, history, b, ai, env, fetchFn, now);
   if (talk) {
     const msgs = [{ role: "system", content: TALK }];
     for (const h of history) {
@@ -598,12 +704,23 @@ export async function riotTick(env, now = Date.now(), fetchFn = fetch) {
 }
 
 // "rust" -> the Steam game: {id, name} (an exact name wins over the first result)
-const simple = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const simple = (t) => String(t).toLowerCase().replace(/['\u2019]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+// 0.9.1 (his log: "high tail" became a PAYDAY 2 DLC, "pocket edition" a Construction Simulator): Steam's search
+// always returns *something*, so only a close match counts: every word he said is in the name, the name is at most
+// two words longer, and no soundtracks / DLC packs unless he asked for one. Exact name first, then the shortest.
+const EXTRA = /\b(soundtrack|ost|dlc|season pass|pack|expansion|demo|bundle|artbook|skin|costume)\b/;
 export function steamPick(search, q) {
   const items = (search && Array.isArray(search.items) ? search.items : []).filter((i) => i && Number.isInteger(i.id) && typeof i.name === "string");
-  if (!items.length) return null;
-  const want = simple(q);
-  const it = items.find((i) => simple(i.name) === want) || items[0];
+  const want = simple(q), qt = want.split(" ").filter(Boolean);
+  if (!qt.length) return null;
+  const ok = items.filter((i) => {
+    const n = simple(i.name), nt = n.split(" ");
+    if (n === want) return true;
+    if (EXTRA.test(n) && !EXTRA.test(want)) return false;
+    return qt.every((w) => nt.includes(w)) && nt.length - qt.length <= 2;
+  });
+  if (!ok.length) return null;
+  const it = ok.find((i) => simple(i.name) === want) || ok.sort((a, b) => a.name.length - b.name.length)[0];
   return { id: it.id, name: it.name.slice(0, 80) };
 }
 // api.steamcmd.net's answer -> {time (ms), build} of the public branch, or null
@@ -614,6 +731,30 @@ export function steamBuild(info, id) {
   return t > 0 ? { time: t * 1000, build: String(pub.buildid || "").slice(0, 20) } : null;
 }
 
+// the lookup itself: {status, body} (shared by /game and her "TOOL: game")
+export async function gameInfo(q0, env, fetchFn = fetch) {
+  const q = simple(q0 || "").slice(0, 60);
+  if (!q) return { status: 400, body: { ok: false, error: "which game?" } };
+  for (const [product, r] of Object.entries(RIOT)) {
+    if (!r.says.test(q)) continue;
+    if (!env || !env.GUESTS) return { status: 503, body: { ok: false, error: "no guests binding" } };
+    const res = await guestsStub(env).fetch(new Request("https://guests/riot-get", { method: "POST", body: "{}" }));
+    const e = ((await res.json()).log || {})[product];
+    return { status: 200, body: { ok: true, name: r.name, kind: "riot", time: e ? e.changed : null, version: e ? e.version : "", since: e ? e.since : null } };
+  }
+  try {
+    const s = await fetchFn(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&l=english&cc=US`, { headers: { "user-agent": UA } });
+    const hit = s.ok ? steamPick(await s.json(), q) : null;
+    if (!hit) return { status: 404, body: { ok: false, error: `no game called ${q} on Steam (games outside Steam, like Fortnite, aren't covered yet)` } };
+    const i = await fetchFn(`https://api.steamcmd.net/v1/info/${hit.id}`, { headers: { "user-agent": UA } });
+    const bl = i.ok ? steamBuild(await i.json(), hit.id) : null;
+    if (!bl) return { status: 502, body: { ok: false, error: `couldn't get ${hit.name}'s builds right now` } };
+    return { status: 200, body: { ok: true, name: hit.name, kind: "steam", time: bl.time, version: bl.build, since: null } };
+  } catch {
+    return { status: 502, body: { ok: false, error: "couldn't reach Steam right now" } };
+  }
+}
+
 async function game(request, env, path, now, fetchFn = fetch) {
   if (request.method !== "POST") return reply(405, { ok: false, error: "method not allowed" });
   const body = await readCapped(request, 512);
@@ -622,26 +763,8 @@ async function game(request, env, path, now, fetchFn = fetch) {
   if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
   let b = {};
   try { b = JSON.parse(new TextDecoder().decode(body)); } catch {}
-  const q = simple(b.q || "").slice(0, 60);
-  if (!q) return reply(400, { ok: false, error: "which game?" });
-  for (const [product, r] of Object.entries(RIOT)) {
-    if (!r.says.test(q)) continue;
-    if (!env || !env.GUESTS) return reply(503, { ok: false, error: "no guests binding" });
-    const res = await guestsStub(env).fetch(new Request("https://guests/riot-get", { method: "POST", body: "{}" }));
-    const e = ((await res.json()).log || {})[product];
-    return reply(200, { ok: true, name: r.name, kind: "riot", time: e ? e.changed : null, version: e ? e.version : "", since: e ? e.since : null });
-  }
-  try {
-    const s = await fetchFn(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&l=english&cc=US`, { headers: { "user-agent": UA } });
-    const hit = s.ok ? steamPick(await s.json(), q) : null;
-    if (!hit) return reply(404, { ok: false, error: `no game called ${q}` });
-    const i = await fetchFn(`https://api.steamcmd.net/v1/info/${hit.id}`, { headers: { "user-agent": UA } });
-    const bl = i.ok ? steamBuild(await i.json(), hit.id) : null;
-    if (!bl) return reply(502, { ok: false, error: `couldn't get ${hit.name}'s builds right now` });
-    return reply(200, { ok: true, name: hit.name, kind: "steam", time: bl.time, version: bl.build, since: null });
-  } catch {
-    return reply(502, { ok: false, error: "couldn't reach Steam right now" });
-  }
+  const r = await gameInfo(b.q, env, fetchFn);
+  return reply(r.status, r.body);
 }
 
 // ---------------------------------------------------------------- routes
@@ -680,7 +803,7 @@ export default {
       if (!g.name) return reply(401, { ok: false, guest: false, error: g.why });
       const ai = env && env.AI;
       if (!ai) return reply(503, { ok: false, error: "no AI binding" });
-      return path === "/hear" ? hear(body, ai) : understand(body, ai);
+      return path === "/hear" ? hear(body, ai) : understand(body, ai, env, (ctx && ctx.fetch) || fetch, now);
     }
 
     return reply(404, { ok: false, error: "not found" });

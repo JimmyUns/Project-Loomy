@@ -159,6 +159,21 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **v2.24e (Nov 10), "do everything" (his words, no floating bubble):** built, not tried by him yet.
+  - Main screen (`MainActivity.buildUi`): power card with the one `onSwitch` (gone from Settings), mic tap = talk
+    (starts listening if muted, then `Voice.tap`), no hold gesture, mode as two segments, bottom bar Mute / Type /
+    History, the top pill removed. Type panel = last 3 lines as bubbles + box → `Voice.typed` (same brain as speech:
+    "Which view?" picks, her questions, game questions, rules, then the agent; `typedTurn` = no TTS). Notification
+    "Type" action with RemoteInput → `Actions.TYPE`. Settings buttons full width (`full()`).
+  - KB/s whole numbers (`Notes.speedParts`). Steam matching strict (`steamPick`: all words, ≤2 extra, no DLC/OST).
+  - Ellune **1.0** agent (`/understand` with `agent:true`): `agentPrompt` (DO/ASK/SAY/TOOL weather|game|notes/
+    REMIND/NOTE, judgment rules, mood, local time from `tz`), one tool round (`weatherFacts` Open-Meteo, `gameInfo`),
+    then she says it in one sentence (falls back to the raw facts). Weather without `where` → `{kind:"need"}` → the
+    phone sends a rough location (`Where.kt`, coarse permission, Settings switch, rounded to 2 decimals) and retries.
+  - Phone keeps notes/reminders (`Reminders.kt`, `Store.notesRaw`), reminders via `AlarmManager.setWindow` (≤5 min
+    late, no exact-alarm permission), notification with Done / In 1 hour, Boot reschedules. `Store.mood`.
+  - **Not done yet (tell him):** web search tool, game update alerts (opt-in, phone polling), PC auto-update,
+    places/restaurants, spoken reminders (notifications only), "Which view?" spoken.
 - **The helper plan (his, Nov 8-9):** Pocket Loomy as an *action* helper, not a chatbot ("not Jarvis"). Steps agreed:
   1 talk back + ask when unsure + remember a minute (**v2.24d, built**), 2 reminders/notes with notifications (his
   choice per note), 3 game alerts opt-in per game with "update it?" (phone polls Ellune ~30 min; no Firebase), 4 the

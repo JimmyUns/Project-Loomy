@@ -13,6 +13,13 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.24e", L"2026-11-10", {
+        L"Pocket Loomy: new main screen, On/Off at the top, Mute/Type/History.",
+        L"Type to Loomy in the app or right in the notification.",
+        L"She answers quick questions, asks when unsure, has a mood.",
+        L"Weather, reminders with notifications, and notes.",
+        L"Game lookups don't guess wrong games any more.",
+        0 } },
     { L"2.24d", L"2026-11-09", {
         L"Pocket Loomy talks back with the phone's voice.",
         L"Not sure what you mean? She asks, and you just answer.",

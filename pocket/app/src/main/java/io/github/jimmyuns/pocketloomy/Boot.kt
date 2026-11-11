@@ -10,6 +10,7 @@ class Boot : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         Store(ctx).on = false
+        Reminders.rescheduleAll(ctx)                            // 2.24e: alarms don't survive a reboot
         if (Store(ctx).netSpeed) Pocket.sync(ctx) else Notes.syncOff(ctx)
     }
 }
