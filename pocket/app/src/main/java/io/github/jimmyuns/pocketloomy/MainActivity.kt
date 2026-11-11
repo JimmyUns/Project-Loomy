@@ -826,7 +826,9 @@ class MainActivity : Activity() {
         modeBtn.text = "${modeName(store.solo)}  \u25BE"
         modeBtn2.text = modeBtn.text
 
-        if (!isPaired || phase == Phase.PAIRING) {
+        // 2.24f: a run-out pairing in Ellune mode keeps the main screen (she still answers; PC commands say why)
+        val usable = isPaired || (t != null && !store.btMode && ElluneKey.peek() != null)
+        if (!usable || phase == Phase.PAIRING) {
             powerBig.visibility = View.GONE
             powerSmall.visibility = View.INVISIBLE
             setup.visibility = View.VISIBLE
@@ -1326,8 +1328,7 @@ class MainActivity : Activity() {
         answer = ""
         if (!store.on) { toggleOn(true); return }
         if (Voice.state == Voice.State.OFF) {
-            Pocket.talk(this, true)?.let { problem(it); return }
-            mic.postDelayed({ Voice.tap(this) }, 400)                       // once it's listening: talk now
+            Pocket.talk(this, true)?.let { problem(it) }                     // starting already counts as "Loomy"
             return
         }
         Voice.tap(this)

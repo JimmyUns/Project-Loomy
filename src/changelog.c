@@ -13,6 +13,11 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.24f", L"2026-11-11", {
+        L"Fixed: the mic stopping listening by itself.",
+        L"Ellune works without the PC, even with the pairing run out.",
+        L"\"Test\" gets an answer instead of becoming a PC command.",
+        0 } },
     { L"2.24e", L"2026-11-10", {
         L"Pocket Loomy: new main screen, On/Off at the top, Mute/Type/History.",
         L"Type to Loomy in the app or right in the notification.",

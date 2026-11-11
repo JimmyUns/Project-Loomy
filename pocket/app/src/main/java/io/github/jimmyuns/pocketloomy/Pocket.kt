@@ -57,7 +57,9 @@ object Pocket {
         return when {
             t == null && s.pcAddress == null -> "Choose your PC in the app first, or scan the QR in /remote."
             t == null -> "Pair with your PC in the app first."
-            !t.valid() -> "The pairing ran out (7 days). Pair again in the app."
+            // 2.24f: with the pairing run out, Ellune mode still talks to her (questions, weather, reminders):
+            // only PC commands need a fresh pairing
+            !t.valid() && (s.btMode || ElluneKey.peek() == null) -> "The pairing ran out (7 days). Pair again in the app."
             !s.btMode -> null
             else -> readyBt(ctx)
         }

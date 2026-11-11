@@ -35,7 +35,7 @@
 // and sends x-ellune-key, x-ellune-time (unix ms) and x-ellune-sig. Requests more than 60 s off are refused, so
 // an old request can't be sent again later. The list is public data (public keys only), nothing secret here.
 
-const VERSION = "1.0";
+const VERSION = "1.0.1";
 const SKEW_MS = 60_000;
 
 function reply(status, body, extra = {}) {
@@ -343,9 +343,9 @@ const MOODS = {
   chill: "relaxed and friendly, like a mate",
   goofy: "goofy and jokey, casual slang, but still actually helpful",
 };
-export function agentPrompt(mood, nowText) {
+export function agentPrompt(mood, nowText, pcOffline = false) {
   return `You are Loomy, a voice helper on someone's phone. You control their Windows PC and answer quick questions.
-It is now ${nowText} where they are.
+It is now ${nowText} where they are.${pcOffline ? "\nTheir PC is OFFLINE right now: only use DO when they clearly ask for a PC command (then it fails and they'll see why)." : ""}
 Reply with exactly ONE line, one of:
 DO: <one Loomy command>              run it on the PC (only commands from the list below)
 ASK: <short question>                two really different things could be meant, or something is missing
@@ -358,6 +358,8 @@ TOOL: notes                          they ask what's in their notes or reminders
 How to judge: if you're pretty sure what they mean, just do it. If two meanings are really different, ASK one short
 question. If it doesn't make sense or sounds misheard, ASK what they meant ("Did you mean Hytale?"). If nothing above
 can do it, SAY you can't do that yet. Never make facts up: if you don't know, SAY so.
+A greeting or a check like "test", "hello", "you there?", "hey" is NOT a command: SAY something short back.
+"open" (bring up Loomy on the PC) only when they ask to open or show Loomy itself.
 Style: ${MOODS[mood] || MOODS.chill}. ONE sentence, under 20 words, no lists.
 Earlier lines of this conversation may come first: use them for "yes", "do it", "the second one".
 Below, "phrase -> command" means DO: command, and "-> NONE" means it's not a PC command.
@@ -433,7 +435,7 @@ export function talkLine(raw) {
 async function agent(text, history, b, ai, env, fetchFn, now) {
   const tz = typeof b.tz === "string" && /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){0,2}$/.test(b.tz) ? b.tz : "UTC";
   const mood = MOODS[b.mood] ? b.mood : "chill";
-  const msgs = [{ role: "system", content: agentPrompt(mood, localText(tz, now)) }];
+  const msgs = [{ role: "system", content: agentPrompt(mood, localText(tz, now), b.pc === "offline") }];
   for (const h of history) {
     const u = String((h && h.u) || "").slice(0, 300), a = String((h && h.a) || "").slice(0, 200);
     if (u && a) msgs.push({ role: "user", content: u }, { role: "assistant", content: a });

@@ -25,7 +25,7 @@ await check("ping POST", "POST", "/ping", 405, false);
 await check("root", "GET", "/", 404, false);
 await check("other path", "GET", "/files", 404, false);
 await check("trailing slash", "GET", "/ping/", 404, false);
-{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "1.0", "ping body"); }
+{ const { body } = await call("GET", "/ping"); expect(body.service === "ellune" && body.version === "1.0.1", "ping body"); }
 
 // ---- the guest list
 const b64url = (u8) => Buffer.from(u8).toString("base64url");
@@ -426,6 +426,12 @@ expect(cleanCommand("display pc") === "display pc" && cleanCommand("si general")
       expect(r.kind === "ask" && r.text === "Did you mean Hytale?", "agent: she can ask what you meant");
       r = await talk(seq("DO: display second"), { text: "only the second screen" });
       expect(r.kind === "do" && r.command === "display second", "agent: commands as before");
+      said.length = 0;
+      await talk(seq("SAY: I'm here!"), { text: "test", pc: "offline" });
+      expect(said[0].messages[0].content.includes("PC is OFFLINE") && said[0].messages[0].content.includes('"test"'), "agent: she knows the PC is offline, and that 'test' isn't a command");
+      said.length = 0;
+      await talk(seq("SAY: hi"), { text: "hi" });
+      expect(!said[0].messages[0].content.includes("OFFLINE"), "agent: online = no offline line");
       expect(agentLine("TOOL: game ; rm -rf").arg === "rm -rf" && agentLine("REMIND: tomorrow | x").kind === "none" &&
              agentPrompt("nope", "x").includes("relaxed"), "agent: odd lines");
     }
