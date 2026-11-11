@@ -350,13 +350,17 @@ object Ellune {
         post(priv, pub, "/understand", "{\"text\":${jsonQuote(text.take(300))}}".toByteArray(), "application/json", "command", 6000)
 
     // ------------------------------------------------------------------ 2.24d: talking back (Ellune 0.9 talk mode)
-    /** what she wants to do: "do" a command, "ask" a question, "say" something, or "none" */
-    class Talk(val kind: String, val command: String, val text: String)
+    /** what she wants to do: "do" a command, "ask" a question, "say" something, or "none";
+     *  2.24e (Ellune 1.0): also "need" (a location), "remind" (when = local "YYYY-MM-DDTHH:MM"), "note", "notes" */
+    class Talk(val kind: String, val command: String, val text: String, val need: String = "", val whenAt: String = "")
 
     /** the conversation so far: (what he said, her line "DO: x" / "ASK: ..." / "SAY: ...") */
-    fun talkNow(priv: PrivateKey, pub: ByteArray, text: String, history: List<Pair<String, String>>): Pair<Talk?, String?> {
+    fun talkNow(priv: PrivateKey, pub: ByteArray, text: String, history: List<Pair<String, String>>,
+                mood: String = "chill", tz: String = "UTC", where: Pair<Double, Double>? = null): Pair<Talk?, String?> {
         val h = history.takeLast(6).joinToString(",") { "{\"u\":${jsonQuote(it.first.take(300))},\"a\":${jsonQuote(it.second.take(200))}}" }
-        val body = "{\"text\":${jsonQuote(text.take(300))},\"talk\":true,\"history\":[$h]}"
+        // 2.24e: the agent (Ellune 1.0). A location goes only when she asked for one, rounded to ~1 km.
+        val w = where?.let { (la, lo) -> ",\"where\":{\"lat\":${Math.round(la * 100) / 100.0},\"lon\":${Math.round(lo * 100) / 100.0}}" } ?: ""
+        val body = "{\"text\":${jsonQuote(text.take(300))},\"talk\":true,\"agent\":true,\"mood\":${jsonQuote(mood)},\"tz\":${jsonQuote(tz)}$w,\"history\":[$h]}"
         val (st, out) = request(priv, pub, "POST", "/understand", body.toByteArray())
         if (st != 200) return null to when (st) {
             0 -> "couldn't reach her"
@@ -365,7 +369,8 @@ object Ellune {
             else -> jsonString(out, "error") ?: "error $st"
         }
         val kind = jsonString(out, "kind") ?: return Talk("do", jsonString(out, "command") ?: "", "") to null   // an older Ellune
-        return Talk(kind, jsonString(out, "command") ?: "", jsonString(out, "text") ?: "") to null
+        return Talk(kind, jsonString(out, "command") ?: "", jsonString(out, "text") ?: "",
+                    jsonString(out, "need") ?: "", jsonString(out, "when") ?: "") to null
     }
 
     // ------------------------------------------------------------------ 2.25: when did a game last update (0.8)
@@ -382,7 +387,8 @@ object Ellune {
             0 -> "Couldn't reach Ellune."
             401 -> "This phone isn't on Ellune's guest list."
             // a 404 without her "no game called" means she doesn't have /game at all: an older Ellune
-            404 -> if (jsonString(text, "error")?.startsWith("no game") == true) "Ellune found no game called \u201C$q\u201D."
+            404 -> if (jsonString(text, "error")?.startsWith("no game") == true)
+                       (jsonString(text, "error") ?: "").replaceFirstChar { it.uppercase() } + "."
                    else "Ellune is out of date: she needs the 0.8 update (npx wrangler deploy in ellune/)."
             else -> jsonString(text, "error") ?: "Ellune said $st."
         }

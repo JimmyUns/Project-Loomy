@@ -2,6 +2,15 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.24e
+A test build on the way to v2.25.
+- **Pocket Loomy's main screen, redone.** One labelled **On/Off** card at the top (it left Settings). The mic only ever means "talk": tap it and say the command. **Mute**, **Type** and **History** are buttons at the bottom; **Say "Loomy" / Solo** are two visible choices. No more holding.
+- **Type to Loomy**: the Type button opens a chat bar with the last few lines; the notification has a **Type** button too (reply right in it, from any app). Typed questions get text answers, no voice.
+- **She's a small helper now** (Ellune 1.0): quick questions get a one-sentence answer; she asks when something's unclear or sounds misheard ("Did you mean Hytale?"); **weather** ("what's the temperature today?", needs Location in Settings: rough, only when you ask, not kept); **reminders** ("remind me tomorrow at 6 to buy paper" → a notification with Done / In 1 hour); **notes** ("note that...", "what are my notes?").
+- **Her mood** in Settings: Serious, Chill or Goofy.
+- Game lookups don't guess any more: "high tail" won't be a PAYDAY 2 pack. Games outside Steam (Fortnite, Hytale) say they're not covered yet.
+- The speed meter shows whole KB/s ("6 KB/s"); only MB/s keep a decimal. "Add to guest list" and "Check for updates" fit their buttons.
+
 ## v2.24d
 A test build on the way to v2.25. Step 1 of the helper plan.
 - **She talks back** with the phone's own voice (the Samsung one, or whatever Settings → Text-to-speech uses). She says her questions and answers out loud and shows them above the mic. Quiet when the phone is on silent or vibrate; **Talk back** in Settings → Listening turns it off. The mic pauses while she speaks, so she doesn't hear herself.

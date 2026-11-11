@@ -33,6 +33,12 @@ object Games {
         }
     }
 
+    /** a time ahead: "today", "tomorrow", or "on Wed 12/11/2026" (2.24e, reminders) */
+    fun ahead(ms: Long, now: Long, zone: ZoneId): String {
+        val d = ChronoUnit.DAYS.between(Instant.ofEpochMilli(now).atZone(zone).toLocalDate(), Instant.ofEpochMilli(ms).atZone(zone).toLocalDate())
+        return when (d) { 0L -> "today"; 1L -> "tomorrow"; else -> "on ${date(ms, zone)}" }
+    }
+
     /** (the big line, the small line under it) */
     fun answer(q: Kind, i: Info, now: Long, zone: ZoneId): Pair<String, String> {
         val about = if (i.riot) "around " else ""
