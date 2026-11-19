@@ -1,9 +1,10 @@
 # Loomy 3.0 — the plan (agreed with Jimmy, Nov 19 2026). Read this first.
 
 > **3.0 gets its own NEW private repo: `JimmyUns/ProjectLoomyS`** (his call and name, Nov 19). Loomy 2 and Loomy 3
-> are too different to share one. This repo, `JimmyUns/Project-Loomy`, stays exactly as it is: **Loomy 2**, public,
-> kept working. Nothing from 3.0 gets merged here. This file is the bridge between the two: copy it into the new
-> repo as its first handover.
+> are too different to share one. This repo, `JimmyUns/Project-Loomy`, is **Loomy 2: finished at v2.25, then
+> archived** (read-only, kept as saved code like the older versions). **He deletes the `ellune` Worker and
+> everything in it from Cloudflare** (his call, Nov 19: "why have 2 when only to use 1"). Nothing from 3.0 gets
+> merged here. This file is the bridge between the two: copy it into the new repo as its first handover.
 
 > **3.0 is built from zero (his words, Nov 19).** A standalone engine in everything: new server, new desktop app,
 > new phone app, new commands, maybe a new design. **No 2.x code, commands, names, keys or habits carry over.**
@@ -15,14 +16,17 @@ template for 3.0.
 
 ## 1. Where things stand (Nov 19 2026)
 - **Loomy 2 is finished:** he confirmed v2.24f works (mic, typing, "test", weather, so Ellune 1.0.1 is live).
-  It ships as **v2.25**, the last Loomy 2 (same code, version bumped). Only fixes from now on (v2.25a...).
+  It ships as **v2.25**, the last Loomy 2 (same code, version bumped). Then the repo gets archived: no more fixes.
+- **Ellune is being deleted** from Cloudflare (Worker + its storage). After that, everything in Pocket Loomy 2 that
+  went through Ellune (remote PC commands, her answers, weather, reminders, notes, game questions) stops working.
+  He knows and is fine with it: Loomy 2 is retired, not kept running.
 - A stray tag **`V2.24e`** (capital V, built nothing) may still exist in Project-Loomy: remind him to delete it.
 - **3.0:** planned (this file), repo name picked (`ProjectLoomyS`), not created yet (as of Nov 19).
 - **Never finished in 2.x, to rethink for 3.0 (not port):** web search, game update alerts, PC auto-updating
   games, places/restaurants, spoken reminders, a custom voice. Games outside Steam weren't covered.
 
 ## 2. Versions
-- **Loomy 2 (Project-Loomy):** v2.25 is the finished one; fixes as v2.25a, v2.25b...
+- **Loomy 2 (Project-Loomy):** v2.25 is the finished and final one; the repo is archived after it.
 - **Loomy 3 (ProjectLoomyS), his scheme:** test builds are **`v3.0-pre-release-1`, `v3.0-pre-release-2`...**
   until the finished **`v3.0`**. Tags stay lowercase `v`. The update check must sort these right:
   `3.0-pre-release-1 < 3.0-pre-release-2 < ... < 3.0-pre-release-10 < 3.0` (numbers compared as numbers, not text).
@@ -49,14 +53,15 @@ the phone are its hands and mouth.
     without a reason, no RGB-style effects that eat the GPU.
   - **Assume a fresh PC:** nothing from 2.x is installed or relied on (no old config, files, keys or settings).
     He clears 2.x by hand himself: never ship or run a cleanup of 2.x.
-  - **Must not break Loomy 2 while both are installed:** own names, folders, Worker, package name, ports, startup
-    entries; and never grab a hotkey 2.x already uses (2.x: Ctrl+Alt+Space by default) without asking him.
+  - **No collisions with leftovers:** Loomy 2 is retired and he removes it by hand, but 3.0 still uses its own
+    names, folders, package name, ports and startup entries, so a leftover 2.x install can't clash. Pick the hotkey
+    with him (2.x used Ctrl+Alt+Space).
   - The design (look) can be different: talk about it with him later.
 
 ## 4. Decisions so far (all agreed with him)
 - **LS is built from scratch** (updated Nov 19, replacing "Ellune becomes LS, don't rebuild"). A **new Worker**
-  (e.g. `ls`) with its own storage, keys and pairing. The `ellune` Worker stays untouched and keeps serving
-  Loomy 2. Same Cloudflare account is fine (an account isn't 2.x code). Ellune's *ideas* that worked (signed
+  (e.g. `ls`) with its own storage, keys and pairing. The `ellune` Worker and its storage get **deleted** by him
+  (Nov 19). Same Cloudflare account (an account isn't 2.x code). Ellune's *ideas* that worked (signed
   requests, a device guest list, Durable Objects for the live connection, cron, Workers AI) can be re-chosen on
   their merits, but the code is written new, not copied.
 - **Running commands on his PC (his design):** read-only checks run freely (is the PC on, what's running,
@@ -77,8 +82,8 @@ the phone are its hands and mouth.
 - **Files and notes:** Cloudflare R2 (free tier is plenty for notes and small files).
 - **Private repo** (his worry: his logic and his life shouldn't be public). Private repos are free.
   - **Access for Claude:** the LoomyBot token is a classic PAT with only `public_repo`: it can't touch a private repo.
-    He makes a **fine-grained token** for ProjectLoomyS (Contents + Pull requests read/write; add Project-Loomy too
-    if Loomy 2 still needs fixes) and puts it in the project's `github-bot.txt`. In Cowork, `add_repo` also works
+    He makes a **fine-grained token** for ProjectLoomyS only (Contents + Pull requests read/write) and puts it in
+    the project's `github-bot.txt`. In Cowork, `add_repo` also works
     once the repo exists. Claude can't create the repo: he does.
   - Private repos get a monthly GitHub Actions minutes allowance (builds of a few minutes each: fine).
   - **Updates in 3.0 can't come from GitHub release links** (private links aren't public): the release workflow
@@ -89,14 +94,15 @@ the phone are its hands and mouth.
   `name`. Deploys don't wait for GitHub checks: fine, only he merges to `main`. Connect it once the first LS PR
   (with `wrangler.toml`) is merged. Rejected: a VPS (costs, upkeep), GitLab/Codeberg (nothing gained), keys pasted
   in chat.
-- **Keep Loomy 2 working while 3.0 is built** (he uses it daily): Loomy 2 + Ellune keep running untouched until he
-  decides 3.0 replaces them. Pocket Loomy 3 installs **next to** the 2.x app (decided Nov 19).
+- **Loomy 2 is retired, not kept running** (updated Nov 19, replacing "keep 2.x working while 3.0 is built"):
+  v2.25 released, repo archived, Ellune deleted. Pocket Loomy 3 still has its own package name and key, so it's a
+  separate app, never an update of the 2.x one.
 
 ## 5. Order (proposed, he said yes to starting with step 0)
 0. **Setup, with exact clicks for him:** he creates **ProjectLoomyS** (private); a fine-grained token for it →
    project file (or `add_repo`); copy this file in as its handover (plus a short `HANDOVER.md` for 3.0: who he is,
    the workflow and the LoomyBot rules, taken from Project-Loomy's `HANDOVER.md` §1–2, nothing about 2.x code).
-   In Loomy 2: v2.25 merged + released, tag `V2.24e` deleted.
+   In Loomy 2: v2.25 merged + released, tag `V2.24e` deleted, then the repo archived; the `ellune` Worker deleted.
 1. **LS skeleton**, written fresh: profile storage, R2 for files/notes, the model setting, the command log, his
    devices' keys + pairing. Then connect Workers Builds (§4).
 2. **PC ↔ LS:** first decide the desktop app's tech and look with him (§3 rules). Then the live connection,
@@ -111,7 +117,7 @@ the phone are its hands and mouth.
 
 ## 6. Ask him first in the new chat
 - Has he created ProjectLoomyS and the fine-grained token? (If not: give him the clicks, §5 step 0.)
-- Is v2.25 merged and released, and `V2.24e` deleted?
+- Is v2.25 merged and released, `V2.24e` deleted, Project-Loomy archived, Ellune deleted?
 - OK to start step 1 (LS skeleton)? And when to talk about the desktop app's tech/look?
 
 ## 7. Rules that still hold
@@ -121,5 +127,5 @@ the phone are its hands and mouth.
 - He's direct and casual; short answers, honest tradeoffs, a clear recommendation, he decides. When he says "tell me
   your opinion first", don't build.
 - When a Cowork session can't push: the task must be started with the repo attached (or the `add_repo` tool used).
-  For 3.0 that's **ProjectLoomyS**; Project-Loomy only for Loomy 2 fixes. `/mnt/project` may not exist: read
+  For 3.0 that's **ProjectLoomyS**; Project-Loomy is archived (read-only). `/mnt/project` may not exist: read
   `github-bot.txt` with the Projects tool.
