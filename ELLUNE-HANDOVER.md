@@ -1,5 +1,8 @@
 # Ellune — Handover (live 0.4; 0.5 Authy registration written, not deployed; remote works; Nov 4 2026)
 
+> **Nov 19 2026: Ellune becomes LS (Loomy Server) in 3.0, see `LOOMY3.md`.** Code is at 1.0.1 (agent, weather,
+> reminders/notes, games, prefs); live was 0.8 at last check. The sections below are the 2.x history.
+
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
 here, not in Loomy's handover. This repo is public: nothing secret in here.
