@@ -1,8 +1,9 @@
-# Loomy — Handover (2.x code and workflow; v2.24f released Nov 2026)
+# Loomy — Handover (2.x code and workflow; v2.25, the last Loomy 2, Nov 2026)
 
-> **Nov 19 2026: Loomy 3.0 is planned in a NEW private repo; this repo stays as Loomy 2, as it is.** Read
-> `LOOMY3.md` first (status, the 3.0 decisions, the order, what to ask him). This file is still right about Jimmy,
-> the workflow and the 2.x code. Only Loomy 2 fixes happen here; nothing from 3.0 gets merged in.
+> **Nov 19 2026: Loomy 3.0 is built from zero in a NEW private repo, `ProjectLoomyS`; this repo stays as Loomy 2
+> (finished at v2.25).** Read `LOOMY3.md` first (status, the 3.0 decisions, the order, what to ask him). This file
+> is still right about Jimmy, the workflow and the 2.x code. Only Loomy 2 fixes happen here; nothing from 3.0 gets
+> merged in, and no 2.x code goes into 3.0.
 
 Brief for a fresh chat. The code lives in the repo **github.com/JimmyUns/Project-Loomy**. Clone it with the bot
 token (§2); don't ask for a zip. Read this first. Only open deeper files when the task needs them.
@@ -163,6 +164,9 @@ Slash (all modes, 2.17, opt-in feature `phone`): `/phone [forget]`.
   asset `digest` (sha256).
 
 ## 6. Open items
+- **Nov 19: v2.25 = the finished last Loomy 2.** He confirmed v2.24f works (so Ellune 1.0.1 is live), and v2.25
+  is the same code with the version bumped. Only fixes from here (v2.25a...). Loomy 3 is a new app from scratch in a
+  new private repo, **`ProjectLoomyS`**: see `LOOMY3.md`. Nothing from 3.0 comes here.
 - **Nov 19: 3.0 planned in a new repo, see `LOOMY3.md`.** v2.24f released (PR #33). This repo stays Loomy 2.
 - **v2.24f (Nov 11), his screenshot: "Test → open" → "Your PC isn't connected to Ellune", plus "(listening)
   Stopped." lines.** Causes: (1) Ellune was still **0.8** (he hadn't deployed 0.9/1.0), so the phone's agent request

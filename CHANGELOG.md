@@ -2,6 +2,11 @@
 
 All notable changes to Loomy, newest first.
 
+## v2.25
+The finished v2.25, and the last Loomy 2.
+- Everything from the test builds v2.24a–v2.24f below (game update questions, Pocket Loomy talking back, the new main screen, typing, Ellune 1.0's weather/reminders/notes, mood), tested and working. No new changes on top of v2.24f.
+- Loomy 2 stays here and keeps working; only fixes from now on (v2.25a...). Loomy 3 is a separate app built from scratch in its own repo.
+
 ## v2.24f
 A test build on the way to v2.25.
 - Fixed: tapping the mic could make listening stop by itself ("(listening) Stopped." in the history).

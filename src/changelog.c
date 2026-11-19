@@ -13,6 +13,10 @@ typedef struct {
 
 // newest first
 static const Release RELEASES[] = {
+    { L"2.25", L"2026-11-19", {
+        L"The finished 2.25: everything from 2.24a-f, tested.",
+        L"The last Loomy 2. Loomy 3 is a new app, made from scratch.",
+        0 } },
     { L"2.24f", L"2026-11-11", {
         L"Fixed: the mic stopping listening by itself.",
         L"Ellune works without the PC, even with the pairing run out.",
