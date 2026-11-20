@@ -1,5 +1,11 @@
 # Ellune — Handover (live 0.4; 0.5 Authy registration written, not deployed; remote works; Nov 4 2026)
 
+> **Nov 19 2026: Ellune is retired.** He deletes the Worker and its storage from Cloudflare; this code stays here
+> as saved history. 3.0's LS (Loomy Server) is written from scratch in the new repo `ProjectLoomyS` (no code copied
+> from here). See `LOOMY3.md`.
+> Code and live are 1.0.1 (agent, weather, reminders/notes, games, prefs; he confirmed v2.24f works on it).
+> The sections below are the 2.x history.
+
 Brief for a fresh chat. Ellune is the online sister of **Loomy**. Loomy's `HANDOVER.md` (same repo, same folder)
 covers who Jimmy is, how he likes to work, the workflow, and the Loomy codebase: read that first. Keep Ellune notes
 here, not in Loomy's handover. This repo is public: nothing secret in here.
